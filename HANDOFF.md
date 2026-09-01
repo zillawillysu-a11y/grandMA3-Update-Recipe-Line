@@ -2,60 +2,74 @@
 
 ## Current objective
 
-Establish repository-wide operating guidance that lets coding agents work autonomously and maintain a durable handoff record.
+Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: deliver a strictly read-only diagnostic plugin for grandMA3 2.3.2.0+ and wait for real-console evidence before any writer work.
 
 ## Current status
 
-**Complete.** `AGENTS.md` and this `HANDOFF.md` have been created, reviewed for clarity, committed, and pushed to `origin/main`.
+**Phase 0 implementation complete; Phase 1 awaiting real-console validation.** Research and the read-only diagnostic are implemented and locally validated. Do not begin Phase 2 until the requested grandMA3 2.3.2.0 and 2.4.x diagnostic output has been reviewed.
 
 ## What has been completed
 
-- Added repository-wide autonomy, safety, implementation, validation, Git, commit, and push guidance in `AGENTS.md`.
-- Added a required start-of-work checklist covering `AGENTS.md`, `HANDOFF.md`, Git status, branch, and recent history.
-- Added the handoff maintenance workflow and all required handoff fields.
-- Recorded the repository's initial state: the repository contained no tracked project files and had no commits before these documents were added.
-- Reviewed both documents and their Git diff for clarity and completeness.
+- Researched official grandMA3 documentation for the 2.3 target generation.
+- Added `docs/research.md` with confirmed APIs, unknowns, compatibility matrix, console test plan, Phase 2 gate, and official source links.
+- Added `RecipeUpdate_Diagnostic.lua`, a modular, capability-detected, bounded read-only diagnostic.
+- Diagnostic reports version, capabilities, selected sequence/current cue, selected fixtures, UI channels, `GetProgPhaser` probes, Programmer/ProgrammerPart Dumps, and bounded Cue descendant inspection.
+- Unverified group, preset-link, provenance, Recipe property, and candidate results are explicitly reported as unresolved. Candidate scoring is intentionally disabled.
+- Confirmed by static scan that the Lua file contains no executable calls to `Cmd`, `Store`, `Assign`, `Cook`, `Delete`, `Acquire`, `CreateUndo`, or `CloseUndo`.
 
 ## What remains
 
-Nothing for this objective. Future agents should replace or extend this task record with the latest meaningful project state while preserving still-useful context.
+- Import and run `RecipeUpdate_Diagnostic.lua` on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/research.md`.
+- Repeat on a 2.4.x installation.
+- Collect the complete `[RecipeUpdate][DIAG]` and object Dump output and confirm that running the plugin does not mark the show changed.
+- Use those results to resolve actual programmer preset-link, original Cue/Part provenance, Cue/Part/Recipe class hierarchy, and Recipe Selection/Values property names.
+- Wait for user-provided real-console results before Phase 2.
 
 ## Important technical decisions
 
-- Guidance applies to the entire repository from the root.
-- Agents are authorized to perform normal project and Git operations autonomously.
-- Potentially work-losing Git operations remain guarded and should be confirmed when they could affect collaborators.
-- `HANDOFF.md` is a living continuation record, not a disposable per-task summary.
-- The latest commit is described by `HEAD`/subject rather than embedding a commit hash, because a file cannot reliably contain the hash of the commit that contains that same file.
+- Official MA Lighting documentation is the baseline; UI labels are not assumed to be Lua property names.
+- `GetProgPhaser` is only release-note evidenced in the researched official material, so calls are capability-detected and protected with `pcall`.
+- The diagnostic never mutates selection to reverse-match groups because that would violate its strict read-only/no-show-change contract.
+- Recipe candidate scoring stays disabled until feature, group/selection, original source, and old Values reference can all be read reliably.
+- Dumps are intentionally verbose in the development diagnostic but traversal and table printing are bounded.
+- Phase 1 contains no command execution or Undo creation because it performs no write.
 
 ## Known issues or blockers
 
-- None for the documentation change.
-- At task start, local branch `main` had no commits and reported `origin/main` as gone. The initial push created and configured the upstream branch successfully.
+- No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
+- No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
+- `GetProgPhaser` signature/shape and `integrated`/preset-link semantics need actual 2.3.2.0 output.
+- Static validation cannot prove runtime compatibility with grandMA3's embedded Lua environment.
 
 ## Failed approaches that should not be repeated
 
-- None.
+- `npm exec --package luaparse -- node -e ...` did not expose the temporary package to Node's `require()` path. Use the working direct CLI command `npx --yes luaparse RecipeUpdate_Diagnostic.lua` instead.
+- Do not infer internal Recipe properties from the UI's visible column names.
+- Do not treat System Monitor visibility as proof that Lua can read command history.
 
 ## Relevant files
 
+- `RecipeUpdate_Diagnostic.lua`: Phase 1 read-only diagnostic plugin.
+- `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
 - `AGENTS.md`: repository-wide agent instructions.
-- `HANDOFF.md`: current state and continuation record.
+- `HANDOFF.md`: current continuation record.
 
 ## Commands used
 
 - `git status --short --branch`
 - `git log -5 --oneline --decorate`
-- `git remote -v`
-- `rg --files -g '*'`
 - `git diff --check`
-- `git diff`
+- `rg -n --glob '*.lua' '(?i)(^|[^A-Za-z])(Cmd|Store|Assign|Cook|Delete|Acquire|CreateUndo|CloseUndo)\s*\('`
+- `npx --yes luaparse RecipeUpdate_Diagnostic.lua`
 
 ## Test/build/validation status
 
-- Documentation review: passed.
+- Lua 5.3 syntax parse with `luaparse`: passed.
+- Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
-- Code tests/build: not applicable; the repository has no application code yet.
+- Documentation/manual code review: passed.
+- grandMA3 2.3.2.0 runtime test: pending user real-console run.
+- grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
 
@@ -63,12 +77,16 @@ Nothing for this objective. Future agents should replace or extend this task rec
 
 ## Latest relevant commit
 
-Initial policy commit: `e1b8cda docs: add agent workflow and handoff guidance`. The final handoff bookkeeping commit is the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
+Current Phase 0/1 implementation commit is the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash. Prior workflow commit: `5a34123 docs: record completed handoff status`.
 
 ## Push status
 
-Complete. The commits were pushed to `origin/main`, and the local `main` branch tracks that upstream branch.
+The Phase 0/1 implementation is to be committed and pushed to `origin/main` as the final repository step. Verify synchronization with `git status --short --branch`.
 
 ## Recommended next steps
 
-Begin the next task by following the checklist in `AGENTS.md`, then update this handoff with the new objective and repository state.
+1. Follow `docs/research.md` section "Required real-console test" on grandMA3 2.3.2.0.
+2. Send back the complete Command Line History output; screenshots alone may omit Dump fields.
+3. Repeat the same test on 2.4.x if available.
+4. Review and encode only observed version differences in `Compat`.
+5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied.
