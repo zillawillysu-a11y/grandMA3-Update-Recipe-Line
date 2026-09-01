@@ -50,6 +50,19 @@ After a meaningful change:
 
 Do not bundle unrelated user changes into the commit. A task is normally complete only when the requested change is implemented, relevant validation has passed (or limitations are explicitly documented), obvious regressions are addressed, the work is committed, the commit is pushed when a remote is configured, and `HANDOFF.md` reflects the final state.
 
+## grandMA3 local deployment
+
+When a Plugin artifact is complete enough for grandMA3 testing, also synchronize a copy to:
+
+`C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`
+
+- Create the destination directory if it does not exist.
+- Copy only the intended runnable Plugin artifacts and required companion files; do not copy research notes, repository metadata, tests, or temporary files.
+- Preserve the repository copy as the source of truth.
+- After copying, compare source and destination hashes to verify an exact deployment.
+- Record the deployed files and verification result in `HANDOFF.md`.
+- A local deployment is not a substitute for committing and pushing repository changes.
+
 ## Handoff workflow
 
 Maintain `HANDOFF.md` at the repository root as a durable continuation record.

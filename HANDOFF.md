@@ -16,6 +16,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic reports version, capabilities, selected sequence/current cue, selected fixtures, UI channels, `GetProgPhaser` probes, Programmer/ProgrammerPart Dumps, and bounded Cue descendant inspection.
 - Unverified group, preset-link, provenance, Recipe property, and candidate results are explicitly reported as unresolved. Candidate scoring is intentionally disabled.
 - Confirmed by static scan that the Lua file contains no executable calls to `Cmd`, `Store`, `Assign`, `Cook`, `Delete`, `Acquire`, `CreateUndo`, or `CloseUndo`.
+- Added the required local grandMA3 Plugin deployment path to `AGENTS.md`.
+- Synchronized `RecipeUpdate_Diagnostic.lua` to `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin` for real-console/onPC testing.
 
 ## What remains
 
@@ -50,6 +52,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 ## Relevant files
 
 - `RecipeUpdate_Diagnostic.lua`: Phase 1 read-only diagnostic plugin.
+- `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\RecipeUpdate_Diagnostic.lua`: synchronized local test copy (repository-external).
 - `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
 - `AGENTS.md`: repository-wide agent instructions.
 - `HANDOFF.md`: current continuation record.
@@ -68,6 +71,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
+- Local Plugin deployment source/destination SHA-256 comparison: passed (`930E6E68A2B7F17ABE6B8872564FE161505C9FE5586D26B4D9D26450C83F7F73`).
 - grandMA3 2.3.2.0 runtime test: pending user real-console run.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
@@ -77,7 +81,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Latest relevant commit
 
-Phase 0/1 implementation: `c1f7cde feat: add read-only recipe diagnostics`. The final handoff-status commit is the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
+Phase 0/1 implementation: `c1f7cde feat: add read-only recipe diagnostics`. Local deployment workflow update will be the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
 
 ## Push status
 
