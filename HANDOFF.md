@@ -77,11 +77,11 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Latest relevant commit
 
-Current Phase 0/1 implementation commit is the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash. Prior workflow commit: `5a34123 docs: record completed handoff status`.
+Phase 0/1 implementation: `c1f7cde feat: add read-only recipe diagnostics`. The final handoff-status commit is the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
 
 ## Push status
 
-The Phase 0/1 implementation is to be committed and pushed to `origin/main` as the final repository step. Verify synchronization with `git status --short --branch`.
+Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `main` is synchronized with its upstream branch.
 
 ## Recommended next steps
 
