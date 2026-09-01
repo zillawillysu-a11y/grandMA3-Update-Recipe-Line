@@ -6,7 +6,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Current status
 
-**Phase 0 implementation complete; Phase 1 awaiting real-console validation.** Research and the read-only diagnostic are implemented and locally validated. Do not begin Phase 2 until the requested grandMA3 2.3.2.0 and 2.4.x diagnostic output has been reviewed.
+**Phase 0 complete; Phase 1 partially validated on real grandMA3 2.3.2.0.** Ordinary-Programmer Position preset resolution is now evidence-backed. Original Cue/Part, Group, and Recipe-line resolution remain unresolved. Do not begin Phase 2.
 
 ## What has been completed
 
@@ -19,10 +19,14 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Added the required local grandMA3 Plugin deployment path to `AGENTS.md`.
 - Synchronized `RecipeUpdate_Diagnostic.lua` to `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin` for real-console/onPC testing.
 - Added `recipe_update_diagnostic.xml`, modeled on an installed 2.3.2 Plugin descriptor, and updated deployment rules to require XML plus referenced Lua components.
+- Analyzed real 2.3.2.0 DumpLogs for both Edit Recipe and ordinary Programmer tests.
+- Confirmed `GetProgPhaser()` returns an `abs_preset` handle and reliably followed Position preset 2.5 then 2.4 across 28 selected fixtures.
+- Confirmed ordinary Programmer has zero ProgPart Recipe children while the Edit Recipe test had two, providing a read-only mode safety check.
+- Updated the diagnostic to summarize a unique preset/feature, reject ambiguous/raw phasers, detect Recipe content in ProgrammerPart, and avoid thousands of repetitive per-fixture lines.
 
 ## What remains
 
-- Import and run `RecipeUpdate_Diagnostic.lua` on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/research.md`.
+- Import and run diagnostic version 0.1.1.0 on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/research.md`.
 - Repeat on a 2.4.x installation.
 - Collect the complete `[RecipeUpdate][DIAG]` and object Dump output and confirm that running the plugin does not mark the show changed.
 - Use those results to resolve actual programmer preset-link, original Cue/Part provenance, Cue/Part/Recipe class hierarchy, and Recipe Selection/Values property names.
@@ -41,7 +45,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 - No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
 - No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
-- `GetProgPhaser` signature/shape and `integrated`/preset-link semantics need actual 2.3.2.0 output.
+- `abs_preset` is confirmed for ordinary Position calls on 2.3.2.0, but Color, relative, multi-feature, and 2.4.x shapes remain unverified.
 - Static validation cannot prove runtime compatibility with grandMA3's embedded Lua environment.
 
 ## Failed approaches that should not be repeated
@@ -74,10 +78,11 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Plugin deployment source/destination SHA-256 comparison: passed (`930E6E68A2B7F17ABE6B8872564FE161505C9FE5586D26B4D9D26450C83F7F73`).
+- Local Lua deployment source/destination SHA-256 comparison: passed (`62F4F7FB0EF50BD58155F4ADDC28CC30B09CE4EF85C0EB7D6BB484F63D481F99`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed (`3AE09DAB794F61C1B623F93A47884DDE54F9909A56163582E5E82301BD8C804C`).
-- grandMA3 2.3.2.0 runtime test: pending user real-console run.
+- XML deployment source/destination SHA-256 comparison: passed (`5C5E92B1BE652E66FA77984D246B407F7ED77CE6D4CC3138F7F1FA271C38BFE3`).
+- grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
+- grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -86,7 +91,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Latest relevant commit
 
-Phase 0/1 implementation: `c1f7cde feat: add read-only recipe diagnostics`. Local deployment workflow update will be the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
+Phase 0/1 implementation and real-console refinement will be represented by the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash.
 
 ## Push status
 
@@ -94,8 +99,8 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Follow `docs/research.md` section "Required real-console test" on grandMA3 2.3.2.0.
-2. Send back the complete Command Line History output; screenshots alone may omit Dump fields.
-3. Repeat the same test on 2.4.x if available.
+1. Import/reload diagnostic version 0.1.1.0 and run the ordinary Programmer Position test once to verify the new compact summary.
+2. Run the ordinary Programmer Color test and provide the new DumpLog path.
+3. Repeat the same tests on 2.4.x if available.
 4. Review and encode only observed version differences in `Compat`.
 5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied.

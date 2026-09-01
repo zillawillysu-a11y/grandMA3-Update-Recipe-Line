@@ -233,7 +233,11 @@ local function readProgrammer(fixtures)
     end
 
     local uniqueFindings = {}
-    local activeLikeCount = 0
+    local presetByAddress = {}
+    local attributeCounts = {}
+    local phaserCount = 0
+    local rawPhaserCount = 0
+    local samplePrinted = false
     for fixtureNumber, fixtureInfo in ipairs(fixtures) do
         local input = fixtureInfo.handle or fixtureInfo.index
         local channelResults, channelErr = safeCall("GetUIChannels", GetUIChannels, input, true)
@@ -248,18 +252,25 @@ local function readProgrammer(fixtures)
                     or objectText(channel, "SubAttribute")
                     or objectText(channel, "Name")
                     or "unknown"
-                log("Fixture %d UIChannel=%s Attribute=%s", fixtureNumber, tostring(uiIndex), attribute)
-
                 if uiIndex ~= nil then
                     local phaser, phaserErr = Compat.getProgrammerPhaser(uiIndex)
                     if phaserErr then
                         uniqueFindings[phaserErr] = true
                     elseif phaser ~= nil then
-                        log("GetProgPhaser result: fixture=%d attribute=%s uiChannel=%d", fixtureNumber, attribute, uiIndex)
-                        printTable(phaser, "phaser")
-                        local text = string.lower(tostring(phaser.active or phaser.is_active or phaser.integrated or ""))
-                        if text ~= "" and text ~= "false" and text ~= "0" and text ~= "nil" then
-                            activeLikeCount = activeLikeCount + 1
+                        phaserCount = phaserCount + 1
+                        attributeCounts[attribute] = (attributeCounts[attribute] or 0) + 1
+                        local preset = phaser.abs_preset
+                        if type(preset) == "userdata" then
+                            local address = objectAddress(preset)
+                            presetByAddress[address] = preset
+                        else
+                            rawPhaserCount = rawPhaserCount + 1
+                        end
+
+                        if not samplePrinted then
+                            samplePrinted = true
+                            log("Sample GetProgPhaser: fixture=%d attribute=%s uiChannel=%d", fixtureNumber, attribute, uiIndex)
+                            printTable(phaser, "sample_phaser")
                         end
                     end
                 end
@@ -268,9 +279,37 @@ local function readProgrammer(fixtures)
     end
 
     for finding in pairs(uniqueFindings) do warn("%s", finding) end
-    log("Active Feature: UNRESOLVED (active-like probes=%d)", activeLikeCount)
-    log("Current Preset Reference: UNRESOLVED - inspect phaser keys on real console")
-    log("Multiple-feature policy: NO-OP until preset-link semantics are verified")
+    local attributes = {}
+    for attribute, count in pairs(attributeCounts) do
+        attributes[#attributes + 1] = string.format("%s(%d)", attribute, count)
+    end
+    table.sort(attributes)
+    log("Programmer phaser channels: %d; attributes: %s", phaserCount,
+        #attributes > 0 and table.concat(attributes, ", ") or "none")
+
+    local presetAddresses = {}
+    for address in pairs(presetByAddress) do presetAddresses[#presetAddresses + 1] = address end
+    table.sort(presetAddresses)
+    log("Unique absolute preset references: %d; phasers without abs_preset: %d",
+        #presetAddresses, rawPhaserCount)
+
+    if #presetAddresses == 1 and rawPhaserCount == 0 then
+        local address = presetAddresses[1]
+        local preset = presetByAddress[address]
+        local feature = string.match(address, "PresetPools%.([^%.]+)%.") or "UNRESOLVED"
+        log("Active Feature: %s", feature)
+        log("Current Preset Reference: %s | class=%s | address=%s",
+            objectLabel(preset), objectClass(preset), address)
+        log("Preset resolution confidence: HIGH for this 2.3.2.0 observed shape")
+    elseif #presetAddresses == 0 then
+        warn("Current Preset Reference: UNRESOLVED - no abs_preset handle found")
+    else
+        warn("Current Preset Reference: AMBIGUOUS - %d preset references and %d raw phasers; NO-OP",
+            #presetAddresses, rawPhaserCount)
+        for _, address in ipairs(presetAddresses) do
+            log("Preset candidate: %s | %s", objectLabel(presetByAddress[address]), address)
+        end
+    end
 end
 
 local RECIPE_PROPERTY_PROBES = {
@@ -354,6 +393,28 @@ local function dumpProgrammerObjects()
     end
 end
 
+local function inspectProgrammerMode()
+    if not callable("ProgrammerPart") then
+        warn("Programmer mode: UNRESOLVED - ProgrammerPart unavailable")
+        return
+    end
+    local results, err = safeCall("ProgrammerPart", ProgrammerPart)
+    local part = results and results[1] or nil
+    if not part then
+        warn("Programmer mode: UNRESOLVED - %s", err or "no ProgrammerPart handle")
+        return
+    end
+    local ok, count = pcall(function() return part:Count() end)
+    if not ok then
+        warn("Programmer mode: UNRESOLVED - ProgPart Count failed")
+    elseif tonumber(count) and tonumber(count) > 0 then
+        warn("Programmer mode: RECIPE CONTENT DETECTED (%d Recipe children); normal-Programmer update must NO-OP",
+            tonumber(count))
+    else
+        log("Programmer mode: NORMAL (ProgPart Recipe children=0)")
+    end
+end
+
 local function main()
     log("============================================================")
     log("grandMA3 Recipe Update - Phase 1 READ-ONLY diagnostic")
@@ -376,6 +437,7 @@ local function main()
     inspectContext(sequence, cue)
 
     local fixtures = readSelection()
+    inspectProgrammerMode()
     readProgrammer(fixtures)
     dumpProgrammerObjects()
 

@@ -17,6 +17,21 @@ The status labels in this document are deliberate:
 
 ## Confirmed findings
 
+### Real-console evidence: grandMA3 2.3.2.0
+
+The following was observed in two System Monitor dumps from an actual 2.3.2.0 onPC installation on 2026-09-01:
+
+- `GetProgPhaser(uiChannelIndex)` is available and returns a table for Programmer channels after calling an ordinary Position preset.
+- The returned table contains `abs_preset` as a real `Preset` handle. Its native address identified the pool and preset, for example `ShowData.DataPools.Default.PresetPools.Position.<<<>>>`.
+- An ordinary `Group 10; At Preset 2.5` call on 28 fixtures produced one unique `abs_preset` across Pan, Tilt, and PT Speed. `mask_active_phaser=65`, `mask_active_value=2`, `mask_individual=65`, `selective=true`, and `mask_cooked=0` were consistent in this test.
+- Calling Position preset 2.4 changed the unique handle to Position preset 4 `Open Tilt`, proving the reference follows the newly called preset rather than only raw Pan/Tilt values.
+- With Edit Recipe active, the same phaser shape was visible but `mask_cooked=255`, and `ProgrammerPart():Count()`/Dump showed two `Recipe` children.
+- With Edit Recipe disabled and the Programmer cleared, `ProgrammerPart():Count()` was zero and the Dump contained no Recipe children.
+- The selected cue handle had a child of class `Part`. The current tracked cue in this test did not itself expose Recipe children, so original-source resolution remains necessary.
+- No Lua runtime error occurred in the valid ordinary-Programmer run.
+
+These observations justify a Phase 1 high-confidence summary only when exactly one `abs_preset` handle is found and there are no active phasers without that reference. They do not yet prove original Cue/Part or Recipe-line resolution.
+
 ### General read-only Lua primitives
 
 - `Version()` returns the software version. Since 2.2 it can also return numeric version components.
@@ -58,8 +73,9 @@ The following are not safe foundations for production writes yet:
 - The exact child hierarchy and class names below Cue -> Part -> Recipe on 2.3.2.0.
 - The internal Recipe property names for Selection and Values. UI column labels do not prove Lua property names.
 - Whether Recipe references are returned as handles, object-number strings, native addresses, or display strings.
-- A stable API for retrieving the preset link used by an active programmer value.
-- Whether `integrated` in programmer phaser data is the preset reference, a component of it, or version/attribute dependent.
+- Whether the observed `abs_preset` contract and masks remain identical in 2.4.x and later.
+- How relative presets and multi-step/multi-feature programmer data represent their references.
+- Whether `integrated` is relevant for preset reference resolution in other preset modes or versions.
 - A stable, read-only source for the group that created the current selection.
 - A stable Lua API for command history or System Monitor history. Visible history is not proof of programmatic access.
 - A stable output-provenance API that maps fixture + attribute at the current cue back to original Cue/Part (`CueAbs` or otherwise).
