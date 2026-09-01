@@ -29,6 +29,8 @@ The following was observed in two System Monitor dumps from an actual 2.3.2.0 on
 - With Edit Recipe disabled and the Programmer cleared, `ProgrammerPart():Count()` was zero and the Dump contained no Recipe children.
 - The selected cue handle had a child of class `Part`. The current tracked cue in this test did not itself expose Recipe children, so original-source resolution remains necessary.
 - No Lua runtime error occurred in the valid ordinary-Programmer run.
+- Diagnostic 0.1.1.0 was then imported and verified on the same 2.3.2.0 installation. It produced the intended compact, high-confidence summary for two ordinary Programmer calls: Position 2.7 `Full` and Position 2.5 `<<<>>>`. Both runs reported `Programmer mode: NORMAL`, 84 phaser channels (Pan, Tilt, and PT Speed across 28 fixtures), exactly one absolute preset reference, zero phasers without `abs_preset`, and no runtime error.
+- These tests are Position-only evidence. No Color result has been collected yet.
 
 These observations justify a Phase 1 high-confidence summary only when exactly one `abs_preset` handle is found and there are no active phasers without that reference. They do not yet prove original Cue/Part or Recipe-line resolution.
 

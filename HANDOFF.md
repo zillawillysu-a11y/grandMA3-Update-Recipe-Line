@@ -23,6 +23,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Confirmed `GetProgPhaser()` returns an `abs_preset` handle and reliably followed Position preset 2.5 then 2.4 across 28 selected fixtures.
 - Confirmed ordinary Programmer has zero ProgPart Recipe children while the Edit Recipe test had two, providing a read-only mode safety check.
 - Updated the diagnostic to summarize a unique preset/feature, reject ambiguous/raw phasers, detect Recipe content in ProgrammerPart, and avoid thousands of repetitive per-fixture lines.
+- Verified diagnostic 0.1.1.0 on 2.3.2.0 with ordinary Programmer Position 2.7 and 2.5 calls; both compact summaries resolved the correct unique preset with high confidence and no runtime error.
 
 ## What remains
 
@@ -83,6 +84,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - XML deployment source/destination SHA-256 comparison: passed (`5C5E92B1BE652E66FA77984D246B407F7ED77CE6D4CC3138F7F1FA271C38BFE3`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
+- grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
