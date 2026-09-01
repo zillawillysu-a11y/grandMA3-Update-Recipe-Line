@@ -57,9 +57,10 @@ When a Plugin artifact is complete enough for grandMA3 testing, also synchronize
 `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`
 
 - Create the destination directory if it does not exist.
-- Copy only the intended runnable Plugin artifacts and required companion files; do not copy research notes, repository metadata, tests, or temporary files.
+- Every deployable grandMA3 Plugin must include its XML descriptor plus all referenced Lua component files. Follow the XML structure used by installed grandMA3 Plugins (`GMA3` -> `UserPlugin` -> `ComponentLua`) and keep each `FileName` consistent with the deployed Lua filename.
+- Copy only the intended runnable Plugin XML, referenced Lua components, and required companion files; do not copy research notes, repository metadata, tests, or temporary files.
 - Preserve the repository copy as the source of truth.
-- After copying, compare source and destination hashes to verify an exact deployment.
+- Validate the XML structure and confirm every referenced component exists before copying. After copying, compare source and destination hashes to verify an exact deployment.
 - Record the deployed files and verification result in `HANDOFF.md`.
 - A local deployment is not a substitute for committing and pushing repository changes.
 

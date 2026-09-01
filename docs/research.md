@@ -113,7 +113,7 @@ Run these tests first on grandMA3 2.3.2.0, then repeat on one 2.4.x system using
 1. Create or identify a sequence where Cue 10 Part 0 has a recipe using Group 101 and Position preset 2.1, and Cue 30 tracks it.
 2. Go to Cue 30.
 3. Clear the programmer, then execute `Group 101` and `At Preset 2.7` (or tap Position 2.7).
-4. Run `RecipeUpdate_Diagnostic`.
+4. Import `recipe_update_diagnostic.xml`, then run the `Recipe Update Diagnostic` Plugin.
 5. Save the entire Command Line History output, including all `[RecipeUpdate][DIAG]` lines and Dump blocks.
 6. Repeat with Color preset 4.3.
 7. Repeat with two active feature groups to confirm the diagnostic refuses to resolve a single preset.

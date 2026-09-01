@@ -18,6 +18,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Confirmed by static scan that the Lua file contains no executable calls to `Cmd`, `Store`, `Assign`, `Cook`, `Delete`, `Acquire`, `CreateUndo`, or `CloseUndo`.
 - Added the required local grandMA3 Plugin deployment path to `AGENTS.md`.
 - Synchronized `RecipeUpdate_Diagnostic.lua` to `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin` for real-console/onPC testing.
+- Added `recipe_update_diagnostic.xml`, modeled on an installed 2.3.2 Plugin descriptor, and updated deployment rules to require XML plus referenced Lua components.
 
 ## What remains
 
@@ -52,7 +53,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 ## Relevant files
 
 - `RecipeUpdate_Diagnostic.lua`: Phase 1 read-only diagnostic plugin.
+- `recipe_update_diagnostic.xml`: grandMA3 Plugin descriptor referencing the diagnostic Lua component.
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\RecipeUpdate_Diagnostic.lua`: synchronized local test copy (repository-external).
+- `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\recipe_update_diagnostic.xml`: synchronized local descriptor (repository-external).
 - `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
 - `AGENTS.md`: repository-wide agent instructions.
 - `HANDOFF.md`: current continuation record.
@@ -72,6 +75,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
 - Local Plugin deployment source/destination SHA-256 comparison: passed (`930E6E68A2B7F17ABE6B8872564FE161505C9FE5586D26B4D9D26450C83F7F73`).
+- XML descriptor parse/reference validation: passed; one referenced Lua component exists.
+- XML deployment source/destination SHA-256 comparison: passed (`3AE09DAB794F61C1B623F93A47884DDE54F9909A56163582E5E82301BD8C804C`).
 - grandMA3 2.3.2.0 runtime test: pending user real-console run.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
