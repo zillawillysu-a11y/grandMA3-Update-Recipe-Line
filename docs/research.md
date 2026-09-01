@@ -15,6 +15,8 @@ The status labels in this document are deliberate:
 - **UI behavior only**: the user-facing behavior is documented, but no stable Lua property/address is documented.
 - **Unknown / needs console dump**: do not use for a write operation until verified on real 2.3.2.0 and a later supported version.
 
+The read-only secondary HelpLua/API comparison requested for this project is maintained in [`api-reference-comparison.md`](api-reference-comparison.md). Its repository dump ranks below real tests and official MA documentation.
+
 ## Confirmed findings
 
 ### Real-console evidence: grandMA3 2.3.2.0
@@ -175,3 +177,4 @@ Phase 2 must use a disposable test sequence and snapshot every unrelated Recipe 
 - [Cook keyword](https://help.malighting.com/grandMA3/2.3/HTML/keyword_cook.html)
 - [CreateUndo()](https://help.malighting.com/grandMA3/2.3/HTML/lua_objectfree_createundo.html)
 - [grandMA3 2.2 release notes](https://help.malighting.com/grandMA3/2.3/HTML/key_rn_v2_2.html)
+- [Secondary v2.2 HelpLua/API dump (read-only reference)](https://github.com/patopesto/GrandMA3-Plugins/blob/master/website/src/content/docs/reference/v2.2/data/grandMA3_lua_functions.txt)

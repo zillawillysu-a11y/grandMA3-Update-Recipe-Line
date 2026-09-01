@@ -162,7 +162,26 @@ function Compat.getProgrammerPhaser(uiChannelIndex)
     if not callable("GetProgPhaser") then
         return nil, "GetProgPhaser unavailable (not in confirmed 2.3 API index)"
     end
-    local results, err = safeCall("GetProgPhaser", GetProgPhaser, uiChannelIndex)
+    local results, err = safeCall("GetProgPhaser", GetProgPhaser, uiChannelIndex, false)
+    if results then return results[1], nil end
+
+    -- Compatibility fallback: the already-verified 2.3.2.0 installation also
+    -- accepted a one-argument call, while the v2.2 HelpLua dump lists the
+    -- phaser_only boolean explicitly.
+    local fallbackResults, fallbackErr = safeCall("GetProgPhaser", GetProgPhaser, uiChannelIndex)
+    return fallbackResults and fallbackResults[1] or nil,
+        fallbackResults and nil or string.format("two-arg: %s; one-arg: %s", tostring(err), tostring(fallbackErr))
+end
+
+function Compat.getProgrammerPhaserValue(uiChannelIndex, step)
+    if not callable("GetProgPhaserValue") then return nil, "GetProgPhaserValue unavailable" end
+    local results, err = safeCall("GetProgPhaserValue", GetProgPhaserValue, uiChannelIndex, step)
+    return results and results[1] or nil, err
+end
+
+function Compat.getPresetData(preset)
+    if not callable("GetPresetData") then return nil, "GetPresetData unavailable" end
+    local results, err = safeCall("GetPresetData", GetPresetData, preset, true, false)
     return results and results[1] or nil, err
 end
 
@@ -172,6 +191,8 @@ local function printCapabilities()
         "SelectionNext", "GetSubfixture", "GetUIChannels", "Programmer",
         "ProgrammerPart", "SelectedFeature", "GetSelectedAttribute",
         "GetAttributeByUIChannel", "GetProgPhaser", "GetProgPhaserValue",
+        "GetPresetData", "GetUIChannelIndex", "GetChannelFunction",
+        "GetChannelFunctionIndex", "SetProgPhaser", "SetProgPhaserValue",
         "ObjectList", "DataPool"
     }
     log("=== CAPABILITIES ===")
@@ -271,6 +292,75 @@ local function readProgrammer(fixtures)
                             samplePrinted = true
                             log("Sample GetProgPhaser: fixture=%d attribute=%s uiChannel=%d", fixtureNumber, attribute, uiIndex)
                             printTable(phaser, "sample_phaser")
+
+                            local stepValue, stepErr = Compat.getProgrammerPhaserValue(uiIndex, 1)
+                            if stepValue then
+                                log("Sample GetProgPhaserValue: uiChannel=%d step=1", uiIndex)
+                                printTable(stepValue, "sample_step")
+                            else
+                                warn("GetProgPhaserValue sample unavailable: %s", tostring(stepErr))
+                            end
+
+                            local attributeIndex = nil
+                            if callable("GetAttributeByUIChannel") then
+                                local attrResults, attrErr = safeCall(
+                                    "GetAttributeByUIChannel", GetAttributeByUIChannel, uiIndex)
+                                local attrHandle = attrResults and attrResults[1] or nil
+                                if attrHandle then
+                                    log("Sample Attribute identity: %s | class=%s | address=%s",
+                                        objectLabel(attrHandle), objectClass(attrHandle), objectAddress(attrHandle))
+                                    local indexOk, indexValue = pcall(function() return attrHandle:Index() end)
+                                    if indexOk and indexValue ~= nil then
+                                        attributeIndex = tonumber(indexValue)
+                                        log("Sample Attribute index: %s", tostring(indexValue))
+                                        if attributeIndex and callable("GetUIChannelIndex") then
+                                            local roundTripResults, roundTripErr = safeCall(
+                                                "GetUIChannelIndex", GetUIChannelIndex,
+                                                fixtureInfo.index, attributeIndex)
+                                            if roundTripResults and roundTripResults[1] ~= nil then
+                                                log("GetUIChannelIndex round trip: source=%d resolved=%s match=%s",
+                                                    uiIndex, tostring(roundTripResults[1]),
+                                                    tostring(tonumber(roundTripResults[1]) == uiIndex))
+                                            else
+                                                warn("GetUIChannelIndex round trip unresolved: %s",
+                                                    tostring(roundTripErr))
+                                            end
+                                        end
+                                    end
+                                else
+                                    warn("GetAttributeByUIChannel sample unavailable: %s", tostring(attrErr))
+                                end
+                            end
+
+                            local channelFunction = type(phaser[1]) == "table"
+                                and tonumber(phaser[1].channel_function) or nil
+                            if channelFunction ~= nil then
+                                log("Sample channel_function raw index: %d", channelFunction)
+                            end
+                            if attributeIndex ~= nil then
+                                if callable("GetChannelFunction") then
+                                    local cfResults, cfErr = safeCall(
+                                        "GetChannelFunction", GetChannelFunction, uiIndex, attributeIndex)
+                                    local cfHandle = cfResults and cfResults[1] or nil
+                                    if cfHandle then
+                                        log("GetChannelFunction probe: %s | class=%s | address=%s",
+                                            objectLabel(cfHandle), objectClass(cfHandle), objectAddress(cfHandle))
+                                    else
+                                        warn("GetChannelFunction probe unresolved: %s", tostring(cfErr))
+                                    end
+                                end
+                                if callable("GetChannelFunctionIndex") then
+                                    local cfiResults, cfiErr = safeCall(
+                                        "GetChannelFunctionIndex", GetChannelFunctionIndex,
+                                        uiIndex, attributeIndex)
+                                    if cfiResults and cfiResults[1] ~= nil then
+                                        log("GetChannelFunctionIndex probe result: %s", tostring(cfiResults[1]))
+                                    else
+                                        warn("GetChannelFunctionIndex probe unresolved: %s", tostring(cfiErr))
+                                    end
+                                end
+                                log("ChannelFunction probe semantics: API-dump-shaped but UNVERIFIED; no writer assumption allowed")
+                            end
                         end
                     end
                 end
@@ -301,6 +391,14 @@ local function readProgrammer(fixtures)
         log("Current Preset Reference: %s | class=%s | address=%s",
             objectLabel(preset), objectClass(preset), address)
         log("Preset resolution confidence: HIGH for this 2.3.2.0 observed shape")
+
+        local presetData, presetDataErr = Compat.getPresetData(preset)
+        if presetData then
+            log("=== GET PRESET DATA SAMPLE (phasers_only=true, by_fixtures=false) ===")
+            printTable(presetData, "preset_data")
+        else
+            warn("GetPresetData sample unavailable: %s", tostring(presetDataErr))
+        end
     elseif #presetAddresses == 0 then
         warn("Current Preset Reference: UNRESOLVED - no abs_preset handle found")
     else

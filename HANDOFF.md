@@ -24,10 +24,12 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Confirmed ordinary Programmer has zero ProgPart Recipe children while the Edit Recipe test had two, providing a read-only mode safety check.
 - Updated the diagnostic to summarize a unique preset/feature, reject ambiguous/raw phasers, detect Recipe content in ProgrammerPart, and avoid thousands of repetitive per-fixture lines.
 - Verified diagnostic 0.1.1.0 on 2.3.2.0 with ordinary Programmer Position 2.7 and 2.5 calls; both compact summaries resolved the correct unique preset with high confidence and no runtime error.
+- Added `docs/api-reference-comparison.md`, comparing the requested read-only patopesto v2.2 HelpLua/API dump against official research and observed 2.3.2.0 behavior.
+- Added capability-guarded, bounded read-only probes for `GetProgPhaserValue`, `GetPresetData`, Attribute/UIChannel identity, and ChannelFunction identity. `SetProgPhaser*` remains capability-report-only and is never invoked.
 
 ## What remains
 
-- Import and run diagnostic version 0.1.1.0 on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/research.md`.
+- Import and run diagnostic version 0.1.2.0 on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/api-reference-comparison.md`.
 - Repeat on a 2.4.x installation.
 - Collect the complete `[RecipeUpdate][DIAG]` and object Dump output and confirm that running the plugin does not mark the show changed.
 - Use those results to resolve actual programmer preset-link, original Cue/Part provenance, Cue/Part/Recipe class hierarchy, and Recipe Selection/Values property names.
@@ -41,12 +43,15 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Recipe candidate scoring stays disabled until feature, group/selection, original source, and old Values reference can all be read reliably.
 - Dumps are intentionally verbose in the development diagnostic but traversal and table printing are bounded.
 - Phase 1 contains no command execution or Undo creation because it performs no write.
+- Reference confidence order is real test, official MA docs/HelpLua, requested versioned repository dump, forum evidence, then explicit inference.
+- The v2.2 dump's second `GetProgPhaser` argument is tried first; the verified one-argument 2.3.2.0 form is retained as fallback.
 
 ## Known issues or blockers
 
 - No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
 - No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
 - `abs_preset` is confirmed for ordinary Position calls on 2.3.2.0, but Color, relative, multi-feature, and 2.4.x shapes remain unverified.
+- New `GetProgPhaserValue`, `GetPresetData`, UIChannel round-trip, and ChannelFunction probes require real 2.3.2.0 output before their semantics can be used.
 - Static validation cannot prove runtime compatibility with grandMA3's embedded Lua environment.
 
 ## Failed approaches that should not be repeated
@@ -62,6 +67,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\RecipeUpdate_Diagnostic.lua`: synchronized local test copy (repository-external).
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\recipe_update_diagnostic.xml`: synchronized local descriptor (repository-external).
 - `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
+- `docs/api-reference-comparison.md`: secondary v2.2 API dump comparison and seven-question analysis.
 - `AGENTS.md`: repository-wide agent instructions.
 - `HANDOFF.md`: current continuation record.
 
@@ -79,12 +85,13 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed (`62F4F7FB0EF50BD58155F4ADDC28CC30B09CE4EF85C0EB7D6BB484F63D481F99`).
+- Local Lua deployment source/destination SHA-256 comparison: passed (`DBB668F4982D4426AAFAB0AE00196D8090BCB2325923E88B313493C4F9844D68`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed (`5C5E92B1BE652E66FA77984D246B407F7ED77CE6D4CC3138F7F1FA271C38BFE3`).
+- XML deployment source/destination SHA-256 comparison: passed (`E09003235711BE029B91DF0A8FF4C14F03867A61B1E79CBBF4328B3D8B0DEA58`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
+- Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated; real-console test pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -93,7 +100,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Latest relevant commit
 
-Phase 0/1 implementation and real-console refinement will be represented by the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash.
+Phase 0/1 implementation and API-reference probe update will be represented by the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash.
 
 ## Push status
 
@@ -101,7 +108,7 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Import/reload diagnostic version 0.1.1.0 and run the ordinary Programmer Position test once to verify the new compact summary.
+1. Import/reload diagnostic version 0.1.2.0 and run the ordinary Programmer Position test once to verify the new API probes.
 2. Run the ordinary Programmer Color test and provide the new DumpLog path.
 3. Repeat the same tests on 2.4.x if available.
 4. Review and encode only observed version differences in `Compat`.
