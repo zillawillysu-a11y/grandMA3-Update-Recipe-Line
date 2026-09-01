@@ -6,7 +6,7 @@ Establish repository-wide operating guidance that lets coding agents work autono
 
 ## Current status
 
-**Complete.** `AGENTS.md` and this `HANDOFF.md` have been created and reviewed for clarity. The final commit and push are performed as the last steps of this task; consult the current `HEAD` and upstream status for their authoritative identifiers.
+**Complete.** `AGENTS.md` and this `HANDOFF.md` have been created, reviewed for clarity, committed, and pushed to `origin/main`.
 
 ## What has been completed
 
@@ -31,7 +31,7 @@ Nothing for this objective. Future agents should replace or extend this task rec
 ## Known issues or blockers
 
 - None for the documentation change.
-- At task start, local branch `main` had no commits and reported `origin/main` as gone. The configured remote is `origin`; final push status is recorded below.
+- At task start, local branch `main` had no commits and reported `origin/main` as gone. The initial push created and configured the upstream branch successfully.
 
 ## Failed approaches that should not be repeated
 
@@ -63,11 +63,11 @@ Nothing for this objective. Future agents should replace or extend this task rec
 
 ## Latest relevant commit
 
-Current `HEAD`: `docs: add agent workflow and handoff guidance` (the repository's initial commit after this task is committed).
+Initial policy commit: `e1b8cda docs: add agent workflow and handoff guidance`. The final handoff bookkeeping commit is the current `HEAD`; use `git log -1 --oneline` for its authoritative hash.
 
 ## Push status
 
-Final push targets `origin/main`. Verify with `git status --short --branch`; any push failure should be recorded here by the next agent before continuing.
+Complete. The commits were pushed to `origin/main`, and the local `main` branch tracks that upstream branch.
 
 ## Recommended next steps
 
