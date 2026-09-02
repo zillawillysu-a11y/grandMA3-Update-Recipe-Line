@@ -120,11 +120,10 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.12.0 (`F9167D6F271145D045BA848768C0F5A747F7AA46676E61FC9C82C170D8E8C157`).
-- Inspector deployment source/destination SHA-256 comparison: passed (`7345FD4937BB4682376F41CD01F7098FA346B0F32A53411FDD8E3877B15EE0E0`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for the current diagnostic (`A8F2006F3A5C7862BBF5468B7B65D1BD2C68E9A0D1EA15894335C1AB1004CB36`).
+- Inspector 0.2.1.1 deployment source/destination SHA-256 comparison: passed (`44B89A465ED3A7AE99DFFC2629D89301BB56F1FF32E1D5AE8A762D129469013F`).
 - XML descriptor parse/reference validation: passed; both referenced Lua components exist.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.12.0 (`EB56A3DF9778DF685FD9625BB2775EBF7709ADBA98B51FDAFA401262B2A730EE`).
-- XML 0.2.0.0 deployment source/destination SHA-256 comparison: passed (`ED17916893272BC03E7F03FA6241C3865DED0542FA3724597C3BB42BC13EAA00`).
+- XML 0.2.1.1 deployment source/destination SHA-256 comparison: passed (`B1032982CE136B098059F0075E0418AAFB1C2EA58AC8E4B734359229DB5B454D`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
