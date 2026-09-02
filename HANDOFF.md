@@ -10,6 +10,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 
 ## What has been completed
 
+- Researched a true Pool-style dockable Plugin window on installed grandMA3 2.3.2.0 and the requested patopesto reference repository. `ScreenContent` can instantiate only registered `CurrentProfile().Windowtypes`; no supported UserPlugin registration path was found. Findings are recorded in `docs/pool-window-research.md`.
+- Inspector 0.2.2.0 therefore uses the safe fallback: a compact three-line status bar with `DETAIL`, `MOVE`, and `STOP`. `DETAIL` expands to the existing 360-pixel diagnostic view.
+- Old/New Preset text now includes the detected Preset Pool/Feature, reference, and object Name when available.
 - Inspector 0.2.1.4 rejects Recipe candidates after the current Cue. This fixes the observed false ambiguity at Cue 0.5 caused by future Recipes at Cues 1 and 8.5.
 - Because onPC did not emit the guessed drag update, Inspector 0.2.1.4 adds a deterministic `MOVE` button that cycles the overlay through the four screen corners. Touch drag bindings remain experimental.
 - Inspector 0.2.1.3 fixes fractional Cue labels: 2.3.2.0 exposes `Cue.No` in thousandths (`500` = Cue `0.5`, `8500` = Cue `8.5`).
@@ -65,6 +68,7 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 
 ## What remains
 
+- Verify compact/expanded layout and the Pool-qualified Old/New labels on real 2.3.2.0.
 - Verify at Cue 0.5 that future Cues 1 and 8.5 are excluded, and verify the new `MOVE` button on the user's 2.3.2.0 system.
 - Research whether 2.3.2.0 exposes a read-only UI highlight/flash mechanism for existing Preset Pool cells. Do not simulate it by changing Appearance, repeatedly selecting Presets, or issuing `At` commands.
 
@@ -139,6 +143,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Inspector 0.2.1.4 Lua syntax, XML component references, `git diff --check`, and read-only static safety scan: passed.
 - Inspector 0.2.1.4 deployment source/destination SHA-256 comparison: passed (`9AEF41838C361A519040F4261C271AD9E7A585E56690A1D440A930BF961BA10C`).
 - XML 0.2.1.4 deployment source/destination SHA-256 comparison: passed (`01DF2640B5C1F40B6EF0D064E9A6FE354F1322DB655F56A796A037D0A5D5C0AF`).
+- Inspector 0.2.2.0 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
+- Inspector 0.2.2.0 deployment hash comparison: passed (`31678EDC18917F7FA21BDA44CA64B87C056942A33CB8956D9955CC1EB630EDEE`).
+- XML 0.2.2.0 deployment hash comparison: passed (`72DDADC28D97333D852C59EC611E8E2AE3DD1F4BF642D8F1267FBF05721102CA`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.

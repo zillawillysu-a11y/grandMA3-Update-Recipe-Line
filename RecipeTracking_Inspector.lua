@@ -9,6 +9,9 @@ local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
+local PANEL_WIDTH = 520
+local COMPACT_HEIGHT = 150
+local DETAIL_HEIGHT = 360
 
 local function callable(name)
     return type(_G[name]) == "function"
@@ -68,6 +71,18 @@ local function cueLabel(cue)
     -- Cue 0.5 = 500, and Cue 8.5 = 8500.
     if number then number = number / 1000 end
     return string.format("%s - %s", number and string.format("%g", number) or "?", label(cue))
+end
+
+local function presetText(object, fallbackFeature)
+    if object == nil then return "No Programmer value" end
+    local pool = string.match(address(object), "PresetPools%.([^%.]+)") or fallbackFeature
+    local reference = tostring(object)
+    local name = property(object, "Name") or property(object, "NAME")
+    local parts = {}
+    if pool and pool ~= "" and pool ~= "UNRESOLVED" then parts[#parts + 1] = pool end
+    parts[#parts + 1] = reference
+    if name and name ~= "" and name ~= reference then parts[#parts + 1] = '"' .. name .. '"' end
+    return table.concat(parts, " | ")
 end
 
 local function cueNumber(cue)
@@ -236,7 +251,7 @@ local function scanTracking(sequence, currentCue, fixtures, info)
     return candidates
 end
 
-local function render()
+local function render(state)
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
@@ -259,8 +274,8 @@ local function render()
             local values = safe(function() return recipe.Values end)
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
-            lines[#lines + 1] = "Old Values: " .. tostring(values or "UNRESOLVED")
-            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
+            lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
+            lines[#lines + 1] = "New Preset: " .. presetText(info.preset, info.feature)
             lines[#lines + 1] = "Confidence: DIRECT"
         else
             lines[#lines + 1] = string.format("Status: AMBIGUOUS (%d direct Recipes)", #direct)
@@ -274,8 +289,8 @@ local function render()
             lines[#lines + 1] = "Recipe: " .. indexedLabel(item.recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(item.group)
             lines[#lines + 1] = string.format("Coverage: %d selected / %d in Group", item.selectedCount, item.groupCount)
-            lines[#lines + 1] = "Old Values: " .. tostring(item.values or "UNRESOLVED")
-            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
+            lines[#lines + 1] = "Old Values: " .. presetText(item.values, info.feature)
+            lines[#lines + 1] = "New Preset: " .. presetText(info.preset, info.feature)
             lines[#lines + 1] = "Confidence: INFERRED HIGH"
         elseif #candidates == 0 then
             lines[#lines + 1] = "\nStatus: No matching tracking Recipe"
@@ -296,6 +311,22 @@ local function render()
                     tostring(item.values or "UNRESOLVED"), item.selectedCount, item.groupCount)
             end
         end
+    end
+    if not state or not state.expanded then
+        local oldValue, newValue, status
+        for _, line in ipairs(lines) do
+            oldValue = oldValue or string.match(line, "^Old Values:%s*(.+)$")
+            newValue = newValue or string.match(line, "^New Preset:%s*(.+)$")
+            status = status or string.match(line, "^%s*Status:%s*(.+)$")
+        end
+        local summary = oldValue and newValue and (oldValue .. " -> " .. newValue)
+            or status or (lines[#lines] or "")
+        return table.concat({
+            "RECIPE TRACKING INSPECTOR  [READ-ONLY]",
+            string.format("%s | %s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
+                cueLabel(currentCue), #fixtures, #fixtures == 1 and "" or "s"),
+            summary
+        }, "\n")
     end
     return table.concat(lines, "\n")
 end
@@ -318,22 +349,36 @@ end
 
 local function movePanel(state, x, y)
     if not state or not state.panel or not state.stop then return end
-    local maxX = math.max(0, (state.displayWidth or 1920) - 520)
-    local maxY = math.max(0, (state.displayHeight or 1080) - 360)
+    local panelHeight = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT
+    local maxX = math.max(0, (state.displayWidth or 1920) - PANEL_WIDTH)
+    local maxY = math.max(0, (state.displayHeight or 1080) - panelHeight)
     x = math.max(0, math.min(maxX, math.floor(tonumber(x) or 0)))
     y = math.max(0, math.min(maxY, math.floor(tonumber(y) or 0)))
     state.panelX, state.panelY = x, y
+    state.panel.H = panelHeight
     state.panel.X, state.panel.Y = x, y
-    if state.move then state.move.X, state.move.Y = x + 310, y + 306 end
-    state.stop.X, state.stop.Y = x + 420, y + 306
+    local buttonY = y + panelHeight - 54
+    if state.detail then state.detail.X, state.detail.Y = x + 200, buttonY end
+    if state.move then state.move.X, state.move.Y = x + 310, buttonY end
+    state.stop.X, state.stop.Y = x + 420, buttonY
+end
+
+signalTable.ToggleRecipeTrackingDetails = function()
+    local state = _G[STATE_KEY]
+    if not state then return end
+    state.expanded = not state.expanded
+    if state.detail then state.detail.Text = state.expanded and "COMPACT" or "DETAIL" end
+    movePanel(state, state.panelX or 0, state.panelY or 0)
+    state.forceRefresh = true
 end
 
 signalTable.MoveRecipeTrackingInspector = function()
     local state = _G[STATE_KEY]
     if not state then return end
     state.positionIndex = ((state.positionIndex or 1) % 4) + 1
-    local maxX = math.max(0, (state.displayWidth or 1920) - 520)
-    local maxY = math.max(0, (state.displayHeight or 1080) - 360)
+    local panelHeight = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT
+    local maxX = math.max(0, (state.displayWidth or 1920) - PANEL_WIDTH)
+    local maxY = math.max(0, (state.displayHeight or 1080) - panelHeight)
     local positions = {
         { maxX, 20 }, { 20, 20 }, { 20, maxY }, { maxX, maxY }
     }
@@ -380,8 +425,8 @@ local function createPanel(state)
     panel.Name = "RecipeTrackingInspectorPanel"
     local displayWidth = tonumber(display.W) or 1920
     local displayHeight = tonumber(display.H) or 1080
-    panel.W = "520"
-    panel.H = "360"
+    panel.W = PANEL_WIDTH
+    panel.H = COMPACT_HEIGHT
     panel.X = math.max(0, displayWidth - 540)
     panel.Y = "20"
     panel.HasHover = "Yes"
@@ -402,8 +447,18 @@ local function createPanel(state)
     panel.TouchUpdate = "UpdateRecipeTrackingDrag"
     panel.TouchEnd = "EndRecipeTrackingDrag"
 
+    local detail = safe(function() return overlay:Append("Button") end)
+    if detail == nil then deleteHandle(panel) return nil, "could not append detail button" end
+    detail.Name = "RecipeTrackingInspectorDetail"
+    detail.W = "100"
+    detail.H = "44"
+    detail.Text = "DETAIL"
+    detail.Font = "Medium20"
+    detail.PluginComponent = componentHandle
+    detail.Clicked = "ToggleRecipeTrackingDetails"
+
     local move = safe(function() return overlay:Append("Button") end)
-    if move == nil then deleteHandle(panel) return nil, "could not append move button" end
+    if move == nil then deleteHandle(detail) deleteHandle(panel) return nil, "could not append move button" end
     move.Name = "RecipeTrackingInspectorMove"
     move.W = "100"
     move.H = "44"
@@ -413,7 +468,7 @@ local function createPanel(state)
     move.Clicked = "MoveRecipeTrackingInspector"
 
     local stop = safe(function() return overlay:Append("Button") end)
-    if stop == nil then deleteHandle(move) deleteHandle(panel) return nil, "could not append stop button" end
+    if stop == nil then deleteHandle(move) deleteHandle(detail) deleteHandle(panel) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
     stop.W = "100"
     stop.H = "44"
@@ -423,7 +478,8 @@ local function createPanel(state)
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
-    state.panel, state.move, state.stop = panel, move, stop
+    state.panel, state.detail, state.move, state.stop = panel, detail, move, stop
+    state.expanded = false
     state.positionIndex = 1
     state.displayWidth, state.displayHeight = displayWidth, displayHeight
     movePanel(state, displayWidth - 540, 20)
@@ -448,9 +504,10 @@ local function main()
 
     local previous = nil
     while state.running do
-        local ok, text = pcall(render)
+        local ok, text = pcall(render, state)
         if not ok then text = "RECIPE TRACKING INSPECTOR  [READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
-        if text ~= previous then
+        if text ~= previous or state.forceRefresh then
+            state.forceRefresh = false
             previous = text
             pcall(function() panel.Text = text end)
         end
@@ -459,6 +516,7 @@ local function main()
 
     deleteHandle(state.stop)
     deleteHandle(state.move)
+    deleteHandle(state.detail)
     deleteHandle(state.panel)
     if _G[STATE_KEY] == state then _G[STATE_KEY] = nil end
 end
