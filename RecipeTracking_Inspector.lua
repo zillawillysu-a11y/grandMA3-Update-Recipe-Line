@@ -362,17 +362,11 @@ end
 
 signalTable.CycleRecipeTrackingStyle = function()
     local state = _G[STATE_KEY]
-    if not state or not state.window then return end
+    if not state or not state.panel then return end
     state.styleIndex = ((state.styleIndex or 1) % 3) + 1
-    local colors = safe(function() return Root().ColorTheme.ColorGroups.Global end)
-    local choices = colors and {
-        safe(function() return colors.Transparent75 end),
-        safe(function() return colors.Transparent50 end),
-        safe(function() return colors.Background end)
-    } or {}
-    if choices[state.styleIndex] ~= nil then
-        pcall(function() state.window.BackColor = choices[state.styleIndex] end)
-    end
+    local choices = { "Global.Transparent75", "Global.Transparent50", "Global.Background" }
+    pcall(function() state.panel.BackColor = choices[state.styleIndex] end)
+    if state.style then state.style.Text = ({ "STYLE 75", "STYLE 50", "STYLE SOLID" })[state.styleIndex] end
 end
 
 local function createPanel(state)
@@ -404,22 +398,29 @@ local function createPanel(state)
     if title == nil then deleteHandle(window) return nil, "could not append TitleBar" end
     title.Name = "TitleBar"
     title.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-    title.Columns = 2
+    title.Columns = 1
     title.Rows = 1
     title[1][1].SizePolicy = "Stretch"
-    title[2][1].SizePolicy = "Fixed"
-    title[2][1].Size = "36"
 
     local titleButton = safe(function() return title:Append("TitleButton") end)
     if titleButton == nil then deleteHandle(window) return nil, "could not append TitleButton" end
     titleButton.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
     titleButton.Text = "Cue Recipe Update Tool"
     titleButton.Texture = "corner1"
+    titleButton.TextalignmentH = "Left"
+    titleButton.Padding = { left = 10, right = 34, top = 0, bottom = 0 }
 
-    local close = safe(function() return title:Append("CloseButton") end)
+    local close = safe(function() return title:Append("Button") end)
     if close ~= nil then
-        close.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-        close.Texture = "corner2"
+        close.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+        close.AlignmentH = "Right"
+        close.AlignmentV = "Center"
+        close.W = "28"
+        close.H = "28"
+        close.MinSize = "28,28"
+        close.MaxSize = "28,28"
+        close.Text = "X"
+        close.Font = "Regular14"
         close.PluginComponent = componentHandle
         close.Clicked = "StopRecipeTrackingInspector"
     end
@@ -433,6 +434,7 @@ local function createPanel(state)
     panel.TextalignmentV = "Top"
     panel.TextAutoAdjust = "No"
     panel.Padding = { left = 12, right = 12, top = 8, bottom = 8 }
+    panel.BackColor = "Global.Transparent75"
 
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append footer" end
@@ -453,7 +455,7 @@ local function createPanel(state)
     if style == nil then deleteHandle(window) return nil, "could not append style button" end
     style.Name = "RecipeTrackingInspectorStyle"
     style.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-    style.Text = "STYLE"
+    style.Text = "STYLE 75"
     style.Font = "Medium20"
     style.PluginComponent = componentHandle
     style.Clicked = "CycleRecipeTrackingStyle"
