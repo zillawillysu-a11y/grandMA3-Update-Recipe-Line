@@ -70,6 +70,10 @@ local function cueLabel(cue)
     return string.format("%s - %s", number and string.format("%g", number) or "?", label(cue))
 end
 
+local function cueNumber(cue)
+    return cue and tonumber(property(cue, "No") or property(cue, "NO")) or nil
+end
+
 local function indexedLabel(object, key, fallback)
     return property(object, key) or property(object, string.upper(key)) or fallback
 end
@@ -195,9 +199,16 @@ local function scanTracking(sequence, currentCue, fixtures, info)
     if not sequence or #fixtures == 0 or not info.feature or info.feature == "UNRESOLVED" then return {} end
     local candidates, cueCount, recipeCount = {}, 0, 0
     local feature = string.lower(info.feature)
+    local currentNumber = cueNumber(currentCue)
     for _, cue in ipairs(children(sequence)) do
         if cueCount >= MAX_CUES or recipeCount >= MAX_RECIPES then break end
-        if string.lower(class(cue)) == "cue" then
+        local candidateNumber = cueNumber(cue)
+        -- Tracking provenance can only originate at or before the current Cue.
+        -- If either number cannot be read, fail closed instead of admitting a
+        -- future or otherwise unverified source candidate.
+        if string.lower(class(cue)) == "cue"
+            and currentNumber ~= nil and candidateNumber ~= nil
+            and candidateNumber <= currentNumber then
             cueCount = cueCount + 1
             for _, part in ipairs(children(cue)) do
                 if string.lower(class(part)) == "part" then
@@ -313,7 +324,20 @@ local function movePanel(state, x, y)
     y = math.max(0, math.min(maxY, math.floor(tonumber(y) or 0)))
     state.panelX, state.panelY = x, y
     state.panel.X, state.panel.Y = x, y
+    if state.move then state.move.X, state.move.Y = x + 310, y + 306 end
     state.stop.X, state.stop.Y = x + 420, y + 306
+end
+
+signalTable.MoveRecipeTrackingInspector = function()
+    local state = _G[STATE_KEY]
+    if not state then return end
+    state.positionIndex = ((state.positionIndex or 1) % 4) + 1
+    local maxX = math.max(0, (state.displayWidth or 1920) - 520)
+    local maxY = math.max(0, (state.displayHeight or 1080) - 360)
+    local positions = {
+        { maxX, 20 }, { 20, 20 }, { 20, maxY }, { maxX, maxY }
+    }
+    movePanel(state, positions[state.positionIndex][1], positions[state.positionIndex][2])
 end
 
 signalTable.StartRecipeTrackingDrag = function(_, _, x, y)
@@ -378,8 +402,18 @@ local function createPanel(state)
     panel.TouchUpdate = "UpdateRecipeTrackingDrag"
     panel.TouchEnd = "EndRecipeTrackingDrag"
 
+    local move = safe(function() return overlay:Append("Button") end)
+    if move == nil then deleteHandle(panel) return nil, "could not append move button" end
+    move.Name = "RecipeTrackingInspectorMove"
+    move.W = "100"
+    move.H = "44"
+    move.Text = "MOVE"
+    move.Font = "Medium20"
+    move.PluginComponent = componentHandle
+    move.Clicked = "MoveRecipeTrackingInspector"
+
     local stop = safe(function() return overlay:Append("Button") end)
-    if stop == nil then deleteHandle(panel) return nil, "could not append stop button" end
+    if stop == nil then deleteHandle(move) deleteHandle(panel) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
     stop.W = "100"
     stop.H = "44"
@@ -389,7 +423,8 @@ local function createPanel(state)
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
-    state.panel, state.stop = panel, stop
+    state.panel, state.move, state.stop = panel, move, stop
+    state.positionIndex = 1
     state.displayWidth, state.displayHeight = displayWidth, displayHeight
     movePanel(state, displayWidth - 540, 20)
     return panel
@@ -423,6 +458,7 @@ local function main()
     end
 
     deleteHandle(state.stop)
+    deleteHandle(state.move)
     deleteHandle(state.panel)
     if _G[STATE_KEY] == state then _G[STATE_KEY] = nil end
 end
