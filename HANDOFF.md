@@ -51,6 +51,8 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Inspector lifecycle is explicit: the STOP button sets a state flag, rerunning the component toggles an existing instance off, a global state prevents duplicate active instances, and cleanup deletes only the two UI handles created by the Inspector. No Show data is written.
 - Updated the XML descriptor to 0.2.0.0 with separate diagnostic and Inspector components.
 - After the first UI test launched the legacy diagnostic MessageBox from component 1, reordered descriptor 0.2.0.1 so `recipe_tracking_inspector` is the first/default component and renamed the Plugin `Recipe Tracking Inspector`; the legacy diagnostic remains component 2.
+- First live Inspector test showed that selection refresh worked (`Selection: 1 fixture`) but feature matching failed: the panel showed `PanTilt` and no Recipe while the Programmer preset was Position 2.8 Full. Inspector 0.2.0.2 now resolves object addresses using the diagnostic's proven `AddrNative` -> `Addr` -> `ToAddr` order, preserving `PresetPools.Position` instead of a collapsed display address and allowing the existing one-of-20 subset match.
+- User requested a draggable panel. Version 0.2.0.3 emits one bounded Dump of the created panel on startup so the real 2.3.2 UI object's supported gesture/signal properties can be identified; remove this temporary probe after native dragging is implemented.
 
 ## What remains
 

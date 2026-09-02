@@ -33,8 +33,20 @@ end
 
 local function address(object)
     if object == nil then return "" end
-    local ok, value = pcall(function() return object:ToAddr() end)
-    if ok and value ~= nil then return tostring(value) end
+    -- AddrNative exposes the full PresetPools.<Feature> path on 2.3.2.0.
+    -- ToAddr alone may collapse it to a display address such as "Preset 2.8",
+    -- which loses the Position/Color identity needed for Recipe matching.
+    for _, method in ipairs({ "AddrNative", "Addr", "ToAddr" }) do
+        local ok, value = pcall(function()
+            local fn = object[method]
+            return type(fn) == "function" and fn(object) or nil
+        end)
+        if ok and value ~= nil then return tostring(value) end
+    end
+    if callable("ToAddr") then
+        local value = safe(ToAddr, object)
+        if value ~= nil then return tostring(value) end
+    end
     return tostring(object)
 end
 
@@ -307,6 +319,12 @@ local function createPanel(state)
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
     state.panel, state.stop = panel, stop
+    -- Temporary compatibility probe: custom UI gesture properties are not
+    -- documented. One bounded Dump from the real 2.3.2 UI object lets the
+    -- next revision wire native dragging without guessing signal names.
+    pcall(function()
+        if type(panel.Dump) == "function" then panel:Dump() end
+    end)
     return panel
 end
 
