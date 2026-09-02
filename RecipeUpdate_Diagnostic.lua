@@ -193,7 +193,7 @@ local function printCapabilities()
         "GetAttributeByUIChannel", "GetProgPhaser", "GetProgPhaserValue",
         "GetPresetData", "GetUIChannelIndex", "GetChannelFunction",
         "GetChannelFunctionIndex", "SetProgPhaser", "SetProgPhaserValue",
-        "ObjectList", "DataPool"
+        "ObjectList", "DataPool", "MessageBox"
     }
     log("=== CAPABILITIES ===")
     for _, name in ipairs(names) do
@@ -672,12 +672,12 @@ local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerIn
     log("=== TRACKING PROVENANCE CANDIDATE SCAN ===")
     if not sequence or #fixtures == 0 or not programmerInfo or not programmerInfo.feature then
         warn("Tracking provenance candidates: UNRESOLVED - missing sequence, selection, or Programmer feature")
-        return
+        return {}
     end
     local childrenOk, cueObjects = pcall(function() return sequence:Children() end)
     if not childrenOk or type(cueObjects) ~= "table" then
         warn("Tracking provenance candidates: UNRESOLVED - Sequence children unavailable")
-        return
+        return {}
     end
 
     local candidates, cuesScanned, recipesScanned = {}, 0, 0
@@ -733,6 +733,42 @@ local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerIn
     else
         warn("Tracking provenance: AMBIGUOUS - %d Recipe candidates match", #candidates)
     end
+    return candidates
+end
+
+local function showTrackingSummary(currentCue, programmerInfo, candidates)
+    if not callable("MessageBox") then
+        warn("Tracking summary popup unavailable: MessageBox unavailable")
+        return
+    end
+    local message
+    if #candidates == 1 then
+        local candidate = candidates[1]
+        message = string.format(
+            "Current: %s\n\nSource: %s / %s / %s\nGroup: %s\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
+            objectLabel(currentCue), objectLabel(candidate.cue), objectLabel(candidate.part),
+            objectLabel(candidate.recipe), objectLabel(candidate.group), tostring(candidate.values),
+            objectLabel(programmerInfo.preset))
+    elseif #candidates == 0 then
+        message = "No matching tracking Recipe was found.\n\nREAD-ONLY - no update performed"
+    else
+        local lines = { string.format("%d tracking Recipe candidates found:", #candidates) }
+        for index, candidate in ipairs(candidates) do
+            if index > 8 then lines[#lines + 1] = "...additional candidates omitted" break end
+            lines[#lines + 1] = string.format("%d. %s / %s / %s / %s", index,
+                objectLabel(candidate.cue), objectLabel(candidate.part), objectLabel(candidate.recipe),
+                objectLabel(candidate.group))
+        end
+        lines[#lines + 1] = "\nAMBIGUOUS - no update performed"
+        message = table.concat(lines, "\n")
+    end
+    local ok, err = pcall(MessageBox, {
+        title = "Recipe Tracking Source",
+        message = message,
+        commands = { { value = 1, name = "OK" } },
+        backColor = "Window.Plugins"
+    })
+    if not ok then warn("Tracking summary popup failed: %s", tostring(err)) end
 end
 
 local function inspectProgrammerMode()
@@ -796,17 +832,24 @@ local function main()
     inspectGroupPool(fixtures)
     log("Command-history hint: DISABLED - no confirmed stable reader")
 
+    local trackingCandidates = nil
     if programmerMode == "normal" then
-        scanRecipeProvenance(sequence, cue, fixtures, programmerInfo)
+        trackingCandidates = scanRecipeProvenance(sequence, cue, fixtures, programmerInfo)
+        showTrackingSummary(cue, programmerInfo or {}, trackingCandidates or {})
     end
 
     log("=== RECIPE RESOLUTION ===")
     if programmerMode == "edit_recipe" then
         log("Candidate Recipe: DIRECT ProgrammerPart Recipe candidates available - inspect object tree; no write in diagnostic")
+    elseif trackingCandidates and #trackingCandidates == 1 then
+        log("Candidate Recipe: INFERRED HIGH - %s", objectAddress(trackingCandidates[1].recipe))
+        log("Current Recipe Reference: %s", tostring(trackingCandidates[1].values))
     else
         log("Candidate Recipe: UNRESOLVED - tracked-target scoring intentionally disabled")
     end
-    log("Current Recipe Reference: UNRESOLVED - inspect Recipe Dumps")
+    if not (trackingCandidates and #trackingCandidates == 1) then
+        log("Current Recipe Reference: UNRESOLVED - inspect Recipe Dumps")
+    end
     log("NO-OP: this diagnostic cannot and will not update the Showfile")
     log("Copy this complete output for 2.3.2.0 vs 2.4.x comparison")
     log("============================================================")
