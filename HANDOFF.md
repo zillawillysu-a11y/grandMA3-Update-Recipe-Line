@@ -6,7 +6,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Current status
 
-**Phase 0 complete; Phase 1 partially validated on real grandMA3 2.3.2.0.** Ordinary-Programmer Position preset resolution is now evidence-backed. Original Cue/Part, Group, and Recipe-line resolution remain unresolved. Do not begin Phase 2.
+**Phase 0 complete; Phase 1 substantially validated on real grandMA3 2.3.2.0.** Ordinary-Programmer Position and Color preset resolution plus Cue/Part/Recipe hierarchy and Recipe property reads are evidence-backed. Original Cue/Part provenance, Group matching, and exact isolated Recipe Values addressing remain unresolved. Do not begin Phase 2.
 
 ## What has been completed
 
@@ -27,13 +27,15 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Added `docs/api-reference-comparison.md`, comparing the requested read-only patopesto v2.2 HelpLua/API dump against official research and observed 2.3.2.0 behavior.
 - Added capability-guarded, bounded read-only probes for `GetProgPhaserValue`, `GetPresetData`, Attribute/UIChannel identity, and ChannelFunction identity. `SetProgPhaser*` remains capability-report-only and is never invoked.
 - Recreated the missing local deployment directory on 2026-09-02 and resynchronized diagnostic 0.1.2.0 after validating the XML component reference.
+- Analyzed 2026-09-02 2.3.2.0 Position and Color DumpLogs. Both resolved exactly one absolute preset with high confidence and no runtime error; Color resolved `Color Index` ChannelFunction/index 67.
+- Confirmed on 2.3.2.0 that the current object tree exposes `Cue -> Part -> Recipe` and readable Recipe properties `Selection=Group 401` and `Values=Preset 1.1`.
 
 ## What remains
 
-- Import and run diagnostic version 0.1.2.0 on grandMA3 2.3.2.0 using the Position and Color test cases in `docs/api-reference-comparison.md`.
 - Repeat on a 2.4.x installation.
-- Collect the complete `[RecipeUpdate][DIAG]` and object Dump output and confirm that running the plugin does not mark the show changed.
-- Use those results to resolve actual programmer preset-link, original Cue/Part provenance, Cue/Part/Recipe class hierarchy, and Recipe Selection/Values property names.
+- Confirm explicitly that running the plugin does not mark the show changed.
+- Use controlled tracking tests to resolve original Cue/Part provenance and an unambiguous Group strategy.
+- Establish exact isolated addressing for one Recipe Values cell without relying on display text.
 - Wait for user-provided real-console results before Phase 2.
 
 ## Important technical decisions
@@ -51,8 +53,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 - No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
 - No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
-- `abs_preset` is confirmed for ordinary Position calls on 2.3.2.0, but Color, relative, multi-feature, and 2.4.x shapes remain unverified.
-- New `GetProgPhaserValue`, `GetPresetData`, UIChannel round-trip, and ChannelFunction probes require real 2.3.2.0 output before their semantics can be used.
+- `abs_preset` is confirmed for ordinary Position and Color calls on 2.3.2.0, but pure-relative, multi-feature, and 2.4.x shapes remain unverified.
+- `GetProgPhaserValue`, UIChannel round-trip, and ChannelFunction results vary by phaser/attribute shape and are not universal writer contracts.
 - Static validation cannot prove runtime compatibility with grandMA3's embedded Lua environment.
 
 ## Failed approaches that should not be repeated
@@ -69,6 +71,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\recipe_update_diagnostic.xml`: synchronized local descriptor (repository-external).
 - `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
 - `docs/api-reference-comparison.md`: secondary v2.2 API dump comparison and seven-question analysis.
+- `2.3.2.0_26-09-02T14.01.txt`: complete 2026-09-02 Position and Color real-console DumpLog evidence (matches the system_monitor source SHA-256).
 - `AGENTS.md`: repository-wide agent instructions.
 - `HANDOFF.md`: current continuation record.
 
@@ -92,7 +95,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
-- Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated; real-console test pending.
+- Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated and exercised on real 2.3.2.0.
+- Diagnostic 0.1.2.0 Position and Color probes on 2.3.2.0: passed; no runtime errors. UIChannel/ChannelFunction results are shape-dependent and remain unsuitable as universal writer assumptions.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -109,8 +113,8 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Import/reload diagnostic version 0.1.2.0 and run the ordinary Programmer Position test once to verify the new API probes.
-2. Run the ordinary Programmer Color test and provide the new DumpLog path.
-3. Repeat the same tests on 2.4.x if available.
+1. Confirm whether both diagnostic runs left the show unmodified.
+2. Repeat the same Position and Color tests on 2.4.x if available.
+3. Build a controlled tracked-cue case to investigate original Cue/Part provenance and Group matching.
 4. Review and encode only observed version differences in `Compat`.
 5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied.

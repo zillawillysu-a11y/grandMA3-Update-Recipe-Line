@@ -32,7 +32,10 @@ The following was observed in two System Monitor dumps from an actual 2.3.2.0 on
 - The selected cue handle had a child of class `Part`. The current tracked cue in this test did not itself expose Recipe children, so original-source resolution remains necessary.
 - No Lua runtime error occurred in the valid ordinary-Programmer run.
 - Diagnostic 0.1.1.0 was then imported and verified on the same 2.3.2.0 installation. It produced the intended compact, high-confidence summary for two ordinary Programmer calls: Position 2.7 `Full` and Position 2.5 `<<<>>>`. Both runs reported `Programmer mode: NORMAL`, 84 phaser channels (Pan, Tilt, and PT Speed across 28 fixtures), exactly one absolute preset reference, zero phasers without `abs_preset`, and no runtime error.
-- These tests are Position-only evidence. No Color result has been collected yet.
+- Diagnostic 0.1.2.0 was verified on 2026-09-02 with ordinary Position and Color calls on 20 fixtures. Position resolved one absolute Position preset across 40 Pan/Tilt phasers; the sampled phaser also exposed a distinct `rel_preset`, confirming that absolute and relative references must be handled separately. Color resolved Color preset 4.33 `C1 Yellow` across 20 Color1 phasers. Both runs reported zero phasers without `abs_preset` and no runtime error.
+- `GetPresetData(preset, true, false)` returned UI-channel-keyed data for both presets. Color returned one entry with `selective=false`; the Position preset returned multiple selective entries.
+- Attribute identity was resolved in both tests. The Position `GetUIChannelIndex` round trip returned a different index (`9` to `10`), while the Color round trip returned `nil`; this call shape is not a safe identity invariant. Color `GetChannelFunction` returned the expected `Color Index` handle and index 67, while the Position probe returned `nil`.
+- The current cue tree directly exposed `Cue -> Part -> Recipe`. The observed Recipe had readable properties `Selection=Group 401` and `Values=Preset 1.1`, confirming the hierarchy and property names on 2.3.2.0. The property rendering does not yet establish exact isolated write syntax or original-source provenance.
 
 These observations justify a Phase 1 high-confidence summary only when exactly one `abs_preset` handle is found and there are no active phasers without that reference. They do not yet prove original Cue/Part or Recipe-line resolution.
 
@@ -74,8 +77,7 @@ These observations justify a Phase 1 high-confidence summary only when exactly o
 
 The following are not safe foundations for production writes yet:
 
-- The exact child hierarchy and class names below Cue -> Part -> Recipe on 2.3.2.0.
-- The internal Recipe property names for Selection and Values. UI column labels do not prove Lua property names.
+- Whether the observed `Cue -> Part -> Recipe` hierarchy and `Selection`/`Values` properties remain identical on 2.4.x and later.
 - Whether Recipe references are returned as handles, object-number strings, native addresses, or display strings.
 - Whether the observed `abs_preset` contract and masks remain identical in 2.4.x and later.
 - How relative presets and multi-step/multi-feature programmer data represent their references.
@@ -101,9 +103,9 @@ The following are not safe foundations for production writes yet:
 | `GetProgPhaserValue` | Not confirmed in official 2.3 index | Capability-detect only | Do not require or call in Phase 1 |
 | Preset link / `integrated` | Shape unknown | Capability-detect keys | Report `UNRESOLVED` until real dump proves semantics |
 | Group source | No stable API confirmed | Capability-detect future API | Future exact reverse match; ambiguous/no match means NO-OP |
-| Recipe object access | Recipes under cue parts documented; hierarchy names unknown | Traverse handles and inspect classes | `Children()` + `Dump()` only |
-| Recipe Selection | UI concept documented; Lua property unknown | Probe displayed property names read-only | Dump and mark unresolved |
-| Recipe Values | UI concept documented; Lua property unknown | Probe displayed property names read-only | Dump and mark unresolved |
+| Recipe object access | `Cue -> Part -> Recipe` observed on 2.3.2.0 | Traverse handles and inspect classes | `Children()` + `Dump()` only |
+| Recipe Selection | `Selection` observed as `Group 401` on 2.3.2.0 | Verify shape/version read-only | Never write from display text alone |
+| Recipe Values | `Values` observed as `Preset 1.1` on 2.3.2.0 | Verify shape/version read-only | Exact isolated addressing still unresolved |
 | Recipe addressing | Not confirmed | Dump `Addr` and `AddrNative` | No Assign until isolated test |
 | Assign preset to Recipe | Not confirmed | Phase 2 capability test | No writer in Phase 1 |
 | Original cue / CueAbs source | No official Lua provenance contract confirmed | Future capability probe | Report unresolved; never scan-and-guess as provenance |

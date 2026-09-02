@@ -1,0 +1,1229 @@
+5h54m13.000s          App : Using shared memory to determine the app index
+SystemApplication has created components
+SystemApplication is starting components
+****************************************************
+Detected System Hardware:
+****************************************************
+--- General ---
+PcName              : WILLYSU-LAPTOP-
+OsName              : Windows 11
+OsVersion           : 10.0.26200
+--- Processor ---
+Name                : AMD Ryzen 9 5900HX with Radeon Graphics        
+Architecture        : x64
+CoreCount           : 16
+SSE4.2 Support      : true
+--- Graphics ---
+-- Adapter --
+DeviceName          : NVIDIA GeForce RTX 3080 Laptop GPU
+VRAM                : 16175
+DriverVersion       : 32.0.15.9200
+DriverDate          : 2026-2-12
+- Optional Information -
+MemoryLocal         : 0
+MemoryHostVisible   : 16087
+MemoryUnified       : 16175
+PresumablyDedicated : true
+-- Adapter --
+DeviceName          : AMD Radeon(TM) Graphics
+VRAM                : 495
+DriverVersion       : 31.0.21921.1000
+DriverDate          : 2024-8-19
+- Optional Information -
+MemoryLocal         : 0
+MemoryHostVisible   : 16087
+MemoryUnified       : 495
+PresumablyDedicated : true
+-- Adapter --
+DeviceName          : Parsec Virtual Display Adapter
+VRAM                : 0
+DriverVersion       : 0.45.0.0
+DriverDate          : 2024-1-25
+-- Adapter --
+DeviceName          : Duet Display
+VRAM                : 0
+DriverVersion       : 9.21.19.632
+DriverDate          : 2024-7-29
+--- Memory ---
+Total               : 32175
+Available           : 21849
+--- Disk ---
+Total               : 852188
+Available           : 230834
+This application is using realtime threads. Raising process priority.
+5h54m15.072s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/avutil-56.dll
+5h54m15.073s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/swresample-3.dll
+5h54m15.073s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/avcodec-58.dll
+5h54m15.074s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/avformat-58.dll
+5h54m15.075s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/swscale-5.dll
+5h54m15.075s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/avfilter-7.dll
+5h54m15.076s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/avdevice-58.dll
+5h54m15.195s          App : TimeConfig OS tz 8
+5h54m15.195s          App : TimeConfig OS daylight info 1
+5h54m15.196s          App : This application is using realtime threads. Raising process priority.
+5h54m15.206s          App : Total references update requested : UserCleanup
+5h54m15.541s          App : loaded dll  C:/Program Files/MALightingTechnology/gma3_2.3.2/bin/Processing.NDI.Lib.x64.dll
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : OpenGL reported:
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : Vendor         : NVIDIA Corporation
+5h54m17.426s          App : Version        : 4.1.0 NVIDIA 592.00
+5h54m17.426s          App : Render         : NVIDIA GeForce RTX 3080 Laptop GPU/PCIe/SSE2
+5h54m17.426s          App : Shader         : 4.10 NVIDIA via Cg compiler
+5h54m17.426s          App : MemNv          : 16.0 GB
+5h54m17.426s          App : MemFreeNv      : 15.8 GB
+5h54m17.426s          App : TexMemAmd      : Invalid
+5h54m17.426s          App : VboMemFreeAmd  : Invalid
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : Evaluated Classifications
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : Manufacturer   : Nvidia
+5h54m17.426s          App : Quality Rating : HighRange
+5h54m17.426s          App : Memory Class   : Ultra
+5h54m17.426s          App : Free Memory    : 15.782 GB
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : OpenGL uses alternative Material Handling: No
+5h54m17.426s          App : Shadows disabled: No
+5h54m17.426s          App : OpenGL uses low Gobo Resolution: No
+5h54m17.426s          App : Initialize the Gobo Array with Res:128 and Count:512
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : 3D Paths - v.1.1
+5h54m17.426s          App : ****************************************************
+5h54m17.426s          App : MeshLibrary    : C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/lib_fixture_types/meshes
+5h54m17.426s          App : UserMeshes     : C:/ProgramData/MALightingTechnology/gma3_library/fixturetyperesources/meshes
+5h54m17.426s          App : MaterialLibrary: C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/lib_fixture_types/meshes
+5h54m17.426s          App : UserMaterials  : C:/ProgramData/MALightingTechnology/gma3_library/fixturetyperesources/meshes
+5h54m17.428s          App : ****************************************************
+5h54m17.428s          App : *  New data status 'No show'
+5h54m17.428s          App : ****************************************************
+5h54m17.428s          App : SystemMessage::Send ShowStatusChanged
+5h54m17.466s    WebServer : WebServer successfully started on port 8080 (Max connections: 2)
+5h54m17.487s          App : Output: distribution changed
+5h54m17.487s          App : ****************** Output table ******************
+5h54m17.487s          App : SlotMask 00000001  MyMask 00000001
+5h54m17.489s          App : RT Channel distribution has changed. Invalidating DMX
+5h54m17.490s          App : Update agenda todolist
+5h54m17.638s          App : This Message was sent by an Addon
+5h54m17.643s          App : loaded dll  C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/lib_addons/dll_gma3_addon.dll
+5h54m17.643s          App : Addon data changed
+5h54m17.656s          App : loaded dll  C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/lib_addons/MaGtdfMvrExchange.dll
+5h54m17.657s          App : Gma3App has created components
+5h54m17.657s          App : Gma3App is starting components
+5h54m17.663s          App : Lua engine registered 5361 enums in 654 enum collections
+5h54m17.668s          App : Could not open file C:/ProgramData/MALightingTechnology/gma3_library/netkeys/key_registry.dat for reading
+5h54m17.668s          App : Could not open optional file C:/ProgramData/MALightingTechnology/gma3_library/netkeys/key_registry.dat for reading
+5h54m17.669s    WebServer : WebServer shut down
+5h54m17.728s          App : ****************************************************
+5h54m17.728s          App : *  New data status 'Show loaded'
+5h54m17.728s          App : ****************************************************
+5h54m17.728s          App : SystemMessage::Send ShowStatusChanged
+5h54m17.728s          App : Addon got new show status ShowLoaded
+5h54m17.728s          App : Addon got new host status Undefined
+5h54m17.728s          App : Addon got data valid status 1
+5h54m17.788s          App : Sound: opened playback for device: ‡–å­å (Realtek(R) Audio)
+5h54m17.789s          App : detected change in primary interface
+5h54m17.789s          App : detected change in session name
+5h54m17.789s          App : detected change in location name
+5h54m17.789s          App : detected change in enable network
+5h54m17.789s          App : detected change in host type
+5h54m17.789s          App : multicast base has changed. Restarting
+5h54m17.790s  ManetSocket : Socket InitTask; Mac=447C4C9734FC
+5h54m17.790s  ManetSocket : UdpSocket::AddMembershipIPv4 236.4.1.0 192.168.193.101
+5h54m17.792s  ManetSocket : Host status change Undefined -> Startup (Starting up) master = 
+5h54m17.792s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Found
+5h54m17.792s  ManetSocket : Host status change Startup -> Standalone (Startup) master = 
+5h54m17.792s  ManetSocket : SetHostStatus: session reset
+5h54m17.796s    WebServer : WebServer successfully started on port 8080 (Max connections: 2)
+5h54m17.806s          App : Output: distribution NOT changed
+5h54m17.807s          App : Addon data changed
+5h54m17.807s          App : No output definition found.
+5h54m17.900s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Changed Status:Standalone
+5h54m17.900s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Changed
+5h54m17.903s          App : XML Import of 'C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/default_views.xml' [Row:13; Column:88]:
+5h54m17.903s          App : attribute import error 'UserChangedfSorting'='No' : illegal property
+5h54m17.918s          App : >> RequestShowDataNegotiation <<
+5h54m17.918s          App : << RequestShowDataNegotiation canceled >>
+5h54m17.918s          App : Application version is 2.3.2.0 Release. HostType onPC, HostSubType Undefined
+5h54m17.918s          App : Compiled at Oct 30 2025 07:37:54 from 8762398837b4f33fb44e77367e4410536744b27c(2025-10-29 16:07:06 +0100)
+5h54m17.918s         Root : **************** OnSessionChanged ****************************
+5h54m17.918s         Root : * Hoststatus Undefined -> Standalone
+5h54m17.918s         Root : * Reset  A:00000000 B:00000000 00000000
+5h54m17.918s         Root : * Reasons :  HostStatus
+5h54m17.918s         Root : *************************************************************
+5h54m17.920s           RT : >>> Sound data from network <<<
+5h54m17.920s         Root : Output: distribution changed
+5h54m17.921s         Root : ****************** Output table ******************
+5h54m17.921s         Root : SlotMask 00000001  MyMask 00000001
+5h54m17.923s         Root : RT Channel distribution has changed. Invalidating DMX
+5h54m17.924s         Root : Addon got new show status ShowLoaded
+5h54m17.924s         Root : Addon got new host status Standalone
+5h54m17.924s         Root : Addon got data valid status 1
+5h54m17.934s         Root : Initialized Cue Part Matrix
+5h54m17.935s         Root : Starting total reference update with a running update type: UserCleanup
+5h54m17.935s         Root : Total references update status changed to User Cleanup
+5h54m17.949s          App : Sound: opened record for device: ¥ºé‹…å¨¢é (e2eSoft iVCam)
+5h54m17.949s          App : OsDevice::InitRecording: use default audio device
+5h54m17.954s          App : Sound: opened playback for device: <<default>>
+5h54m17.954s          App : Sound device initialized. (Wanted Caps: 7; Has Caps: 7)
+5h54m17.966s         Root : Update agenda todolist
+5h54m17.966s         Root : **********************************************************************
+5h54m17.966s         Root : * ServiceUserCleanup                                                 *
+5h54m17.966s         Root : **********************************************************************
+5h54m17.966s         Root : Total references update status changed to Idle
+5h54m17.966s         Root : ===============TRU Finished=================
+5h54m17.966s         Root : Timetest TRU Full: : TRU done in 31.412 ms
+5h54m17.997s         Root : Wheel analysis started
+5h54m17.997s         Root : Wheel analysis ended
+5h54m17.997s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m17.997s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m17.997s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h54m17.997s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.233.211/16)
+5h54m18.007s           RT : >>> Sound data from local <<<
+5h54m18.015s          App : Gma3App has started components
+5h54m18.300s  ManetSocket : Host status change Standalone -> IdleMaster (I am master) master = 
+5h54m18.300s  ManetSocket : SetHostStatus: session reset
+5h54m18.300s  ManetSocket : UdpSocket::AddMembershipIPv4 236.4.1.2 192.168.193.101
+5h54m18.300s  ManetSocket : UdpSocket::AddMembershipIPv4 236.4.1.1 192.168.193.101
+5h54m18.300s  ManetSocket : UdpSocket::AddMembershipIPv4 236.4.1.3 192.168.193.101
+5h54m18.400s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Changed Status:IdleMaster Session:0 Session Id:5e7c43f46cc87401 Slot:31
+5h54m18.773s         Root : **************** OnSessionChanged ****************************
+5h54m18.773s         Root : * Hoststatus Standalone -> IdleMaster
+5h54m18.773s         Root : * Reset  A:80000000 B:00000000 00000000
+5h54m18.773s         Root : * Reasons :  CreatedSlots HostStatus
+5h54m18.773s         Root : *************************************************************
+5h54m18.773s         Root : Output: distribution changed
+5h54m18.773s         Root : ****************** Output table ******************
+5h54m18.773s         Root : SlotMask 00000000  MyMask 00000000
+5h54m18.776s         Root : RT Channel distribution has changed. Invalidating DMX
+5h54m18.776s         Root : Addon got new show status ShowLoaded
+5h54m18.776s         Root : Addon got new host status IdleMaster
+5h54m18.776s         Root : Addon got data valid status 1
+5h54m18.781s     MainTask : Lua engine registered 5370 enums in 664 enum collections
+5h54m18.782s     MainTask : Preparing library access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/lib_menus
+5h54m18.845s     MainTask : System menu structure has changed. Performing full reload.
+5h54m19.994s     MainTask : OK:ReloadUI
+5h54m20.091s     MainTask : No creation/deletion of display 1 is needed. Re-initializing
+5h54m20.129s     MainTask : Enter 'QualityManager::Benchmark'
+5h54m20.129s     MainTask : Create Dummy context
+5h54m20.129s     MainTask : Try to find shader 'MeshPreview3D'
+5h54m20.129s     MainTask : 'MeshPreview3D' Try link shader
+5h54m20.129s     MainTask : 'MeshPreview3D' Link shader ok
+5h54m20.129s     MainTask : Start Benchmark
+5h54m20.396s     MainTask : Benchmark delete vertices
+5h54m20.397s     MainTask : Benchmark return true
+5h54m20.863s     MainTask : Connected to system services
+5h54m20.873s     MainTask : OK:Menu 'EulaFullscreen'
+5h54m22.295s  WorldServer : Starting file transfer 10912
+5h54m22.295s  WorldServer : Receiving file transfer data 10912
+5h54m22.295s  WorldServer : Ending file transfer 10912
+5h54m22.295s  WorldServer : SecureProtocolWorldClient::OnFileTransferComplete() updater.bin
+5h54m23.001s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m23.001s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m23.001s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h54m23.001s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.233.211/16)
+5h54m25.069s          LUA : Sound: opened playback for device: ‡–å­å (Realtek(R) Audio)
+5h54m25.122s     MainTask : OK:Menu 'ReleaseNotesFullscreen'
+5h54m25.190s      Display : arg = file:///C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/language/HTML/splash_key_releasenotes.html
+5h54m26.508s     MainTask : OK:Edit Root 2.2 Property 'ShowReleaseNotes'
+5h54m28.005s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m28.005s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m28.005s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h54m28.005s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.233.211/16)
+5h54m28.492s     MainTask : OK:Menu "MenuSelector"
+5h54m29.330s     MainTask : OK:Menu 'Backup'
+5h54m29.425s     MainTask : Preparing show meta data access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/shows
+5h54m29.436s ShowMetaDataScan : Total import time: 9.598000 ms
+5h54m29.491s     MainTask : Preparing show meta data access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/shows
+5h54m30.091s     MainTask : Preparing show meta data access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/shows
+5h54m30.158s     MainTask : Preparing show meta data access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/shows
+5h54m32.292s  WorldServer : Server connection switching to FastTimeout
+5h54m34.327s     MainTask : OK:Edit Display 1.7.3 Property 'ShowFileSegmentOutputStations'
+5h54m34.925s     MainTask : OK:Edit Display 1.7.3 Property 'ShowFileSegmentDmxProtocols'
+5h54m36.992s     DBWorker : ****************************************************
+5h54m36.992s     DBWorker : *  New data status 'No show'
+5h54m36.993s     DBWorker : ****************************************************
+5h54m36.993s     DBWorker : SystemMessage::Send ShowStatusChanged
+5h54m36.993s     DBWorker : Addon got new show status NoShow
+5h54m36.993s     DBWorker : Addon got new host status IdleMaster
+5h54m36.993s     DBWorker : Addon got data valid status 1
+5h54m36.994s     DBWorker : Total references update requested : References
+5h54m37.018s     DBWorker : Output: distribution changed
+5h54m37.018s     DBWorker : ****************** Output table ******************
+5h54m37.018s     DBWorker : SlotMask 00000000  MyMask 00000000
+5h54m37.020s     DBWorker : RT Channel distribution has changed. Invalidating DMX
+5h54m37.021s     DBWorker : Update agenda todolist
+5h54m37.073s     DBWorker : Addon data changed
+5h54m37.077s     DBWorker : ****************************************************
+5h54m37.077s     DBWorker : *  New data status 'Show loading'
+5h54m37.077s     DBWorker : ****************************************************
+5h54m37.077s     DBWorker : SystemMessage::Send ShowStatusChanged
+5h54m37.077s     DBWorker : Addon got new show status ShowLoading
+5h54m37.077s     DBWorker : Addon got new host status IdleMaster
+5h54m37.077s     DBWorker : Addon got data valid status 0
+5h54m37.077s     DBWorker : AnnounceSessionShowfileLoad 2026 SAX MACHIBE@SUB0829 after.show
+5h54m37.132s     DBWorker : LoadFileContent: file does not exist "C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/lib_symbols/4-Lite Blinder (2CH)_thumbnail.png"
+5h54m37.200s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Changed ShowfileName:2026 SAX MACHIBE@SUB0829 after
+5h54m37.959s     DBWorker : Output: distribution changed
+5h54m37.959s     DBWorker : ****************** Output table ******************
+5h54m37.959s     DBWorker : Slot 31 Subfixtures=  149 Parameters=  902
+5h54m37.959s     DBWorker : SlotMask 80000000  MyMask 80000000
+5h54m37.961s     DBWorker : RT Channel distribution has changed. Invalidating DMX
+5h54m38.020s     DBWorker : Addon data changed
+5h54m38.022s     DBWorker : Starting total reference update with a running update type: References
+5h54m38.022s     DBWorker : Total references update status changed to Collecting Presets
+5h54m38.022s     DBWorker : Timetest Total reference update: collecting presets : Finished in 0.073 ms
+5h54m38.022s     DBWorker : Total references update status changed to Collecting Cues
+5h54m38.022s     DBWorker : Timetest Total reference update: collecting cues : Finished in 0.104 ms
+5h54m38.022s     DBWorker : Total references update status changed to Sorting Handles
+5h54m38.022s     DBWorker : Total reference update: sorted 1241 handles
+5h54m38.022s     DBWorker : Total references update status changed to Updating Presets
+5h54m38.022s     DBWorker : Total references update status changed to Cleaning up Generators
+5h54m38.022s     DBWorker : Timetest Updating References 1 : Finished in 0.576 ms
+5h54m38.023s     DBWorker : Total references update status changed to Cleaning up Tags
+5h54m38.023s     DBWorker : Timetest Total reference update: generator cleanup 1 : Finished in 0.170 ms
+5h54m38.023s     DBWorker : Timetest Total reference update: recursion test 1 : Finished in 0.365 ms
+5h54m38.023s     DBWorker : Total references update status changed to Testing Recursions
+5h54m38.023s     DBWorker : Total references update status changed to User Cleanup
+5h54m38.023s     DBWorker : Timetest Total reference update: tag cleanup 1 : Finished in 0.025 ms
+5h54m38.023s     DBWorker : **********************************************************************
+5h54m38.023s     DBWorker : * ServiceUserCleanup                                                 *
+5h54m38.023s     DBWorker : **********************************************************************
+5h54m38.023s     DBWorker : Total references update status changed to Idle
+5h54m38.023s     DBWorker : ===============TRU Finished=================
+5h54m38.023s     DBWorker : Timetest TRU Full: : TRU done in 1.471 ms
+5h54m38.027s     DBWorker : Addon data changed
+5h54m38.027s     DBWorker : ****************************************************
+5h54m38.027s     DBWorker : *  New data status 'Show loaded'
+5h54m38.027s     DBWorker : ****************************************************
+5h54m38.027s     DBWorker : SystemMessage::Send ShowStatusChanged
+5h54m38.027s     DBWorker : Addon got new show status ShowLoaded
+5h54m38.027s     DBWorker : Addon got new host status IdleMaster
+5h54m38.027s     DBWorker : Addon got data valid status 1
+5h54m38.027s     DBWorker : Output: distribution NOT changed
+5h54m38.028s     DBWorker : >> RequestShowDataNegotiation <<
+5h54m38.028s         Root : **************** OnSessionChanged ****************************
+5h54m38.028s         Root : * Reasons :  ChangedShowFile
+5h54m38.028s         Root : *************************************************************
+5h54m38.029s     MainTask : Initialized Cue Part Matrix
+5h54m38.034s     MainTask : OK:LoadShow "C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/shows/2026 SAX MACHIBE@SUB0829 after.show" /LocalSettings
+5h54m38.040s           RT : Remote::FireFader has no target
+5h54m38.050s         Root : Update agenda todolist
+5h54m38.094s         Root : Wheel analysis started
+5h54m38.240s  ManetSocket : WillySu-Laptop-3080 (onPC 192.168.193.101) Changed Patch
+5h54m38.240s         Root : Master patch version has changed
+5h54m38.944s         Root : Wheel analysis ended
+5h54m43.721s  WorldServer : RunTask WorldServer caught Network Exception : 'Receive:³s½u¤w³Q±z¥D¾÷¤Wªº³nÅé¤¤¤î¡C
+'
+5h54m43.721s  WorldServer : SecureProtocol::ExitTask
+5h54m48.019s NetworkInterface : SystemMessage::Send NetworkInterface
+5h54m48.019s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h54m48.019s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h54m48.019s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m48.019s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m53.022s NetworkInterface : SystemMessage::Send NetworkInterface
+5h54m53.022s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h54m53.022s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h54m53.022s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m53.022s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m53.022s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.206.137/16)
+5h54m58.026s NetworkInterface : SystemMessage::Send NetworkInterface
+5h54m58.026s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h54m58.026s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h54m58.026s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h54m58.026s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h54m58.026s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h54m58.026s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.206.137/16)
+5h55m11.523s     MainTask : OK:Delete ScreenContent 1.1
+5h55m12.956s     MainTask : OK:Edit ScreenContent 1
+5h55m17.288s     MainTask : OK:Edit Display 1.5.3.1.5.1 Property 'ViewH'
+5h55m19.254s     MainTask : OK:Edit Display 1.5.3.1.5.1 Property 'ViewW'
+5h55m20.727s     MainTask : OK:Menu "AddWindow"
+5h55m23.043s NetworkInterface : SystemMessage::Send NetworkInterface
+5h55m23.043s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h55m23.044s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h55m23.044s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h55m23.044s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h55m28.046s NetworkInterface : SystemMessage::Send NetworkInterface
+5h55m28.046s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h55m28.046s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h55m28.046s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h55m28.046s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h55m33.048s NetworkInterface : SystemMessage::Send NetworkInterface
+5h55m33.048s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h55m33.048s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h55m33.048s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h55m33.048s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h55m33.048s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h55m45.250s  WorldServer : Server connection switching to FastTimeout
+5h56m53.326s     MainTask : OK:Menu "AddWindow"
+5h56m56.756s          LUA : OK:Store ScreenContent Default 'WindowLayoutView' "MinW"="4" "MinH"="4" "MaxW"="0" "MaxH"="0" "PresetPoolType"="0" "SnapToBlockSize"='false' /NoConfirmation
+5h57m03.187s     MainTask : OK:Set ScreenContent 1.5.1 Property "Layout" "#40001294"
+5h57m03.986s     MainTask : OK:Set ScreenContent 1.5.1 Property "Layout" "#4000129A"
+5h57m06.821s     MainTask : OK:Delete ScreenContent 1.3
+5h57m07.192s     MainTask : OK:Menu "AddWindow"
+5h57m08.688s          LUA : OK:Store ScreenContent Default 'WindowPluginPool' "MinW"="2" "MinH"="2" "MaxW"="0" "MaxH"="0" "PresetPoolType"="0" "SnapToBlockSize"='true' /NoConfirmation
+5h57m10.423s     MainTask : OK:Delete Plugin 1
+5h57m11.025s     MainTask : OK:Edit Plugin 1
+5h57m12.120s     MainTask : Preparing library access to C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins
+5h57m12.171s     MainTask : OK:Library
+5h57m12.173s          LUA : Preparing library access to C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins
+5h57m12.180s          LUA : OK:Library
+5h57m18.126s NetworkInterface : SystemMessage::Send NetworkInterface
+5h57m18.126s NetworkInterface : GraphicsApp reacting to OnSystemMessage NetworkInterface
+5h57m18.126s NetworkInterface : Socket reacting to OnSystemMessage NetworkInterface
+5h57m18.126s NetworkInterface : IP addresses from different interfaces are using the same network! (2.0.0.69/8 vs 2.0.0.233/8)
+5h57m18.126s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.153.147/16)
+5h57m18.126s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.115.35/16)
+5h57m18.126s NetworkInterface : IP addresses from different interfaces are using the same network! (169.254.8.58/16 vs 169.254.233.211/16)
+5h57m21.220s          LUA : OK:Import _FrameSelection 1 At Plugin 1 /NoConfirmation
+5h57m23.651s     MainTask : OK:Set ScreenContent Default.4 "X"="0" "Y"="0" "W"="20" "H"="12"
+5h57m27.253s     MainTask : OK:Set ScreenContent Default.5 "X"="0" "Y"="16" "W"="18" "H"="8"
+5h57m32.453s     MainTask : OK(Click on empty ViewButton):Delete ScreenContent Default
+5h57m37.418s     MainTask : OK(Click on empty ViewButton):Delete ScreenContent Default
+5h57m39.682s     MainTask : Oopsing 'Delete ScreenContent Default'
+5h57m39.683s     MainTask : OK:Oops
+5h57m41.418s     MainTask : OK:Edit Root 14.19.1.15 /Screen '1'
+5h57m42.582s     MainTask : Preparing library access to C:/ProgramData/MALightingTechnology/gma3_2.3.2/shared/resource/lib_keyboard_shortcuts
+5h57m42.583s     MainTask : OK:Library
+5h57m42.585s          LUA : OK:Library
+5h57m45.486s          LUA : OK:Import _FrameSelection 1 At UserProfile 1.15 /NoConfirmation
+5h57m46.516s     MainTask : Oopsing 'Import _FrameSelection 1 At UserProfile 1.15 /NoConfirmation'
+5h57m46.517s     MainTask : OK:Oops
+5h57m49.482s     MainTask : Oopsing 'Delete ScreenContent Default'
+5h57m49.483s     MainTask : OK:Oops
+5h57m49.849s     MainTask : Oopsing 'Set ScreenContent Default.5 "X"="0" "Y"="16" "W"="18" "H"="8"'
+5h57m49.849s     MainTask : OK:Oops
+5h57m51.817s     MainTask : OK:Edit Root 14.19.1.15 /Screen '1'
+5h58m21.049s     MainTask : OK:Library
+5h58m21.052s          LUA : OK:Library
+5h58m23.385s          LUA : OK:Import _FrameSelection 1 At UserProfile 1.15 /NoConfirmation
+5h58m25.249s     MainTask : OK(ClearSelection):Clear
+5h58m25.749s     MainTask : OK(ClearActive):Clear
+5h58m25.884s     MainTask : OK:Clear
+5h58m26.050s     MainTask : OK:Clear
+5h58m38.151s     MainTask : OK:Delete ScreenContent 1.2
+5h58m38.182s     MainTask : OK:Edit ScreenContent Default.2
+5h58m48.526s          LUA : OK:Store ViewButton 1.9 'TEST PLUGIN' /Overwrite /Screen '1'
+5h59m14.749s     MainTask : OK:Go- Executor
+5h59m53.450s     MainTask : Cannot Create Object:Store ScreenContent 1
+5h59m55.353s     MainTask : OK:Menu "AddWindow"
+5h59m56.885s          LUA : OK:Store ScreenContent Default 'WindowCommandLine' "MinW"="4" "MinH"="4" "MaxW"="0" "MaxH"="0" "PresetPoolType"="0" "SnapToBlockSize"='false' /NoConfirmation
+6h00m10.681s     MainTask : Illegal object:Call Plugin 64
+6h00m14.251s     MainTask : OK:Set ScreenContent Default.4 "X"="0" "Y"="16" "W"="44" "H"="2"
+6h00m17.516s     MainTask : OK:Edit ScreenContent 1
+6h00m19.715s     MainTask : OK:Edit Display 1.5.3.1.5.1 Property 'ViewH'
+6h00m21.221s     MainTask : OK:Menu "AddWindow"
+6h00m22.982s     MainTask : OK:Clear
+6h00m23.183s     MainTask : OK:Clear
+6h00m28.249s          LUA : OK:Store ScreenContent Default 'WindowGroupPool' "MinW"="2" "MinH"="2" "MaxW"="0" "MaxH"="0" "PresetPoolType"="0" "SnapToBlockSize"='true' /NoConfirmation
+6h00m33.091s          LUA : OK:Store ViewButton 1.9 'TEST PLUGIN' /Overwrite /Screen '1'
+6h00m34.249s     MainTask : OK:SelectFixtures Group 9
+6h00m35.483s     MainTask : OK:Select EncoderBank 2
+6h00m38.616s     MainTask : OK:At Preset 2.5
+6h00m42.348s     MainTask : OK:Call Plugin 1
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] ============================================================
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] grandMA3 Recipe Update - Phase 1 READ-ONLY diagnostic
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] No Showfile write commands or property assignments are present
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] MA3 Version: 2.3.2.0
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Version numeric return 1: 2
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Version numeric return 2: 3
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Version numeric return 3: 2
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Version numeric return 4: 0
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] === CAPABILITIES ===
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Version                  AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SelectedSequence         AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetCurrentCue            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SelectionFirst           AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SelectionNext            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetSubfixture            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetUIChannels            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Programmer               AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] ProgrammerPart           AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SelectedFeature          AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetSelectedAttribute     AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetAttributeByUIChannel  AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetProgPhaser            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetProgPhaserValue       AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetPresetData            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetUIChannelIndex        AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetChannelFunction       AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] GetChannelFunctionIndex  AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SetProgPhaser            AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] SetProgPhaserValue       AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] ObjectList               AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] DataPool                 AVAILABLE
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] === PLAYBACK CONTEXT ===
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Current Sequence: 401 I_Can_Show_You | class=Sequence | address=ShowData.DataPools.Default.Sequences.I_Can_Show_You
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Current Cue: 18000 BO | class=Cue | address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Current Part: UNRESOLVED - inspect cue child classes/properties
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Original Cue: UNRESOLVED - no confirmed provenance API
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Original Part: UNRESOLVED - no confirmed provenance API
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] === CURRENT CUE OBJECT TREE ===
+6h00m42.348s          LUA : [RecipeUpdate][DIAG] Object 1: label=18000 BO class=Cue address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]   Object 2: label=function: 00007FF71E42B5C0 BO class=Part address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO.BO
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]     property[Selection]=table: 0000020A9C629350
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]     property[TrackingDistance]=
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]     Object 3: label=function: 00007FF71E42B5C0 Recipe 1 class=Recipe address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO.BO.Recipe 1
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]       property[Selection]=Group 401
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]       property[Values]=Preset 1.1
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]       property[Enabled]=true
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]       property[SelectionMode]=Normal
+6h00m42.348s          LUA : [RecipeUpdate][DIAG]       Candidate Recipe object found; score=DISABLED pending verified fields
+6h00m42.349s          LUA : Name:  Recipe 1
+6h00m42.349s          LUA : Class: Recipe
+6h00m42.349s          LUA : Path:  Root/ShowData/DataPools/1 'Default'/Sequences/401 'I_Can_Show_You'/18 'BO'/0 'BO'/Recipe 1
+6h00m42.349s          LUA : Properties:
+6h00m42.349s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h00m42.349s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h00m42.349s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h00m42.349s          LUA :   LOCK = ""
+6h00m42.349s          LUA :   INDEX = "1" (Read Only)
+6h00m42.349s          LUA :   COUNT = "0" (Read Only)
+6h00m42.349s          LUA :   NAME = "Recipe 1"
+6h00m42.349s          LUA :   USEREXPANDED = "No"
+6h00m42.349s          LUA :   FADERENABLED = "No" (Read Only)
+6h00m42.349s          LUA :   OWNED = "No" (Read Only)
+6h00m42.349s          LUA :   HIDDEN = "No"
+6h00m42.349s          LUA :   DEPENDENCYEXPORT = ""
+6h00m42.349s          LUA :   MEMORYFOOTPRINT = "1.7 KB"
+6h00m42.349s          LUA :   GUID = "0E 19 FB 63 47 1D 80 28 03 51 18 18 59 F5 8E 59"
+6h00m42.349s          LUA :   NOTE = ""
+6h00m42.349s          LUA :   TAGS = ""
+6h00m42.349s          LUA :   ACTIVE = "No"
+6h00m42.349s          LUA :   HASANYMATRICKSDATA = "No" (Read Only)
+6h00m42.349s          LUA :   SHUFFLEMODE = "Auto"
+6h00m42.349s          LUA :   INITIALNAME = "MAtricks Editor (Recipe)"
+6h00m42.349s          LUA :   INITIALMATRICKS = "" (Read Only)
+6h00m42.349s          LUA :   X = "None"
+6h00m42.349s          LUA :   Y = "None"
+6h00m42.349s          LUA :   Z = "None"
+6h00m42.349s          LUA :   XBLOCK = "None"
+6h00m42.349s          LUA :   YBLOCK = "None"
+6h00m42.349s          LUA :   ZBLOCK = "None"
+6h00m42.349s          LUA :   XGROUP = "None"
+6h00m42.349s          LUA :   YGROUP = "None"
+6h00m42.349s          LUA :   ZGROUP = "None"
+6h00m42.349s          LUA :   XWINGS = "None"
+6h00m42.349s          LUA :   YWINGS = "None"
+6h00m42.349s          LUA :   ZWINGS = "None"
+6h00m42.349s          LUA :   XWIDTH = "None"
+6h00m42.349s          LUA :   YWIDTH = "None"
+6h00m42.349s          LUA :   ZWIDTH = "None"
+6h00m42.349s          LUA :   XSHUFFLE = "None"
+6h00m42.349s          LUA :   YSHUFFLE = "None"
+6h00m42.349s          LUA :   ZSHUFFLE = "None"
+6h00m42.349s          LUA :   XSHIFT = "None"
+6h00m42.349s          LUA :   YSHIFT = "None"
+6h00m42.349s          LUA :   ZSHIFT = "None"
+6h00m42.349s          LUA :   XINV = "No"
+6h00m42.349s          LUA :   XINVB = "No"
+6h00m42.349s          LUA :   XINVG = "No"
+6h00m42.349s          LUA :   XINVW = "No"
+6h00m42.349s          LUA :   YINV = "No"
+6h00m42.349s          LUA :   YINVB = "No"
+6h00m42.349s          LUA :   YINVG = "No"
+6h00m42.349s          LUA :   YINVW = "No"
+6h00m42.349s          LUA :   ZINV = "No"
+6h00m42.349s          LUA :   ZINVB = "No"
+6h00m42.349s          LUA :   ZINVG = "No"
+6h00m42.349s          LUA :   ZINVW = "No"
+6h00m42.349s          LUA :   INVERTSTYLE = "Pan"
+6h00m42.349s          LUA :   INVERTX = "No"
+6h00m42.349s          LUA :   INVERTY = "No"
+6h00m42.349s          LUA :   INVERTZ = "No"
+6h00m42.349s          LUA :   ALIGNRANGEX = "No"
+6h00m42.349s          LUA :   ALIGNRANGEY = "No"
+6h00m42.349s          LUA :   ALIGNRANGEZ = "No"
+6h00m42.349s          LUA :   RELATIVEFADE = "Yes"
+6h00m42.349s          LUA :   RELATIVEDELAY = "Yes"
+6h00m42.349s          LUA :   RELATIVEPHASE = "Yes"
+6h00m42.349s          LUA :   RELATIVESPEED = "No"
+6h00m42.349s          LUA :   RELATIVE = "Yes"
+6h00m42.349s          LUA :   PHASERTRANSFORM = "None"
+6h00m42.349s          LUA :   FADEFROMX = "None"
+6h00m42.349s          LUA :   FADETOX = "None"
+6h00m42.349s          LUA :   DELAYFROMX = "None"
+6h00m42.349s          LUA :   DELAYTOX = "None"
+6h00m42.349s          LUA :   SPEEDFROMX = "None"
+6h00m42.349s          LUA :   SPEEDTOX = "None"
+6h00m42.349s          LUA :   PHASEFROMX = "None"
+6h00m42.349s          LUA :   PHASETOX = "None"
+6h00m42.349s          LUA :   FADEFROMY = "None"
+6h00m42.349s          LUA :   FADETOY = "None"
+6h00m42.349s          LUA :   DELAYFROMY = "None"
+6h00m42.349s          LUA :   DELAYTOY = "None"
+6h00m42.349s          LUA :   SPEEDFROMY = "None"
+6h00m42.349s          LUA :   SPEEDTOY = "None"
+6h00m42.349s          LUA :   PHASEFROMY = "None"
+6h00m42.349s          LUA :   PHASETOY = "None"
+6h00m42.349s          LUA :   FADEFROMZ = "None"
+6h00m42.349s          LUA :   FADETOZ = "None"
+6h00m42.349s          LUA :   DELAYFROMZ = "None"
+6h00m42.349s          LUA :   DELAYTOZ = "None"
+6h00m42.349s          LUA :   SPEEDFROMZ = "None"
+6h00m42.349s          LUA :   SPEEDTOZ = "None"
+6h00m42.349s          LUA :   PHASEFROMZ = "None"
+6h00m42.349s          LUA :   PHASETOZ = "None"
+6h00m42.349s          LUA :   DOSHUFFLE = ""
+6h00m42.349s          LUA :   MEMORYTYPE = "Compressed" (Read Only)
+6h00m42.349s          LUA :   MOVEGRIDCURSOR = "Append X"
+6h00m42.349s          LUA :   PRESERVEGRIDPOSITIONS = "No"
+6h00m42.349s          LUA :   SELECTIONDATA = ""
+6h00m42.349s          LUA :   TYPE = "Preset" (Read Only)
+6h00m42.349s          LUA :   USER = "" (Read Only)
+6h00m42.349s          LUA :   FEATUREGROUP = "" (Read Only)
+6h00m42.349s          LUA :   TRIGGER = "" (Read Only)
+6h00m42.349s          LUA :   PRESETMODE = "Selective" (Read Only)
+6h00m42.349s          LUA :   PRESETMODEINTERNAL = "Selective"
+6h00m42.349s          LUA :   STOREDDATA = "" (Read Only)
+6h00m42.349s          LUA :   PRESETDATA = ""
+6h00m42.349s          LUA :   OWNDATAPRESENT = "No" (Read Only)
+6h00m42.349s          LUA :   OWNNONCOOKEDDATAPRESENT = "No" (Read Only)
+6h00m42.349s          LUA :   MODE = "0"
+6h00m42.349s          LUA :   RECIPETEMPLATE = "No"
+6h00m42.349s          LUA :   DELAYTOPHASE = ""
+6h00m42.349s          LUA :   DEPENDENCIES = "" (Read Only)
+6h00m42.349s          LUA :   REFERENCES = "" (Read Only)
+6h00m42.349s          LUA :   ACTION = "Pool Default"
+6h00m42.349s          LUA :   SELECTION = "401 'Back HX#3'"
+6h00m42.349s          LUA :   SELECTIONMODE = "Normal"
+6h00m42.349s          LUA :   PRESET = "1 'Dimmer'.1 '0'"
+6h00m42.349s          LUA :   MATRICKS = ""
+6h00m42.349s          LUA :   FILTER = ""
+6h00m42.349s          LUA :   GENERATOR = ""
+6h00m42.349s          LUA :   VALUES = "FeatureGroup 1 'Dimmer'.Preset 1 '0'"
+6h00m42.349s          LUA :   EMPTYLASTCOOKING = "No" (Read Only)
+6h00m42.349s          LUA :   FAILEDCOOKEDPART = "None" (Read Only)
+6h00m42.349s          LUA :   ENABLED = "Yes"
+6h00m42.349s          LUA :   SELECTIONFROMVALUE = "No"
+6h00m42.349s          LUA : Children:
+6h00m42.349s          LUA :   Count: 0
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] === CURRENT FIXTURES ===
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 1: patchIndex=64 fixture=1 380 BSW 1 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 1
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 2: patchIndex=65 fixture=2 380 BSW 2 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 2
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 3: patchIndex=66 fixture=3 380 BSW 3 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 3
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 4: patchIndex=67 fixture=4 380 BSW 4 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 4
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 5: patchIndex=68 fixture=5 380 BSW 5 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 5
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 6: patchIndex=69 fixture=6 380 BSW 6 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 6
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 7: patchIndex=70 fixture=7 380 BSW 7 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 7
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 8: patchIndex=71 fixture=8 380 BSW 8 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 8
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 9: patchIndex=72 fixture=9 380 BSW 9 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 9
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 10: patchIndex=73 fixture=10 380 BSW 10 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 10
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 11: patchIndex=74 fixture=11 380 BSW 11 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 11
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 12: patchIndex=75 fixture=12 380 BSW 12 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 12
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 13: patchIndex=76 fixture=13 380 BSW 13 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 13
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 14: patchIndex=77 fixture=14 380 BSW 14 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 14
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 15: patchIndex=78 fixture=15 380 BSW 15 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 15
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 16: patchIndex=79 fixture=16 380 BSW 16 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 16
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 17: patchIndex=84 fixture=21 380 BSW 21 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 21
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 18: patchIndex=85 fixture=22 380 BSW 22 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 22
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 19: patchIndex=86 fixture=23 380 BSW 23 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 23
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selection 20: patchIndex=87 fixture=24 380 BSW 24 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 24
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Selected fixture count reported by traversal: 20
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Programmer mode: NORMAL (ProgPart Recipe children=0)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PRESET REFERENCE PROBES ===
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Sample GetProgPhaser: fixture=1 attribute=Pan uiChannel=9
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][absolute] = 65.833336114883 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][absolute_value] = 11045001 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][accel] = -7.9999685287476 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][accel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][channel_function] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][decel] = 7.9999923706055 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][decel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][mask_individual] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][mask_integrated] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][relative] = 0.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][trans] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][width] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][accel] = 7.9999923706055 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][accel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][channel_function] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][decel] = -7.9999685287476 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][decel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][mask_individual] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][mask_integrated] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][relative] = 0.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][trans] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[2][width] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[abs_preset] = 5 >>><<< (Preset; ShowData.DataPools.Default.PresetPools.Position.>>><<<)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[gridpos] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[gridposmatr] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_active_phaser] = 65 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_active_value] = 2 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_cooked] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_individual] = 99 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[measure] = 200.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[phase] = 0.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[rel_preset] = 1203 Circle#5 (Preset; ShowData.DataPools.Default.PresetPools.Song EFX.Circle#5)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[selective] = true (boolean)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[speed] = 0.19999998807907 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_phaser[ui_channel_index] = 9 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Sample GetProgPhaserValue: uiChannel=9 step=1
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[accel] = 7.9999923706055 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[accel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[channel_function] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[decel] = -7.9999685287476 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[decel_type] = 1 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[mask_individual] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[mask_integrated] = 0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[relative] = 0.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[trans] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] sample_step[width] = 100.0 (number)
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Sample Attribute identity: 2 Pan | class=Attribute | address=ShowData.LivePatch.AttributeDefinitions.Attributes.Pan
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Sample Attribute index: 2
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] GetUIChannelIndex round trip: source=9 resolved=10 match=false
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] Sample channel_function raw index: 0
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] GetChannelFunction probe unresolved: nil
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] GetChannelFunctionIndex probe unresolved: nil
+6h00m42.349s          LUA : [RecipeUpdate][DIAG] ChannelFunction probe semantics: API-dump-shaped but UNVERIFIED; no writer assumption allowed
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] Programmer phaser channels: 40; attributes: Pan(20), Tilt(20)
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] Unique absolute preset references: 1; phasers without abs_preset: 0
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] Active Feature: Position
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] Current Preset Reference: 5 >>><<< | class=Preset | address=ShowData.DataPools.Default.PresetPools.Position.>>><<<
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] Preset resolution confidence: HIGH for this 2.3.2.0 observed shape
+6h00m42.350s          LUA : [RecipeUpdate][DIAG] === GET PRESET DATA SAMPLE (phasers_only=true, by_fixtures=false) ===
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][blocked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][blocked_rel] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][down_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][end_of_cue] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][has_absolute] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][has_relative] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][is_mib] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][mib_possible] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][mib_request] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][selective] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][tracking_distance] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_flags][up_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][dict_index] = 2 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][gridpos] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][gridposmatr] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][mask_active_phaser] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][mask_active_value] = 2 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][mask_cooked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][mask_individual] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][selective] = true (boolean)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[10][ui_channel_index] = 10 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][blocked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][blocked_rel] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][down_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][end_of_cue] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][has_absolute] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][has_relative] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][is_mib] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][mib_possible] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][mib_request] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][selective] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][tracking_distance] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_flags][up_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][dict_index] = 13 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][gridpos] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][gridposmatr] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][mask_active_phaser] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][mask_active_value] = 2 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][mask_cooked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][mask_individual] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][selective] = true (boolean)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[111][ui_channel_index] = 111 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][blocked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][blocked_rel] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][down_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][end_of_cue] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][has_absolute] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][has_relative] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][is_mib] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][mib_possible] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][mib_request] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][selective] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][tracking_distance] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_flags][up_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][dict_index] = 14 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][gridpos] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][gridposmatr] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][mask_active_phaser] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][mask_active_value] = 2 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][mask_cooked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][mask_individual] = 64 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][selective] = true (boolean)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[112][ui_channel_index] = 112 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][blocked] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][blocked_rel] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][down_going] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][end_of_cue] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][has_absolute] = 1 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][has_relative] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][is_mib] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][mib_possible] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags][mib_request] = 0 (number)
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128][dict_flags] = <table output truncated at 80 items>
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data[128] = <table output truncated at 80 items>
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] preset_data = <table output truncated at 80 items>
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER DUMP START ===
+6h00m42.351s          LUA : Name:  Programmer
+6h00m42.351s          LUA : Class: Programmer
+6h00m42.351s          LUA : Path:  Root/ShowData/UserProfiles/1 'Default'/Environments/UserEnvironment 1/Programmer
+6h00m42.351s          LUA : Properties:
+6h00m42.351s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h00m42.351s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h00m42.351s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h00m42.351s          LUA :   LOCK = "PL"
+6h00m42.351s          LUA :   INDEX = "3" (Read Only)
+6h00m42.351s          LUA :   COUNT = "1" (Read Only)
+6h00m42.351s          LUA :   NO = "3 (1)" (Read Only)
+6h00m42.351s          LUA :   NAME = "Programmer"
+6h00m42.351s          LUA :   NOTE = ""
+6h00m42.351s          LUA :   USEREXPANDED = "No"
+6h00m42.351s          LUA :   FADERENABLED = "Yes" (Read Only)
+6h00m42.351s          LUA :   OWNED = "No" (Read Only)
+6h00m42.351s          LUA :   HIDDEN = "No"
+6h00m42.351s          LUA :   DEPENDENCYEXPORT = ""
+6h00m42.351s          LUA :   MEMORYFOOTPRINT = "18.0 KB"
+6h00m42.351s          LUA :   AUTOSTART = "Yes"
+6h00m42.351s          LUA :   AUTOSTOP = "Yes"
+6h00m42.351s          LUA :   AUTOFIX = "No"
+6h00m42.351s          LUA :   AUTOSTOMP = "No"
+6h00m42.351s          LUA :   RELEASEFIRSTCUE = "Yes"
+6h00m42.351s          LUA :   SOFTLTP = "Yes"
+6h00m42.351s          LUA :   CUECOMMAND = "Enabled"
+6h00m42.351s          LUA :   XFADEMODE = "AB"
+6h00m42.351s          LUA :   XFADERELOAD = "No"
+6h00m42.351s          LUA :   SWAPPROTECT = "No"
+6h00m42.351s          LUA :   KILLPROTECT = "No"
+6h00m42.351s          LUA :   USEEXECUTORTIME = "Yes"
+6h00m42.351s          LUA :   OFFWHENOVERRIDDEN = "Yes"
+6h00m42.351s          LUA :   SEQUMIB = "Enabled"
+6h00m42.351s          LUA :   SEQUMIBMODE = "None"
+6h00m42.351s          LUA :   AUTOPREPOS = "No"
+6h00m42.351s          LUA :   WRAPAROUND = "Yes"
+6h00m42.351s          LUA :   RESTARTMODE = "First Cue"
+6h00m42.351s          LUA :   MASTERGOMODE = "None"
+6h00m42.351s          LUA :   SPEEDFROMRATE = "No"
+6h00m42.351s          LUA :   TRACKING = ""
+6h00m42.351s          LUA :   INCLUDELINKLASTGO = "Yes"
+6h00m42.351s          LUA :   PRIORITY = "1"
+6h00m42.351s          LUA :   PLAYBACKMASTER = ""
+6h00m42.351s          LUA :   RATEMASTER = ""
+6h00m42.351s          LUA :   SPEEDMASTER = ""
+6h00m42.351s          LUA :   RATESCALE = "One"
+6h00m42.351s          LUA :   SPEEDSCALE = "One"
+6h00m42.351s          LUA :   INPUTFILTER = ""
+6h00m42.351s          LUA :   OUTPUTFILTER = ""
+6h00m42.351s          LUA :   PREFERCUEAPPEARANCE = "No"
+6h00m42.351s          LUA :   EXECUTORDISPLAYMODE = "Both"
+6h00m42.351s          LUA :   CUEZEROMODE = "Off"
+6h00m42.351s          LUA : Children:
+6h00m42.351s          LUA :   Count: 1
+6h00m42.351s          LUA :   #0000: Name = "Part Zero", Class = "ProgPart"
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER DUMP END ===
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PART DUMP START ===
+6h00m42.351s          LUA : Name:  Part Zero
+6h00m42.351s          LUA : Class: ProgPart
+6h00m42.351s          LUA : Path:  Root/ShowData/UserProfiles/1 'Default'/Environments/UserEnvironment 1/Programmer/Part Zero
+6h00m42.351s          LUA : Properties:
+6h00m42.351s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h00m42.351s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h00m42.351s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h00m42.351s          LUA :   INDEX = "0" (Read Only)
+6h00m42.351s          LUA :   COUNT = "0" (Read Only)
+6h00m42.351s          LUA :   NAME = "Part Zero"
+6h00m42.351s          LUA :   NOTE = ""
+6h00m42.351s          LUA :   USEREXPANDED = "Yes"
+6h00m42.351s          LUA :   FADERENABLED = "No" (Read Only)
+6h00m42.351s          LUA :   OWNED = "No" (Read Only)
+6h00m42.351s          LUA :   HIDDEN = "No"
+6h00m42.351s          LUA :   DEPENDENCYEXPORT = ""
+6h00m42.351s          LUA :   MEMORYFOOTPRINT = "225 Bytes"
+6h00m42.351s          LUA :   PART = "0"
+6h00m42.351s          LUA : Children:
+6h00m42.351s          LUA :   Count: 0
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PART DUMP END ===
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === GROUP RESOLUTION ===
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] Possible Group: UNRESOLVED - no confirmed non-mutating membership API
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] Command-history hint: DISABLED - no confirmed stable reader
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] === RECIPE RESOLUTION ===
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] Candidate Recipe: UNRESOLVED - scoring intentionally disabled
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] Current Recipe Reference: UNRESOLVED - inspect Recipe Dumps
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] NO-OP: this diagnostic cannot and will not update the Showfile
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] Copy this complete output for 2.3.2.0 vs 2.4.x comparison
+6h00m42.351s          LUA : [RecipeUpdate][DIAG] ============================================================
+6h00m46.215s     MainTask : OK:Edit UserProfile 1.15 Property 'KeyboardShortcutsActive' /NoOops
+6h00m50.314s     MainTask : Application version is 2.3.2.0
+6h00m50.314s     MainTask : Station  SN   : y3Bib33Y3NFWrcm3p9n8
+6h00m50.314s     MainTask : Station  IP   : onPC 192.168.193.101
+6h00m50.314s     MainTask : Station  OS   : Windows
+6h00m50.314s     MainTask : Station  Build: Release
+6h00m50.314s     MainTask : Station  Name : WillySu-Laptop-3080
+6h00m50.314s     MainTask : Session  Name : WillySu-Laptop-3080
+6h00m50.314s     MainTask : Location Name : Local
+6h00m50.314s     MainTask : Show file Name : 2026 SAX MACHIBE@SUB0829 after
+6h00m50.314s     MainTask : Station Status: IdleMaster
+6h00m50.314s     MainTask : Release type Release
+6h00m50.314s     MainTask : Compiled at Oct 30 2025 07:37:54
+6h00m50.314s     MainTask : Repository hash 8762398837b4f33fb44e77367e4410536744b27c
+6h00m50.314s     MainTask : Commit date     2025-10-29 16:07:06 +0100
+6h00m50.319s     MainTask : Saved to C:/ProgramData/MALightingTechnology/gma3_library/system_monitor/2.3.2.0_26-09-02T14.00.txt
+6h00m50.319s     MainTask : OK:DumpLog
+6h01m01.449s     MainTask : OK:Select EncoderBank 4
+6h01m02.781s     MainTask : OK:At Preset 4.32
+6h01m06.048s     MainTask : OK:Edit UserProfile 1.15 Property 'KeyboardShortcutsActive' /NoOops
+6h01m06.481s     MainTask : OK(ClearSelection):Clear
+6h01m06.648s     MainTask : OK(ClearActive):Clear
+6h01m06.816s     MainTask : OK:Clear
+6h01m10.248s     MainTask : OK:SelectFixtures Group 9
+6h01m11.248s     MainTask : OK:At Preset 4.33
+6h01m13.515s     MainTask : OK:Call Plugin 1
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] ============================================================
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] grandMA3 Recipe Update - Phase 1 READ-ONLY diagnostic
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] No Showfile write commands or property assignments are present
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] MA3 Version: 2.3.2.0
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] Version numeric return 1: 2
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] Version numeric return 2: 3
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] Version numeric return 3: 2
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] Version numeric return 4: 0
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] === CAPABILITIES ===
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] Version                  AVAILABLE
+6h01m13.515s          LUA : [RecipeUpdate][DIAG] SelectedSequence         AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetCurrentCue            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] SelectionFirst           AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] SelectionNext            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetSubfixture            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetUIChannels            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Programmer               AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] ProgrammerPart           AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] SelectedFeature          AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetSelectedAttribute     AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetAttributeByUIChannel  AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetProgPhaser            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetProgPhaserValue       AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetPresetData            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetUIChannelIndex        AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetChannelFunction       AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetChannelFunctionIndex  AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] SetProgPhaser            AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] SetProgPhaserValue       AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] ObjectList               AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] DataPool                 AVAILABLE
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] === PLAYBACK CONTEXT ===
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Current Sequence: 401 I_Can_Show_You | class=Sequence | address=ShowData.DataPools.Default.Sequences.I_Can_Show_You
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Current Cue: 18000 BO | class=Cue | address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Current Part: UNRESOLVED - inspect cue child classes/properties
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Original Cue: UNRESOLVED - no confirmed provenance API
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Original Part: UNRESOLVED - no confirmed provenance API
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] === CURRENT CUE OBJECT TREE ===
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Object 1: label=18000 BO class=Cue address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]   Object 2: label=function: 00007FF71E42B5C0 BO class=Part address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO.BO
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]     property[Selection]=table: 0000020A9C561720
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]     property[TrackingDistance]=
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]     Object 3: label=function: 00007FF71E42B5C0 Recipe 1 class=Recipe address=ShowData.DataPools.Default.Sequences.I_Can_Show_You.BO.BO.Recipe 1
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]       property[Selection]=Group 401
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]       property[Values]=Preset 1.1
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]       property[Enabled]=true
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]       property[SelectionMode]=Normal
+6h01m13.516s          LUA : [RecipeUpdate][DIAG]       Candidate Recipe object found; score=DISABLED pending verified fields
+6h01m13.516s          LUA : Name:  Recipe 1
+6h01m13.516s          LUA : Class: Recipe
+6h01m13.516s          LUA : Path:  Root/ShowData/DataPools/1 'Default'/Sequences/401 'I_Can_Show_You'/18 'BO'/0 'BO'/Recipe 1
+6h01m13.516s          LUA : Properties:
+6h01m13.516s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h01m13.516s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h01m13.516s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h01m13.516s          LUA :   LOCK = ""
+6h01m13.516s          LUA :   INDEX = "1" (Read Only)
+6h01m13.516s          LUA :   COUNT = "0" (Read Only)
+6h01m13.516s          LUA :   NAME = "Recipe 1"
+6h01m13.516s          LUA :   USEREXPANDED = "No"
+6h01m13.516s          LUA :   FADERENABLED = "No" (Read Only)
+6h01m13.516s          LUA :   OWNED = "No" (Read Only)
+6h01m13.516s          LUA :   HIDDEN = "No"
+6h01m13.516s          LUA :   DEPENDENCYEXPORT = ""
+6h01m13.516s          LUA :   MEMORYFOOTPRINT = "1.7 KB"
+6h01m13.516s          LUA :   GUID = "0E 19 FB 63 47 1D 80 28 03 51 18 18 59 F5 8E 59"
+6h01m13.516s          LUA :   NOTE = ""
+6h01m13.516s          LUA :   TAGS = ""
+6h01m13.516s          LUA :   ACTIVE = "No"
+6h01m13.516s          LUA :   HASANYMATRICKSDATA = "No" (Read Only)
+6h01m13.516s          LUA :   SHUFFLEMODE = "Auto"
+6h01m13.516s          LUA :   INITIALNAME = "MAtricks Editor (Recipe)"
+6h01m13.516s          LUA :   INITIALMATRICKS = "" (Read Only)
+6h01m13.516s          LUA :   X = "None"
+6h01m13.516s          LUA :   Y = "None"
+6h01m13.516s          LUA :   Z = "None"
+6h01m13.516s          LUA :   XBLOCK = "None"
+6h01m13.516s          LUA :   YBLOCK = "None"
+6h01m13.516s          LUA :   ZBLOCK = "None"
+6h01m13.516s          LUA :   XGROUP = "None"
+6h01m13.516s          LUA :   YGROUP = "None"
+6h01m13.516s          LUA :   ZGROUP = "None"
+6h01m13.516s          LUA :   XWINGS = "None"
+6h01m13.516s          LUA :   YWINGS = "None"
+6h01m13.516s          LUA :   ZWINGS = "None"
+6h01m13.516s          LUA :   XWIDTH = "None"
+6h01m13.516s          LUA :   YWIDTH = "None"
+6h01m13.516s          LUA :   ZWIDTH = "None"
+6h01m13.516s          LUA :   XSHUFFLE = "None"
+6h01m13.516s          LUA :   YSHUFFLE = "None"
+6h01m13.516s          LUA :   ZSHUFFLE = "None"
+6h01m13.516s          LUA :   XSHIFT = "None"
+6h01m13.516s          LUA :   YSHIFT = "None"
+6h01m13.516s          LUA :   ZSHIFT = "None"
+6h01m13.516s          LUA :   XINV = "No"
+6h01m13.516s          LUA :   XINVB = "No"
+6h01m13.516s          LUA :   XINVG = "No"
+6h01m13.516s          LUA :   XINVW = "No"
+6h01m13.516s          LUA :   YINV = "No"
+6h01m13.516s          LUA :   YINVB = "No"
+6h01m13.516s          LUA :   YINVG = "No"
+6h01m13.516s          LUA :   YINVW = "No"
+6h01m13.516s          LUA :   ZINV = "No"
+6h01m13.516s          LUA :   ZINVB = "No"
+6h01m13.516s          LUA :   ZINVG = "No"
+6h01m13.516s          LUA :   ZINVW = "No"
+6h01m13.516s          LUA :   INVERTSTYLE = "Pan"
+6h01m13.516s          LUA :   INVERTX = "No"
+6h01m13.516s          LUA :   INVERTY = "No"
+6h01m13.516s          LUA :   INVERTZ = "No"
+6h01m13.516s          LUA :   ALIGNRANGEX = "No"
+6h01m13.516s          LUA :   ALIGNRANGEY = "No"
+6h01m13.516s          LUA :   ALIGNRANGEZ = "No"
+6h01m13.516s          LUA :   RELATIVEFADE = "Yes"
+6h01m13.516s          LUA :   RELATIVEDELAY = "Yes"
+6h01m13.516s          LUA :   RELATIVEPHASE = "Yes"
+6h01m13.516s          LUA :   RELATIVESPEED = "No"
+6h01m13.516s          LUA :   RELATIVE = "Yes"
+6h01m13.516s          LUA :   PHASERTRANSFORM = "None"
+6h01m13.516s          LUA :   FADEFROMX = "None"
+6h01m13.516s          LUA :   FADETOX = "None"
+6h01m13.516s          LUA :   DELAYFROMX = "None"
+6h01m13.516s          LUA :   DELAYTOX = "None"
+6h01m13.516s          LUA :   SPEEDFROMX = "None"
+6h01m13.516s          LUA :   SPEEDTOX = "None"
+6h01m13.516s          LUA :   PHASEFROMX = "None"
+6h01m13.516s          LUA :   PHASETOX = "None"
+6h01m13.516s          LUA :   FADEFROMY = "None"
+6h01m13.516s          LUA :   FADETOY = "None"
+6h01m13.516s          LUA :   DELAYFROMY = "None"
+6h01m13.516s          LUA :   DELAYTOY = "None"
+6h01m13.516s          LUA :   SPEEDFROMY = "None"
+6h01m13.516s          LUA :   SPEEDTOY = "None"
+6h01m13.516s          LUA :   PHASEFROMY = "None"
+6h01m13.516s          LUA :   PHASETOY = "None"
+6h01m13.516s          LUA :   FADEFROMZ = "None"
+6h01m13.516s          LUA :   FADETOZ = "None"
+6h01m13.516s          LUA :   DELAYFROMZ = "None"
+6h01m13.516s          LUA :   DELAYTOZ = "None"
+6h01m13.516s          LUA :   SPEEDFROMZ = "None"
+6h01m13.516s          LUA :   SPEEDTOZ = "None"
+6h01m13.516s          LUA :   PHASEFROMZ = "None"
+6h01m13.516s          LUA :   PHASETOZ = "None"
+6h01m13.516s          LUA :   DOSHUFFLE = ""
+6h01m13.516s          LUA :   MEMORYTYPE = "Compressed" (Read Only)
+6h01m13.516s          LUA :   MOVEGRIDCURSOR = "Append X"
+6h01m13.516s          LUA :   PRESERVEGRIDPOSITIONS = "No"
+6h01m13.516s          LUA :   SELECTIONDATA = ""
+6h01m13.516s          LUA :   TYPE = "Preset" (Read Only)
+6h01m13.516s          LUA :   USER = "" (Read Only)
+6h01m13.516s          LUA :   FEATUREGROUP = "" (Read Only)
+6h01m13.516s          LUA :   TRIGGER = "" (Read Only)
+6h01m13.516s          LUA :   PRESETMODE = "Selective" (Read Only)
+6h01m13.516s          LUA :   PRESETMODEINTERNAL = "Selective"
+6h01m13.516s          LUA :   STOREDDATA = "" (Read Only)
+6h01m13.516s          LUA :   PRESETDATA = ""
+6h01m13.516s          LUA :   OWNDATAPRESENT = "No" (Read Only)
+6h01m13.516s          LUA :   OWNNONCOOKEDDATAPRESENT = "No" (Read Only)
+6h01m13.516s          LUA :   MODE = "0"
+6h01m13.516s          LUA :   RECIPETEMPLATE = "No"
+6h01m13.516s          LUA :   DELAYTOPHASE = ""
+6h01m13.516s          LUA :   DEPENDENCIES = "" (Read Only)
+6h01m13.516s          LUA :   REFERENCES = "" (Read Only)
+6h01m13.516s          LUA :   ACTION = "Pool Default"
+6h01m13.516s          LUA :   SELECTION = "401 'Back HX#3'"
+6h01m13.516s          LUA :   SELECTIONMODE = "Normal"
+6h01m13.516s          LUA :   PRESET = "1 'Dimmer'.1 '0'"
+6h01m13.516s          LUA :   MATRICKS = ""
+6h01m13.516s          LUA :   FILTER = ""
+6h01m13.516s          LUA :   GENERATOR = ""
+6h01m13.516s          LUA :   VALUES = "FeatureGroup 1 'Dimmer'.Preset 1 '0'"
+6h01m13.516s          LUA :   EMPTYLASTCOOKING = "No" (Read Only)
+6h01m13.516s          LUA :   FAILEDCOOKEDPART = "None" (Read Only)
+6h01m13.516s          LUA :   ENABLED = "Yes"
+6h01m13.516s          LUA :   SELECTIONFROMVALUE = "No"
+6h01m13.516s          LUA : Children:
+6h01m13.516s          LUA :   Count: 0
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] === CURRENT FIXTURES ===
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 1: patchIndex=64 fixture=1 380 BSW 1 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 1
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 2: patchIndex=65 fixture=2 380 BSW 2 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 2
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 3: patchIndex=66 fixture=3 380 BSW 3 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 3
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 4: patchIndex=67 fixture=4 380 BSW 4 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 4
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 5: patchIndex=68 fixture=5 380 BSW 5 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 5
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 6: patchIndex=69 fixture=6 380 BSW 6 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 6
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 7: patchIndex=70 fixture=7 380 BSW 7 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 7
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 8: patchIndex=71 fixture=8 380 BSW 8 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 8
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 9: patchIndex=72 fixture=9 380 BSW 9 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 9
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 10: patchIndex=73 fixture=10 380 BSW 10 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 10
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 11: patchIndex=74 fixture=11 380 BSW 11 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 11
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 12: patchIndex=75 fixture=12 380 BSW 12 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 12
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 13: patchIndex=76 fixture=13 380 BSW 13 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 13
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 14: patchIndex=77 fixture=14 380 BSW 14 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 14
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 15: patchIndex=78 fixture=15 380 BSW 15 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 15
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 16: patchIndex=79 fixture=16 380 BSW 16 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 16
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 17: patchIndex=84 fixture=21 380 BSW 21 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 21
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 18: patchIndex=85 fixture=22 380 BSW 22 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 22
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 19: patchIndex=86 fixture=23 380 BSW 23 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 23
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selection 20: patchIndex=87 fixture=24 380 BSW 24 class=Fixture address=ShowData.LivePatch.Stages.Stage 1.Fixtures.380 BSW 24
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Selected fixture count reported by traversal: 20
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Programmer mode: NORMAL (ProgPart Recipe children=0)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PRESET REFERENCE PROBES ===
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Sample GetProgPhaser: fixture=1 attribute=Color1 uiChannel=13
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][absolute] = 89.145948126387 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][absolute_value] = 3695063 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][channel_function] = 0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][mask_individual] = 0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[1][mask_integrated] = 0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[abs_preset] = 33 C1 Yellow (Preset; ShowData.DataPools.Default.PresetPools.Color.C1 Yellow)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[gridpos] = 0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[gridposmatr] = 0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_active_phaser] = 97 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_active_value] = 2 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_cooked] = 32 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[mask_individual] = 97 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[phase] = 0.0 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] sample_phaser[ui_channel_index] = 13 (number)
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetProgPhaserValue sample unavailable: nil
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Sample Attribute identity: 90 Color1 | class=Attribute | address=ShowData.LivePatch.AttributeDefinitions.Attributes.Color1
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Sample Attribute index: 90
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetUIChannelIndex round trip unresolved: nil
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] Sample channel_function raw index: 0
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetChannelFunction probe: 2 Color Index | class=ChannelFunction | address=ShowData.LivePatch.FixtureTypes.DDD-ACME LIBRA (XP 380 BSW).DMXModes.Mode 1 21 DMX.DMXChannels.Head_Color1.Color1.Color Index
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] GetChannelFunctionIndex probe result: 67
+6h01m13.516s          LUA : [RecipeUpdate][DIAG] ChannelFunction probe semantics: API-dump-shaped but UNVERIFIED; no writer assumption allowed
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] Programmer phaser channels: 20; attributes: Color1(20)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] Unique absolute preset references: 1; phasers without abs_preset: 0
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] Active Feature: Color
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] Current Preset Reference: 33 C1 Yellow | class=Preset | address=ShowData.DataPools.Default.PresetPools.Color.C1 Yellow
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] Preset resolution confidence: HIGH for this 2.3.2.0 observed shape
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] === GET PRESET DATA SAMPLE (phasers_only=true, by_fixtures=false) ===
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][blocked] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][blocked_rel] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][down_going] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][end_of_cue] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][has_absolute] = 1 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][has_relative] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][is_mib] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][mib_possible] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][mib_request] = 0 (number)
+6h01m13.517s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][selective] = 0 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][tracking_distance] = 0 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_flags][up_going] = 0 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][dict_index] = 1 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][gridpos] = 1 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][gridposmatr] = 1 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][mask_active_phaser] = 96 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][mask_active_value] = 2 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][mask_cooked] = 0 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][mask_individual] = 96 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][phase] = 0.0 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][selective] = false (boolean)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[13][ui_channel_index] = 13 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] preset_data[count] = 1 (number)
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER DUMP START ===
+6h01m13.518s          LUA : Name:  Programmer
+6h01m13.518s          LUA : Class: Programmer
+6h01m13.518s          LUA : Path:  Root/ShowData/UserProfiles/1 'Default'/Environments/UserEnvironment 1/Programmer
+6h01m13.518s          LUA : Properties:
+6h01m13.518s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h01m13.518s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h01m13.518s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h01m13.518s          LUA :   LOCK = "PL"
+6h01m13.518s          LUA :   INDEX = "3" (Read Only)
+6h01m13.518s          LUA :   COUNT = "1" (Read Only)
+6h01m13.518s          LUA :   NO = "3 (1)" (Read Only)
+6h01m13.518s          LUA :   NAME = "Programmer"
+6h01m13.518s          LUA :   NOTE = ""
+6h01m13.518s          LUA :   USEREXPANDED = "No"
+6h01m13.518s          LUA :   FADERENABLED = "Yes" (Read Only)
+6h01m13.518s          LUA :   OWNED = "No" (Read Only)
+6h01m13.518s          LUA :   HIDDEN = "No"
+6h01m13.518s          LUA :   DEPENDENCYEXPORT = ""
+6h01m13.518s          LUA :   MEMORYFOOTPRINT = "18.0 KB"
+6h01m13.518s          LUA :   AUTOSTART = "Yes"
+6h01m13.518s          LUA :   AUTOSTOP = "Yes"
+6h01m13.518s          LUA :   AUTOFIX = "No"
+6h01m13.518s          LUA :   AUTOSTOMP = "No"
+6h01m13.518s          LUA :   RELEASEFIRSTCUE = "Yes"
+6h01m13.518s          LUA :   SOFTLTP = "Yes"
+6h01m13.518s          LUA :   CUECOMMAND = "Enabled"
+6h01m13.518s          LUA :   XFADEMODE = "AB"
+6h01m13.518s          LUA :   XFADERELOAD = "No"
+6h01m13.518s          LUA :   SWAPPROTECT = "No"
+6h01m13.518s          LUA :   KILLPROTECT = "No"
+6h01m13.518s          LUA :   USEEXECUTORTIME = "Yes"
+6h01m13.518s          LUA :   OFFWHENOVERRIDDEN = "Yes"
+6h01m13.518s          LUA :   SEQUMIB = "Enabled"
+6h01m13.518s          LUA :   SEQUMIBMODE = "None"
+6h01m13.518s          LUA :   AUTOPREPOS = "No"
+6h01m13.518s          LUA :   WRAPAROUND = "Yes"
+6h01m13.518s          LUA :   RESTARTMODE = "First Cue"
+6h01m13.518s          LUA :   MASTERGOMODE = "None"
+6h01m13.518s          LUA :   SPEEDFROMRATE = "No"
+6h01m13.518s          LUA :   TRACKING = ""
+6h01m13.518s          LUA :   INCLUDELINKLASTGO = "Yes"
+6h01m13.518s          LUA :   PRIORITY = "1"
+6h01m13.518s          LUA :   PLAYBACKMASTER = ""
+6h01m13.518s          LUA :   RATEMASTER = ""
+6h01m13.518s          LUA :   SPEEDMASTER = ""
+6h01m13.518s          LUA :   RATESCALE = "One"
+6h01m13.518s          LUA :   SPEEDSCALE = "One"
+6h01m13.518s          LUA :   INPUTFILTER = ""
+6h01m13.518s          LUA :   OUTPUTFILTER = ""
+6h01m13.518s          LUA :   PREFERCUEAPPEARANCE = "No"
+6h01m13.518s          LUA :   EXECUTORDISPLAYMODE = "Both"
+6h01m13.518s          LUA :   CUEZEROMODE = "Off"
+6h01m13.518s          LUA : Children:
+6h01m13.518s          LUA :   Count: 1
+6h01m13.518s          LUA :   #0000: Name = "Part Zero", Class = "ProgPart"
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER DUMP END ===
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PART DUMP START ===
+6h01m13.518s          LUA : Name:  Part Zero
+6h01m13.518s          LUA : Class: ProgPart
+6h01m13.518s          LUA : Path:  Root/ShowData/UserProfiles/1 'Default'/Environments/UserEnvironment 1/Programmer/Part Zero
+6h01m13.518s          LUA : Properties:
+6h01m13.518s          LUA :   IGNORENETWORK = "No" (Read Only)
+6h01m13.518s          LUA :   STRUCTURELOCKED = "No" (Read Only)
+6h01m13.518s          LUA :   SYSTEMLOCKED = "No" (Read Only)
+6h01m13.518s          LUA :   INDEX = "0" (Read Only)
+6h01m13.518s          LUA :   COUNT = "0" (Read Only)
+6h01m13.518s          LUA :   NAME = "Part Zero"
+6h01m13.518s          LUA :   NOTE = ""
+6h01m13.518s          LUA :   USEREXPANDED = "Yes"
+6h01m13.518s          LUA :   FADERENABLED = "No" (Read Only)
+6h01m13.518s          LUA :   OWNED = "No" (Read Only)
+6h01m13.518s          LUA :   HIDDEN = "No"
+6h01m13.518s          LUA :   DEPENDENCYEXPORT = ""
+6h01m13.518s          LUA :   MEMORYFOOTPRINT = "225 Bytes"
+6h01m13.518s          LUA :   PART = "0"
+6h01m13.518s          LUA : Children:
+6h01m13.518s          LUA :   Count: 0
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === PROGRAMMER PART DUMP END ===
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === GROUP RESOLUTION ===
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] Possible Group: UNRESOLVED - no confirmed non-mutating membership API
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] Command-history hint: DISABLED - no confirmed stable reader
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] === RECIPE RESOLUTION ===
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] Candidate Recipe: UNRESOLVED - scoring intentionally disabled
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] Current Recipe Reference: UNRESOLVED - inspect Recipe Dumps
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] NO-OP: this diagnostic cannot and will not update the Showfile
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] Copy this complete output for 2.3.2.0 vs 2.4.x comparison
+6h01m13.518s          LUA : [RecipeUpdate][DIAG] ============================================================
+6h01m19.214s     MainTask : OK:Edit UserProfile 1.15 Property 'KeyboardShortcutsActive' /NoOops
+6h01m22.780s     MainTask : Application version is 2.3.2.0
+6h01m22.780s     MainTask : Station  SN   : y3Bib33Y3NFWrcm3p9n8
+6h01m22.780s     MainTask : Station  IP   : onPC 192.168.193.101
+6h01m22.780s     MainTask : Station  OS   : Windows
+6h01m22.780s     MainTask : Station  Build: Release
+6h01m22.780s     MainTask : Station  Name : WillySu-Laptop-3080
+6h01m22.780s     MainTask : Session  Name : WillySu-Laptop-3080
+6h01m22.780s     MainTask : Location Name : Local
+6h01m22.780s     MainTask : Show file Name : 2026 SAX MACHIBE@SUB0829 after
+6h01m22.780s     MainTask : Station Status: IdleMaster
+6h01m22.780s     MainTask : Release type Release
+6h01m22.780s     MainTask : Compiled at Oct 30 2025 07:37:54
+6h01m22.780s     MainTask : Repository hash 8762398837b4f33fb44e77367e4410536744b27c
+6h01m22.780s     MainTask : Commit date     2025-10-29 16:07:06 +0100

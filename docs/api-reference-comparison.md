@@ -105,12 +105,10 @@ Diagnostic version 0.1.2.0 adds bounded, read-only probes for:
 - `GetUIChannelIndex(subfixture, attribute)` round trip;
 - `GetChannelFunction(ui, attribute)` and `GetChannelFunctionIndex(ui, attribute)`.
 
-All ChannelFunction results remain explicitly unverified until a 2.3.2.0 DumpLog is reviewed. `SetProgPhaser` and `SetProgPhaserValue` are capability-reported but never invoked.
+The 2026-09-02 2.3.2.0 DumpLogs showed that these APIs are shape-dependent: Position's UI-channel round trip changed index 9 to 10 and its ChannelFunction probes returned `nil`; Color's round trip returned `nil`, but `GetChannelFunction` resolved `Color Index` and `GetChannelFunctionIndex` returned 67. `GetProgPhaserValue(ui, 1)` returned a step for the multi-step Position sample and `nil` for the single-step Color sample. These results are useful read evidence, but none is a universal writer identity contract. `SetProgPhaser` and `SetProgPhaserValue` remain capability-reported and are never invoked.
 
 ## Next real-console tests
 
-1. Re-import diagnostic 0.1.2.0.
-2. Ordinary Programmer Position preset call: verify the new step, preset-data, attribute, round-trip, and ChannelFunction probes.
-3. Ordinary Programmer Color preset call: compare multiple Color attributes and preset reference shape.
-4. If safe test presets exist, separately test a relative preset, an integrated preset value, and a multi-step preset.
-5. Repeat the safe read-only tests on 2.4.x before converting any result into compatibility logic.
+1. If safe test presets exist, separately test a pure relative preset, an integrated preset value, and controlled single-step/multi-step presets.
+2. Repeat the Position and Color read-only tests on 2.4.x before converting any result into compatibility logic.
+3. Build a disposable tracking test where the recipe source Cue/Part is known and the current cue only tracks it, then inspect for a reliable provenance mechanism.
