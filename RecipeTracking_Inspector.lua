@@ -347,142 +347,97 @@ signalTable.StopRecipeTrackingInspector = function()
     stopState(_G[STATE_KEY])
 end
 
-local function movePanel(state, x, y)
-    if not state or not state.panel or not state.stop then return end
-    local panelHeight = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT
-    local maxX = math.max(0, (state.displayWidth or 1920) - PANEL_WIDTH)
-    local maxY = math.max(0, (state.displayHeight or 1080) - panelHeight)
-    x = math.max(0, math.min(maxX, math.floor(tonumber(x) or 0)))
-    y = math.max(0, math.min(maxY, math.floor(tonumber(y) or 0)))
-    state.panelX, state.panelY = x, y
-    state.panel.H = panelHeight
-    state.panel.X, state.panel.Y = x, y
-    local buttonY = y + panelHeight - 54
-    if state.detail then state.detail.X, state.detail.Y = x + 200, buttonY end
-    if state.move then state.move.X, state.move.Y = x + 310, buttonY end
-    state.stop.X, state.stop.Y = x + 420, buttonY
-end
-
 signalTable.ToggleRecipeTrackingDetails = function()
     local state = _G[STATE_KEY]
     if not state then return end
     state.expanded = not state.expanded
     if state.detail then state.detail.Text = state.expanded and "COMPACT" or "DETAIL" end
-    movePanel(state, state.panelX or 0, state.panelY or 0)
+    if state.window then state.window.H = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT end
     state.forceRefresh = true
-end
-
-signalTable.MoveRecipeTrackingInspector = function()
-    local state = _G[STATE_KEY]
-    if not state then return end
-    state.positionIndex = ((state.positionIndex or 1) % 4) + 1
-    local panelHeight = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT
-    local maxX = math.max(0, (state.displayWidth or 1920) - PANEL_WIDTH)
-    local maxY = math.max(0, (state.displayHeight or 1080) - panelHeight)
-    local positions = {
-        { maxX, 20 }, { 20, 20 }, { 20, maxY }, { maxX, maxY }
-    }
-    movePanel(state, positions[state.positionIndex][1], positions[state.positionIndex][2])
-end
-
-signalTable.StartRecipeTrackingDrag = function(_, _, x, y)
-    local state = _G[STATE_KEY]
-    if not state then return end
-    state.drag = {
-        pointerX = tonumber(x) or 0,
-        pointerY = tonumber(y) or 0,
-        panelX = state.panelX or 0,
-        panelY = state.panelY or 0
-    }
-end
-
-signalTable.UpdateRecipeTrackingDrag = function(_, _, x, y)
-    local state = _G[STATE_KEY]
-    if not state or not state.drag then return end
-    movePanel(state,
-        state.drag.panelX + (tonumber(x) or state.drag.pointerX) - state.drag.pointerX,
-        state.drag.panelY + (tonumber(y) or state.drag.pointerY) - state.drag.pointerY)
-end
-
-signalTable.EndRecipeTrackingDrag = function(_, _, x, y)
-    local state = _G[STATE_KEY]
-    if state and state.drag then
-        movePanel(state,
-            state.drag.panelX + (tonumber(x) or state.drag.pointerX) - state.drag.pointerX,
-            state.drag.panelY + (tonumber(y) or state.drag.pointerY) - state.drag.pointerY)
-        state.drag = nil
-    end
 end
 
 local function createPanel(state)
     local display = callable("GetFocusDisplay") and safe(GetFocusDisplay) or nil
     if display == nil then return nil, "GetFocusDisplay unavailable" end
-    local overlay = safe(function() return display.ModalOverlay end)
-    if overlay == nil then return nil, "ModalOverlay unavailable" end
+    local overlay = safe(function() return display.Fullscreen end)
+        or safe(function() return display.ModalOverlay end)
+    if overlay == nil then return nil, "Fullscreen/ModalOverlay unavailable" end
 
-    local panel = safe(function() return overlay:Append("Button") end)
-    if panel == nil then return nil, "could not append inspector panel" end
-    panel.Name = "RecipeTrackingInspectorPanel"
-    local displayWidth = tonumber(display.W) or 1920
-    local displayHeight = tonumber(display.H) or 1080
-    panel.W = PANEL_WIDTH
-    panel.H = COMPACT_HEIGHT
-    panel.X = math.max(0, displayWidth - 540)
-    panel.Y = "20"
-    panel.HasHover = "Yes"
+    local window = safe(function() return overlay:Append("BaseInput") end)
+    if window == nil then return nil, "could not append BaseInput" end
+    window.Name = "RecipeTrackingInspectorWindow"
+    window.W = PANEL_WIDTH
+    window.H = COMPACT_HEIGHT
+    window.Columns = 1
+    window.Rows = 3
+    window[1][1].SizePolicy = "Fixed"
+    window[1][1].Size = "50"
+    window[1][2].SizePolicy = "Stretch"
+    window[1][3].SizePolicy = "Fixed"
+    window[1][3].Size = "50"
+    window.AutoClose = "No"
+    window.CloseOnEscape = "No"
+    pcall(function() window.WantsModal = "0" end)
+
+    local title = safe(function() return window:Append("TitleBar") end)
+    if title == nil then deleteHandle(window) return nil, "could not append TitleBar" end
+    title.Name = "TitleBar"
+    title.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    title.Columns = 2
+    title.Rows = 1
+    title[1][1].SizePolicy = "Stretch"
+    title[2][1].SizePolicy = "Fixed"
+    title[2][1].Size = "50"
+
+    local titleButton = safe(function() return title:Append("TitleButton") end)
+    if titleButton == nil then deleteHandle(window) return nil, "could not append TitleButton" end
+    titleButton.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    titleButton.Text = "Recipe Tracking Inspector [READ-ONLY]"
+    titleButton.Texture = "corner1"
+
+    local close = safe(function() return title:Append("CloseButton") end)
+    if close ~= nil then
+        close.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+        close.Texture = "corner2"
+        close.PluginComponent = componentHandle
+        close.Clicked = "StopRecipeTrackingInspector"
+    end
+
+    local panel = safe(function() return window:Append("UIObject") end)
+    if panel == nil then deleteHandle(window) return nil, "could not append content" end
+    panel.Name = "RecipeTrackingInspectorContent"
+    panel.Anchors = { left = 0, right = 0, top = 1, bottom = 1 }
     panel.Font = "Medium20"
     panel.TextalignmentH = "Left"
     panel.TextalignmentV = "Top"
     panel.TextAutoAdjust = "No"
-    panel.Padding = { left = 16, right = 16, top = 14, bottom = 14 }
-    panel.BackColor = Root().ColorTheme.ColorGroups.Global.Transparent75
-    panel.PluginComponent = componentHandle
-    panel.Clicked = ""
-    panel.MouseDown = "StartRecipeTrackingDrag"
-    -- Capability-safe onPC movement candidate; real 2.3.2.0 confirmation is
-    -- still required. Touch screens use the verified signal names below.
-    pcall(function() panel.MouseMove = "UpdateRecipeTrackingDrag" end)
-    panel.MouseUp = "EndRecipeTrackingDrag"
-    panel.TouchStart = "StartRecipeTrackingDrag"
-    panel.TouchUpdate = "UpdateRecipeTrackingDrag"
-    panel.TouchEnd = "EndRecipeTrackingDrag"
+    panel.Padding = { left = 12, right = 12, top = 8, bottom = 8 }
 
-    local detail = safe(function() return overlay:Append("Button") end)
-    if detail == nil then deleteHandle(panel) return nil, "could not append detail button" end
+    local footer = safe(function() return window:Append("UILayoutGrid") end)
+    if footer == nil then deleteHandle(window) return nil, "could not append footer" end
+    footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
+    footer.Columns = 2
+    footer.Rows = 1
+
+    local detail = safe(function() return footer:Append("Button") end)
+    if detail == nil then deleteHandle(window) return nil, "could not append detail button" end
     detail.Name = "RecipeTrackingInspectorDetail"
-    detail.W = "100"
-    detail.H = "44"
+    detail.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
     detail.Text = "DETAIL"
     detail.Font = "Medium20"
     detail.PluginComponent = componentHandle
     detail.Clicked = "ToggleRecipeTrackingDetails"
 
-    local move = safe(function() return overlay:Append("Button") end)
-    if move == nil then deleteHandle(detail) deleteHandle(panel) return nil, "could not append move button" end
-    move.Name = "RecipeTrackingInspectorMove"
-    move.W = "100"
-    move.H = "44"
-    move.Text = "MOVE"
-    move.Font = "Medium20"
-    move.PluginComponent = componentHandle
-    move.Clicked = "MoveRecipeTrackingInspector"
-
-    local stop = safe(function() return overlay:Append("Button") end)
-    if stop == nil then deleteHandle(move) deleteHandle(detail) deleteHandle(panel) return nil, "could not append stop button" end
+    local stop = safe(function() return footer:Append("Button") end)
+    if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.W = "100"
-    stop.H = "44"
-    stop.X = math.max(0, displayWidth - 120)
-    stop.Y = "326"
+    stop.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
-    state.panel, state.detail, state.move, state.stop = panel, detail, move, stop
+    state.window, state.panel, state.detail, state.stop = window, panel, detail, stop
     state.expanded = false
-    state.positionIndex = 1
-    state.displayWidth, state.displayHeight = displayWidth, displayHeight
-    movePanel(state, displayWidth - 540, 20)
     return panel
 end
 
@@ -514,10 +469,7 @@ local function main()
         coroutine.yield(REFRESH_SECONDS)
     end
 
-    deleteHandle(state.stop)
-    deleteHandle(state.move)
-    deleteHandle(state.detail)
-    deleteHandle(state.panel)
+    deleteHandle(state.window)
     if _G[STATE_KEY] == state then _G[STATE_KEY] = nil end
 end
 
