@@ -2,13 +2,16 @@
 
 ## Current objective
 
-Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking Recipe Tracking Inspector for grandMA3 2.3.2.0+.
+Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking Recipe Tracking Inspector for grandMA3 2.3.2.0+. Also research a safe read-only Pool indication for Presets currently used by selected fixtures, including simultaneous Dimmer and Position use.
 
 ## Current status
 
-**Persistent Inspector prototype 0.2.0.0 implemented and locally deployed; real-console UI validation is pending.** Phase 0 is complete and Phase 1 resolution is substantially validated on real grandMA3 2.3.2.0. Do not begin Phase 2 writer work.
+**Persistent Inspector prototype 0.2.1.3 implemented and locally deployed; fractional-Cue and revised onPC drag validation are pending.** Phase 0 is complete and Phase 1 resolution is substantially validated on real grandMA3 2.3.2.0. Do not begin Phase 2 writer work.
 
 ## What has been completed
+
+- Inspector 0.2.1.3 fixes fractional Cue labels: 2.3.2.0 exposes `Cue.No` in thousandths (`500` = Cue `0.5`, `8500` = Cue `8.5`).
+- Inspector 0.2.1.3 adds a capability-safe `MouseMove` binding for onPC drag updates while retaining the touch bindings.
 
 - Researched official grandMA3 documentation for the 2.3 target generation.
 - Added `docs/research.md` with confirmed APIs, unknowns, compatibility matrix, console test plan, Phase 2 gate, and official source links.
@@ -59,6 +62,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - A one-fixture Position selection at Cue 10 displayed two matching Recipes. This is expected under the conservative subset scan when two Recipe Groups both contain the fixture; `No Programmer value` is also expected for Attribute-only inspection. Version 0.2.1.2 lists up to three ambiguous candidates with Cue/Part/Recipe, Group, Values, coverage, and a Current-Cue marker so the cause can be distinguished without guessing.
 
 ## What remains
+
+- Verify Cue 0.5/8.5 labels and onPC mouse dragging with Inspector 0.2.1.3 on the user's 2.3.2.0 system.
+- Research whether 2.3.2.0 exposes a read-only UI highlight/flash mechanism for existing Preset Pool cells. Do not simulate it by changing Appearance, repeatedly selecting Presets, or issuing `At` commands.
 
 - Repeat on a 2.4.x installation.
 - Validate the persistent Inspector's position, dimensions, STOP callback, refresh behavior, and cleanup on real grandMA3 2.3.2.0.
@@ -125,6 +131,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Inspector 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`287F3180122AA7F40BC4F2A80B7AE7AE452F2AA6B01B745ABB8A0CE40068CC5A`).
 - XML descriptor parse/reference validation: passed; both referenced Lua components exist.
 - XML 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`5F5D5A3BFC9F36E621F82281C5EE5DF27E81F47BA26900980641CAED545EB097`).
+- Inspector 0.2.1.3 Lua syntax parse and read-only static safety scan: passed.
+- Inspector 0.2.1.3 local deployment source/destination SHA-256 comparison: passed (`E6F59AB4E8894CEC3A38C56CFEA84AE0C4667F79ED9ACF7C5FB4865CC00507AD`).
+- XML 0.2.1.3 parse/component-reference and deployment hash comparison: passed (`036AE88EE5A3E8D087575A908CAC351E768E4E445476EED851BA9D44C0AB6A16`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.

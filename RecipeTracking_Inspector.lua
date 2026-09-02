@@ -64,7 +64,9 @@ end
 local function cueLabel(cue)
     if cue == nil then return "UNRESOLVED" end
     local number = tonumber(property(cue, "No") or property(cue, "NO"))
-    if number and number % 1000 == 0 then number = number / 1000 end
+    -- grandMA3 2.3.2.0 exposes Cue.No in thousandths: Cue 1 = 1000,
+    -- Cue 0.5 = 500, and Cue 8.5 = 8500.
+    if number then number = number / 1000 end
     return string.format("%s - %s", number and string.format("%g", number) or "?", label(cue))
 end
 
@@ -368,6 +370,9 @@ local function createPanel(state)
     panel.PluginComponent = componentHandle
     panel.Clicked = ""
     panel.MouseDown = "StartRecipeTrackingDrag"
+    -- Capability-safe onPC movement candidate; real 2.3.2.0 confirmation is
+    -- still required. Touch screens use the verified signal names below.
+    pcall(function() panel.MouseMove = "UpdateRecipeTrackingDrag" end)
     panel.MouseUp = "EndRecipeTrackingDrag"
     panel.TouchStart = "StartRecipeTrackingDrag"
     panel.TouchUpdate = "UpdateRecipeTrackingDrag"
