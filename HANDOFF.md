@@ -53,6 +53,8 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - After the first UI test launched the legacy diagnostic MessageBox from component 1, reordered descriptor 0.2.0.1 so `recipe_tracking_inspector` is the first/default component and renamed the Plugin `Recipe Tracking Inspector`; the legacy diagnostic remains component 2.
 - First live Inspector test showed that selection refresh worked (`Selection: 1 fixture`) but feature matching failed: the panel showed `PanTilt` and no Recipe while the Programmer preset was Position 2.8 Full. Inspector 0.2.0.2 now resolves object addresses using the diagnostic's proven `AddrNative` -> `Addr` -> `ToAddr` order, preserving `PresetPools.Position` instead of a collapsed display address and allowing the existing one-of-20 subset match.
 - User requested a draggable panel. Version 0.2.0.3 emits one bounded Dump of the created panel on startup so the real 2.3.2 UI object's supported gesture/signal properties can be identified; remove this temporary probe after native dragging is implemented.
+- The 0.2.0.3 real-console panel Dump confirmed native `TOUCHSTART`, `TOUCHUPDATE`, and `TOUCHEND` signals with pointer X/Y arguments. Version 0.2.1.0 wires these signals to bounded panel movement, keeps STOP aligned with the panel, and removes the temporary Dump probe.
+- Version 0.2.1.0 no longer requires a Programmer preset to resolve tracking. Selecting fixtures plus an Attribute scans matching Recipe sources and displays `New Preset: No Programmer value` when appropriate. It normalizes the observed `PanTilt` UI feature to Recipe feature group `Position`.
 
 ## What remains
 

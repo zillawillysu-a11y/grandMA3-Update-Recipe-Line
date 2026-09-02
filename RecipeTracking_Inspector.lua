@@ -105,6 +105,14 @@ local function selectedFeatureLabel()
     return "UNRESOLVED"
 end
 
+local function normalizeFeature(name)
+    local text = tostring(name or "UNRESOLVED")
+    local compact = string.lower(string.gsub(text, "[%s_/%-]", ""))
+    if compact == "pantilt" or compact == "pan" or compact == "tilt" then return "Position" end
+    if compact == "rgb" or compact == "colorrgb" or compact == "colourrgb" then return "Color" end
+    return text
+end
+
 local function getProgPhaser(index)
     if not callable("GetProgPhaser") then return nil end
     return safe(GetProgPhaser, index, false) or safe(GetProgPhaser, index)
@@ -113,7 +121,7 @@ end
 local function readProgrammer(fixtures)
     local presets, rawCount = {}, 0
     if #fixtures == 0 or not callable("GetUIChannels") then
-        return { feature = selectedFeatureLabel() }
+        return { feature = normalizeFeature(selectedFeatureLabel()) }
     end
     for _, fixture in ipairs(fixtures) do
         local channels = safe(GetUIChannels, fixture.handle or fixture.index, true)
@@ -141,11 +149,12 @@ local function readProgrammer(fixtures)
         return {
             preset = preset,
             presetAddress = keys[1],
-            feature = string.match(keys[1], "PresetPools%.([^%.]+)%.") or selectedFeatureLabel()
+            feature = string.match(keys[1], "PresetPools%.([^%.]+)%.")
+                or normalizeFeature(selectedFeatureLabel())
         }
     end
     return {
-        feature = selectedFeatureLabel(),
+        feature = normalizeFeature(selectedFeatureLabel()),
         ambiguous = #keys > 1 or rawCount > 0,
         presetCount = #keys,
         rawCount = rawCount
@@ -238,14 +247,11 @@ local function render()
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
             lines[#lines + 1] = "Old Values: " .. tostring(values or "UNRESOLVED")
-            lines[#lines + 1] = "New Preset: " .. label(info.preset)
+            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
             lines[#lines + 1] = "Confidence: DIRECT"
         else
             lines[#lines + 1] = string.format("Status: AMBIGUOUS (%d direct Recipes)", #direct)
         end
-    elseif not info.preset then
-        lines[#lines + 1] = info.ambiguous and "\nStatus: Programmer value is ambiguous/raw" or
-            "\nStatus: Choose an Attribute preset"
     else
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
         if #candidates == 1 then
@@ -256,14 +262,14 @@ local function render()
             lines[#lines + 1] = "Group: " .. label(item.group)
             lines[#lines + 1] = string.format("Coverage: %d selected / %d in Group", item.selectedCount, item.groupCount)
             lines[#lines + 1] = "Old Values: " .. tostring(item.values or "UNRESOLVED")
-            lines[#lines + 1] = "New Preset: " .. label(info.preset)
+            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
             lines[#lines + 1] = "Confidence: INFERRED HIGH"
         elseif #candidates == 0 then
             lines[#lines + 1] = "\nStatus: No matching tracking Recipe"
-            lines[#lines + 1] = "New Preset: " .. label(info.preset)
+            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
         else
             lines[#lines + 1] = string.format("\nStatus: AMBIGUOUS (%d matching Recipes)", #candidates)
-            lines[#lines + 1] = "New Preset: " .. label(info.preset)
+            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
         end
     end
     return table.concat(lines, "\n")
@@ -285,6 +291,41 @@ signalTable.StopRecipeTrackingInspector = function()
     stopState(_G[STATE_KEY])
 end
 
+local function movePanel(state, x, y)
+    if not state or not state.panel or not state.stop then return end
+    local maxX = math.max(0, (state.displayWidth or 1920) - 520)
+    local maxY = math.max(0, (state.displayHeight or 1080) - 360)
+    x = math.max(0, math.min(maxX, math.floor(tonumber(x) or 0)))
+    y = math.max(0, math.min(maxY, math.floor(tonumber(y) or 0)))
+    state.panelX, state.panelY = x, y
+    state.panel.X, state.panel.Y = x, y
+    state.stop.X, state.stop.Y = x + 420, y + 306
+end
+
+signalTable.StartRecipeTrackingDrag = function(_, _, x, y)
+    local state = _G[STATE_KEY]
+    if not state then return end
+    state.drag = {
+        pointerX = tonumber(x) or 0,
+        pointerY = tonumber(y) or 0,
+        panelX = state.panelX or 0,
+        panelY = state.panelY or 0
+    }
+end
+
+signalTable.UpdateRecipeTrackingDrag = function(_, _, x, y)
+    local state = _G[STATE_KEY]
+    if not state or not state.drag then return end
+    movePanel(state,
+        state.drag.panelX + (tonumber(x) or state.drag.pointerX) - state.drag.pointerX,
+        state.drag.panelY + (tonumber(y) or state.drag.pointerY) - state.drag.pointerY)
+end
+
+signalTable.EndRecipeTrackingDrag = function()
+    local state = _G[STATE_KEY]
+    if state then state.drag = nil end
+end
+
 local function createPanel(state)
     local display = callable("GetFocusDisplay") and safe(GetFocusDisplay) or nil
     if display == nil then return nil, "GetFocusDisplay unavailable" end
@@ -295,6 +336,7 @@ local function createPanel(state)
     if panel == nil then return nil, "could not append inspector panel" end
     panel.Name = "RecipeTrackingInspectorPanel"
     local displayWidth = tonumber(display.W) or 1920
+    local displayHeight = tonumber(display.H) or 1080
     panel.W = "520"
     panel.H = "360"
     panel.X = math.max(0, displayWidth - 540)
@@ -306,6 +348,10 @@ local function createPanel(state)
     panel.TextAutoAdjust = "No"
     panel.Padding = { left = 16, right = 16, top = 14, bottom = 14 }
     panel.BackColor = Root().ColorTheme.ColorGroups.Global.Transparent75
+    panel.PluginComponent = componentHandle
+    panel.TouchStart = "StartRecipeTrackingDrag"
+    panel.TouchUpdate = "UpdateRecipeTrackingDrag"
+    panel.TouchEnd = "EndRecipeTrackingDrag"
 
     local stop = safe(function() return overlay:Append("Button") end)
     if stop == nil then deleteHandle(panel) return nil, "could not append stop button" end
@@ -319,12 +365,8 @@ local function createPanel(state)
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
     state.panel, state.stop = panel, stop
-    -- Temporary compatibility probe: custom UI gesture properties are not
-    -- documented. One bounded Dump from the real 2.3.2 UI object lets the
-    -- next revision wire native dragging without guessing signal names.
-    pcall(function()
-        if type(panel.Dump) == "function" then panel:Dump() end
-    end)
+    state.displayWidth, state.displayHeight = displayWidth, displayHeight
+    movePanel(state, displayWidth - 540, 20)
     return panel
 end
 
