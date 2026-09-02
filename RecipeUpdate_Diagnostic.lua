@@ -487,7 +487,12 @@ local function dumpProgrammerObjects()
     end
     if callable("ProgrammerPart") then
         local results = safeCall("ProgrammerPart", ProgrammerPart)
-        dumpNamedObject("PROGRAMMER PART", results and results[1] or nil)
+        local part = results and results[1] or nil
+        dumpNamedObject("PROGRAMMER PART", part)
+        if part then
+            log("=== PROGRAMMER PART OBJECT TREE ===")
+            inspectObject(part, 0, { count = 0 })
+        end
     end
 end
 
