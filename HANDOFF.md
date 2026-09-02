@@ -44,6 +44,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Updated diagnostic 0.1.9.0 to show the inferred Current/Source/Group/Old/New chain in a read-only MessageBox and to report the unique candidate in the final Recipe summary instead of the stale `UNRESOLVED` line.
 - User visually verified the 0.1.9.0 MessageBox. Source resolution was correct, but generic object labels exposed `function: 000...` pointers for Part/Recipe and made the source line too long. Diagnostic 0.1.10.0 adds clean Cue/Part/Recipe display helpers and one field per line.
 - User visually checked 0.1.10.0: line layout was fixed, but Cue numbers rendered as `3.0/1.0` and Recipe `Index` collided with an object method. Diagnostic 0.1.11.0 uses `%g` Cue formatting and uppercase Dump properties `PART`/`INDEX` with function-pointer rejection.
+- User visually verified the final 0.1.11.0 MessageBox on 2.3.2.0: Current Cue 3, Source Cue 1, Part 0, Recipe 1, Group 9, old Position 2.4, new Position 2.8, confidence, and read-only status all render correctly and legibly.
 
 ## What remains
 
@@ -122,7 +123,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.8.0 bounded tracking provenance candidate scan: Lua syntax/static safety/XML and real-console validation passed; one expected source Recipe was inferred.
 - Diagnostic 0.1.9.0 visual tracking summary: Lua syntax/static safety/XML and real-console MessageBox validation passed; label/layout cleanup followed in 0.1.10.0.
 - Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML and real-console visual validation passed; numeric/property label cleanup followed in 0.1.11.0.
-- Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console visual check pending.
+- Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML, deployment hash, and real-console visual validation passed.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
