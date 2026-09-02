@@ -50,6 +50,7 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Added `RecipeTracking_Inspector.lua` as a separate component. It creates a bounded overlay panel on the focused display, refreshes every 0.25 seconds, updates text only when content changes, supports ordinary Programmer and Edit Recipe, shows selection/Attribute/current Cue/source Cue/Part/Recipe/Group/coverage/old/new/confidence, and renders unresolved or ambiguous states.
 - Inspector lifecycle is explicit: the STOP button sets a state flag, rerunning the component toggles an existing instance off, a global state prevents duplicate active instances, and cleanup deletes only the two UI handles created by the Inspector. No Show data is written.
 - Updated the XML descriptor to 0.2.0.0 with separate diagnostic and Inspector components.
+- After the first UI test launched the legacy diagnostic MessageBox from component 1, reordered descriptor 0.2.0.1 so `recipe_tracking_inspector` is the first/default component and renamed the Plugin `Recipe Tracking Inspector`; the legacy diagnostic remains component 2.
 
 ## What remains
 
