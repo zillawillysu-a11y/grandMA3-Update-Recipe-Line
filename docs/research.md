@@ -36,6 +36,8 @@ The following was observed in two System Monitor dumps from an actual 2.3.2.0 on
 - `GetPresetData(preset, true, false)` returned UI-channel-keyed data for both presets. Color returned one entry with `selective=false`; the Position preset returned multiple selective entries.
 - Attribute identity was resolved in both tests. The Position `GetUIChannelIndex` round trip returned a different index (`9` to `10`), while the Color round trip returned `nil`; this call shape is not a safe identity invariant. Color `GetChannelFunction` returned the expected `Color Index` handle and index 67, while the Position probe returned `nil`.
 - The current cue tree directly exposed `Cue -> Part -> Recipe`. The observed Recipe had readable properties `Selection=Group 401` and `Values=Preset 1.1`, confirming the hierarchy and property names on 2.3.2.0. The property rendering does not yet establish exact isolated write syntax or original-source provenance.
+- Diagnostic 0.1.4.0 verified the Edit Recipe path on 2026-09-02. ProgrammerPart exposed one direct Recipe at `ShowData.UserProfiles.Default.Environments.UserEnvironment 1.Programmer.Part Zero.Recipe 1`, with `INDEX=1`, `SELECTION=9 'SPOT TOP GRID'`, `PRESET=2 'Position'.4 '<<<>>>'`, `VALUES=FeatureGroup 2 'Position'.Preset 4 '<<<>>>'`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. No Cue/Part/source/origin mapping property appeared in its full Dump.
+- This establishes two separate target strategies: Edit Recipe mode operates on the direct ProgrammerPart Recipe candidate; ordinary mode must resolve the tracked Cue/Part Recipe. The direct object address and readable `VALUES` field still do not authorize a write until assignment and commit/cook behavior are isolated and undo-tested.
 
 These observations justify a Phase 1 high-confidence summary only when exactly one `abs_preset` handle is found and there are no active phasers without that reference. They do not yet prove original Cue/Part or Recipe-line resolution.
 
@@ -103,7 +105,7 @@ The following are not safe foundations for production writes yet:
 | `GetProgPhaserValue` | Not confirmed in official 2.3 index | Capability-detect only | Do not require or call in Phase 1 |
 | Preset link / `integrated` | Shape unknown | Capability-detect keys | Report `UNRESOLVED` until real dump proves semantics |
 | Group source | No stable API confirmed | Capability-detect future API | Future exact reverse match; ambiguous/no match means NO-OP |
-| Recipe object access | `Cue -> Part -> Recipe` observed on 2.3.2.0 | Traverse handles and inspect classes | `Children()` + `Dump()` only |
+| Recipe object access | `Cue -> Part -> Recipe` and `ProgrammerPart -> Recipe` observed on 2.3.2.0 | Traverse handles and inspect classes | Branch by Edit Recipe vs ordinary mode |
 | Recipe Selection | `Selection` observed as `Group 401` on 2.3.2.0 | Verify shape/version read-only | Never write from display text alone |
 | Recipe Values | `Values` observed as `Preset 1.1` on 2.3.2.0 | Verify shape/version read-only | Exact isolated addressing still unresolved |
 | Recipe addressing | Not confirmed | Dump `Addr` and `AddrNative` | No Assign until isolated test |

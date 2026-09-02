@@ -32,12 +32,13 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Analyzed the 2026-09-02 14:11 DumpLog: Sequence 8 Cue 3 was current, ProgrammerPart contained one Recipe, and phasers had `mask_cooked=255`, identifying Edit Recipe mode. No provenance field appeared in the parent ProgPart Dump.
 - Updated diagnostic 0.1.3.0 to traverse and Dump ProgrammerPart Recipe children, so a subsequent Recipe-content run captures their properties instead of only listing the child name.
 - Recorded the product requirement that the final Plugin work both with and without Edit Recipe. Diagnostic 0.1.4.0 now treats both as supported workflows: direct ProgrammerPart Recipe candidates in Edit Recipe mode, tracked-target resolution in normal mode.
+- Verified diagnostic 0.1.4.0 in Edit Recipe mode on 2.3.2.0. It found the direct Programmer Recipe at `...Programmer.Part Zero.Recipe 1` and read `INDEX=1`, `SELECTION=Group 9`, `PRESET=Position 2.4`, `VALUES=FeatureGroup 2 Position.Preset 4`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. The full Dump contained no Cue/Part/source/origin mapping property.
 
 ## What remains
 
 - Repeat on a 2.4.x installation.
 - Use controlled tracking tests to resolve original Cue/Part provenance and an unambiguous Group strategy.
-- Establish exact isolated addressing for one Recipe Values cell without relying on display text.
+- Establish and undo-test exact isolated assignment behavior for the direct Edit Recipe `Values` property and for an ordinary Cue Recipe `Values` property without relying on display text.
 - Wait for user-provided real-console results before Phase 2.
 
 ## Important technical decisions
@@ -101,7 +102,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated and exercised on real 2.3.2.0.
 - Diagnostic 0.1.2.0 Position and Color probes on 2.3.2.0: passed; no runtime errors. UIChannel/ChannelFunction results are shape-dependent and remain unsuitable as universal writer assumptions.
 - Diagnostic 0.1.3.0 ProgrammerPart Recipe-child traversal: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
-- Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
+- Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation and Edit Recipe real-console validation passed; ordinary tracked-target run remains pending.
+- Diagnostic 0.1.4.0 Edit Recipe classification and direct Recipe-child inspection on 2.3.2.0: passed; exact address and Recipe fields captured with no runtime error.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -118,8 +120,8 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Run diagnostic 0.1.4.0 once with Edit Recipe open to capture the direct ProgrammerPart Recipe child properties.
-2. Exit Edit Recipe, clear the Programmer, then rerun the controlled Cue 3 tracking case to capture the ordinary tracked-target path.
-3. Repeat the same Position and Color tests on 2.4.x if available.
-4. Use the controlled tracked-cue result to investigate original Cue/Part provenance and Group matching.
-5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied for both workflows.
+1. Exit Edit Recipe, clear the Programmer, then rerun the controlled Cue 3 tracking case to capture the ordinary tracked-target path.
+2. Repeat the same Position and Color tests on 2.4.x if available.
+3. Use the controlled tracked-cue result to investigate original Cue/Part provenance and Group matching.
+4. Design a disposable, undo-verified assignment test for the direct Edit Recipe `Values` property, but do not enable production writes yet.
+5. Do not implement the production writer until all five items in the research document's Phase 2 gate are satisfied for both workflows.
