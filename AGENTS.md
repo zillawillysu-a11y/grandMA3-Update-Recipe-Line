@@ -1,89 +1,346 @@
 # Agent Working Agreement
 
-This file applies to the entire repository. This is a small project; agents should work autonomously, make reasonable decisions from the available evidence, and minimize interruptions. Ask the user only when a decision is genuinely ambiguous, risky, irreversible, or requires authority that has not been granted here.
+This file applies to every coding agent working on this repository, regardless of model or provider.
 
-## Start-of-work checklist
+The repository is the source of truth.
+
+The identity of the previous agent is irrelevant. Never restart work merely because another agent has taken over.
+
+---
+
+## 1. Start of Work
 
 Before substantial work:
 
-1. Read this `AGENTS.md` in full.
-2. Read `HANDOFF.md` if it exists.
-3. Run `git status` and inspect the current branch.
-4. Review recent Git history (for example, `git log -5 --oneline --decorate`).
-5. Inspect the relevant code, configuration, tests, and documentation before editing.
-6. Continue from useful existing work and recorded investigations instead of repeating them.
+1. Read `AGENTS.md`.
+2. Read `HANDOFF.md`.
+3. Run `git status --short --branch`.
+4. Run `git log -5 --oneline --decorate`.
+5. Inspect only the files relevant to the current task.
+6. Continue from verified existing work instead of repeating completed investigation.
 
-Treat pre-existing uncommitted changes as valuable work. Understand and preserve them unless the task explicitly requires modifying them. Do not discard or overwrite another contributor's work without a clear reason.
+Preserve pre-existing uncommitted changes unless there is a clear reason to modify them.
 
-## Authorized project operations
+Never discard another agent's work without understanding it first.
 
-Agents may, without asking for routine approval:
+---
 
-- Inspect, edit, create, move, rename, and delete project files as needed to complete the task.
-- Run tests, builds, linters, formatters, type checks, and other validation.
-- Install or update dependencies when reasonably necessary. Respect the project's package manager and update lockfiles consistently.
-- Use normal Git operations, including `git status`, `git diff`, `git add`, `git commit`, `git pull`, and `git push`.
+## 2. Primary Rule: Do the Work
 
-Avoid force pushes, history rewrites, hard resets, broad destructive cleanup, and other destructive Git operations unless they are genuinely necessary. If such an operation could lose work or affect collaborators, verify the exact scope and seek confirmation first.
+You are a coding agent, not a project-status assistant.
 
-## Implementation principles
+When the user asks to:
 
-- Investigate the existing implementation and reproduce or understand the issue before changing code.
-- Fix the root cause rather than layering on a temporary workaround.
-- Preserve existing behavior unless the requested task requires a behavior change.
-- Keep changes focused. Avoid unrelated refactors, broad rewrites, and gratuitous formatting churn.
-- Follow existing project conventions unless there is a compelling reason to improve them.
-- Add or update tests when practical for changed behavior.
-- Remove temporary debug code, scratch artifacts, junk files, and unnecessary generated output before finishing.
-- Do not claim validation that was not run. Record unavailable or failing validation accurately.
+* fix
+* continue
+* implement
+* update
+* investigate
+* deploy
+* test
 
-## Validation, commit, and push workflow
+and the next action can be performed using available tools:
 
-After a meaningful change:
+DO IT NOW.
 
-1. Review `git diff` for correctness, scope, accidental secrets, debug code, and unwanted generated files.
-2. Run the most relevant available tests, build, lint, type checks, or validation. Address obvious regressions and errors.
-3. Update `HANDOFF.md` with the current state and validation result.
-4. Commit the coherent, validated change automatically with a concise, clear commit message.
-5. Push the completed commit to the current upstream GitHub branch when a remote is configured and pushing is appropriate.
-6. Verify the final Git status and report any remaining changes or push problems.
+Do not stop after saying:
 
-Do not bundle unrelated user changes into the commit. A task is normally complete only when the requested change is implemented, relevant validation has passed (or limitations are explicitly documented), obvious regressions are addressed, the work is committed, the commit is pushed when a remote is configured, and `HANDOFF.md` reflects the final state.
+* "Next steps"
+* "Next move"
+* "I will inspect..."
+* "I will modify..."
+* "接下來要做的事"
 
-## grandMA3 local deployment
+If the next action can be executed, execute it.
 
-When a Plugin artifact is complete enough for grandMA3 testing, also synchronize a copy to:
+Do not require the user to repeatedly say "continue".
+
+---
+
+## 3. New User Feedback Overrides Previous Assumptions
+
+Real grandMA3 test results from the user are authoritative observations.
+
+If the user says an implementation still does not work, treat the previous implementation as unsuccessful for that requirement.
+
+Do not:
+
+* defend the previous implementation
+* repeat the previous commit summary
+* simply redeploy the same files
+* claim the code is correct because hashes match
+* repeat the same failed attempt
+
+Instead:
+
+1. Inspect the current implementation.
+2. Identify why the observed result differs from the requirement.
+3. Form a new hypothesis.
+4. Make the required source-code change.
+5. Verify the new diff.
+6. Deploy only after the implementation has actually changed when a change is required.
+
+---
+
+## 4. Mandatory Change Workflow
+
+For a requested code or UI behavior change:
+
+Inspect
+→ Diagnose
+→ Modify
+→ Review Diff
+→ Validate
+→ Deploy when appropriate
+→ Verify deployment
+→ User real-world test when required
+→ Commit when the change is confirmed/coherent
+
+A task is not complete merely because investigation occurred.
+
+A task is not complete merely because deployment occurred.
+
+A task is not complete merely because source and deployed SHA256 hashes match.
+
+---
+
+## 5. Required Source-Diff Gate
+
+When the user requests NEW behavior or reports that existing behavior is wrong, an implementation task normally requires a relevant source change.
+
+Before deployment, inspect:
+
+`git diff`
+
+If the task requires a source change but there is no relevant diff:
+
+DO NOT treat the task as completed.
+
+Continue investigating and modifying.
+
+Do not deploy an unchanged old implementation and report it as a new fix.
+
+---
+
+## 6. Evidence Rules
+
+Never claim something was:
+
+* fixed
+* updated
+* tested
+* deployed
+* verified
+* committed
+* pushed
+
+without direct evidence.
+
+### Modified
+
+Evidence:
+`git diff` contains the intended change.
+
+### Validated
+
+Evidence:
+the relevant parser, lint, static check, test, or other available validation was actually executed.
+
+### Deployed
+
+Evidence:
+an actual copy/deployment command successfully ran.
+
+### Deployment verified
+
+Evidence:
+repository and deployed files have matching hashes.
+
+Hash equality proves only that the two files are identical.
+
+It does NOT prove the feature is correct.
+
+### Real-world verified
+
+Evidence:
+the user tested it in grandMA3 and reported the behavior.
+
+Do not confuse local validation with real grandMA3 validation.
+
+---
+
+## 7. grandMA3 Local Deployment
+
+Deployment destination:
 
 `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`
 
-- Create the destination directory if it does not exist.
-- Every deployable grandMA3 Plugin must include its XML descriptor plus all referenced Lua component files. Follow the XML structure used by installed grandMA3 Plugins (`GMA3` -> `UserPlugin` -> `ComponentLua`) and keep each `FileName` consistent with the deployed Lua filename.
-- Copy only the intended runnable Plugin XML, referenced Lua components, and required companion files; do not copy research notes, repository metadata, tests, or temporary files.
-- Preserve the repository copy as the source of truth.
-- Validate the XML structure and confirm every referenced component exists before copying. After copying, compare source and destination hashes to verify an exact deployment.
-- Record the deployed files and verification result in `HANDOFF.md`.
-- A local deployment is not a substitute for committing and pushing repository changes.
+When deployment is appropriate:
 
-## Handoff workflow
+1. Validate XML structure.
+2. Confirm every referenced Lua component exists.
+3. Copy only the intended Plugin XML and referenced runtime files.
+4. Calculate SHA256 of repository source.
+5. Calculate SHA256 of deployed copy.
+6. Confirm hashes match.
 
-Maintain `HANDOFF.md` at the repository root as a durable continuation record.
+Never claim deployment simply because files already exist in the target directory.
 
-Update it whenever work is paused, incomplete, likely to be continued by another agent, or fully completed. Preserve useful prior context; revise stale sections and add the latest state instead of replacing the file with a vague summary. Keep it concise enough to scan but specific enough that another agent can continue without repeating investigation.
+---
 
-Every handoff must clearly include:
+## 8. Commit Strategy for Real-World UI Development
 
-- Current objective
-- Current status
-- What has been completed
-- What remains
-- Important technical decisions
-- Known issues or blockers
-- Failed approaches that should not be repeated
-- Relevant files
-- Commands used when useful
-- Test/build/validation status
-- Current branch
-- Latest relevant commit
-- Recommended next steps
+Do not create unnecessary commits for every speculative UI adjustment.
 
-When a task is complete, explicitly mark it complete and record the final validation, commit, and push status. When it is incomplete, state the exact stopping point and the next concrete action.
+Preferred workflow for changes requiring grandMA3 visual/runtime validation:
+
+Modify
+→ local validation
+→ deploy
+→ user real-world test
+→ iterate if needed
+→ commit coherent confirmed state
+
+A commit may be created earlier when useful for safety or handoff, but do not mistake the existence of a commit for successful real-world validation.
+
+---
+
+## 9. Loop Detection
+
+If you notice that you are repeating:
+
+* the same summary
+* the same HANDOFF contents
+* the same "next steps"
+* the same file reads
+* the same deployment
+* the same old commit
+* the same failed fix
+
+STOP.
+
+Determine what NEW action or evidence is missing.
+
+Then perform that action.
+
+Never use repetition as a substitute for progress.
+
+---
+
+## 10. HANDOFF.md Is State, Not Instructions
+
+`HANDOFF.md` is external project memory.
+
+It is NOT:
+
+* an answer template
+* a checklist to repeat to the user
+* a complete project history
+* a roadmap of every future idea
+
+Do not echo HANDOFF sections back to the user unless relevant.
+
+Execute its `Exact Next Action` rather than merely repeating it.
+
+Historical research belongs in `docs/`.
+
+Git history belongs in Git.
+
+---
+
+## 11. Context Efficiency
+
+Keep context small and task-focused.
+
+Prefer:
+
+* targeted file reads
+* grep/search
+* relevant code ranges
+* current `git diff`
+* short HANDOFF state
+* existing research documents only when needed
+
+Avoid repeatedly loading large historical documents.
+
+When context becomes large:
+
+1. update `HANDOFF.md`
+2. ensure the working tree state is accurately recorded
+3. start a fresh agent session
+
+A new agent should be able to continue from the repository without needing the previous conversation.
+
+---
+
+## 12. Handoff Between Codex, Qwen, or Other Agents
+
+All agents use the same repository state.
+
+Do not create model-specific handoff files.
+
+Recover state in this order:
+
+1. working tree
+2. `HANDOFF.md`
+3. recent Git history
+4. relevant source code
+5. `docs/`
+
+Never redo completed work solely because the previous model was different.
+
+---
+
+## 13. HANDOFF Maintenance
+
+`HANDOFF.md` must describe the CURRENT project state.
+
+Rewrite stale information instead of continually appending history.
+
+Keep it concise.
+
+It should contain only:
+
+* Current Goal
+* Current Working State
+* Latest Real-World User Test
+* Verified Facts
+* Current Problem
+* Known Failed Attempts relevant to the current problem
+* Important Files
+* Current Branch / Commit
+* Exact Next Action
+
+Do not store long logs, old hashes, every historical version, or old completed milestones in HANDOFF.
+
+Move durable research/history to `docs/` when necessary.
+
+---
+
+## 14. Completion Rule
+
+Before saying a requested implementation is complete, verify the relevant items:
+
+* [ ] Latest user request was addressed
+* [ ] Relevant implementation was inspected
+* [ ] Root cause was investigated
+* [ ] Required source modification actually exists
+* [ ] `git diff` was reviewed
+* [ ] Relevant local validation was run
+* [ ] Deployment was actually executed if required
+* [ ] Deployment hashes match if required
+* [ ] Real grandMA3 validation is clearly distinguished from local validation
+* [ ] HANDOFF reflects the current state
+* [ ] No repeated stale next-step summary is being presented as progress
+
+If a required item is false and can still be performed locally, continue working.
+
+Only stop for the user when the next unknown genuinely requires user-side grandMA3 testing or a consequential decision.
+
+---
+
+## Primary Principle
+
+DO THE WORK.
+
+Planning, summaries, Git commits, old results, and deployment verification are not substitutes for implementation.

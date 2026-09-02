@@ -1,197 +1,170 @@
 # Project Handoff
 
-## Current objective
+## Current Goal
 
-Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking Recipe Tracking Inspector for grandMA3 2.3.2.0+. Also research a safe read-only Pool indication for Presets currently used by selected fixtures, including simultaneous Dimmer and Position use.
+Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2.0.
 
-## Current status
+Current focus is the persistent Inspector UI and interaction behavior.
 
-**Persistent Inspector prototype 0.2.1.4 implemented; deployment and real-console validation are pending.** Phase 0 is complete and Phase 1 resolution is substantially validated on real grandMA3 2.3.2.0. Do not begin Phase 2 writer work.
+Do not begin Phase 2 Recipe writer work yet.
 
-## What has been completed
+---
 
-- Real 2.3.2.0 validation confirmed the 0.2.3.0 native `BaseInput` window can be freely dragged by its title bar. Inspector 0.2.3.1 renames the title to `Cue Recipe Update Tool`, reduces the title/close-button row to 36 px, and keeps X at the right edge.
-- Compact mode now reserves enough height and always shows Group, Current Cue, Old Preset, and New Preset when a unique Recipe is resolved. Detail mode grows to 520 px and includes an experimental native `ResizeCorner`.
-- Added a `STYLE` button to cycle capability-detected UI background choices. A title-bar right-click menu was not used because no stable 2.3.2.0 UserPlugin context-menu signal/API is confirmed.
-- Inspector 0.2.3.0 replaces the free-floating Button assembly and guessed pointer callbacks with the native 2.3.2.0 dialog hierarchy: non-modal `BaseInput`, `TitleBar`/`TitleButton`, content object, footer grid, and close/DETAIL/STOP controls. The intent is native title-bar dragging with a Plugin-popup appearance.
-- Researched a true Pool-style dockable Plugin window on installed grandMA3 2.3.2.0 and the requested patopesto reference repository. `ScreenContent` can instantiate only registered `CurrentProfile().Windowtypes`; no supported UserPlugin registration path was found. Findings are recorded in `docs/pool-window-research.md`.
-- Inspector 0.2.2.0 therefore uses the safe fallback: a compact three-line status bar with `DETAIL`, `MOVE`, and `STOP`. `DETAIL` expands to the existing 360-pixel diagnostic view.
-- Old/New Preset text now includes the detected Preset Pool/Feature, reference, and object Name when available.
-- Inspector 0.2.1.4 rejects Recipe candidates after the current Cue. This fixes the observed false ambiguity at Cue 0.5 caused by future Recipes at Cues 1 and 8.5.
-- Because onPC did not emit the guessed drag update, Inspector 0.2.1.4 adds a deterministic `MOVE` button that cycles the overlay through the four screen corners. Touch drag bindings remain experimental.
-- Inspector 0.2.1.3 fixes fractional Cue labels: 2.3.2.0 exposes `Cue.No` in thousandths (`500` = Cue `0.5`, `8500` = Cue `8.5`).
-- Inspector 0.2.1.3 adds a capability-safe `MouseMove` binding for onPC drag updates while retaining the touch bindings.
+## Current Working State
 
-- Researched official grandMA3 documentation for the 2.3 target generation.
-- Added `docs/research.md` with confirmed APIs, unknowns, compatibility matrix, console test plan, Phase 2 gate, and official source links.
-- Added `RecipeUpdate_Diagnostic.lua`, a modular, capability-detected, bounded read-only diagnostic.
-- Diagnostic reports version, capabilities, selected sequence/current cue, selected fixtures, UI channels, `GetProgPhaser` probes, Programmer/ProgrammerPart Dumps, and bounded Cue descendant inspection.
-- Unverified group, preset-link, provenance, Recipe property, and candidate results are explicitly reported as unresolved. Candidate scoring is intentionally disabled.
-- Confirmed by static scan that the Lua file contains no executable calls to `Cmd`, `Store`, `Assign`, `Cook`, `Delete`, `Acquire`, `CreateUndo`, or `CloseUndo`.
-- Added the required local grandMA3 Plugin deployment path to `AGENTS.md`.
-- Synchronized `RecipeUpdate_Diagnostic.lua` to `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin` for real-console/onPC testing.
-- Added `recipe_update_diagnostic.xml`, modeled on an installed 2.3.2 Plugin descriptor, and updated deployment rules to require XML plus referenced Lua components.
-- Analyzed real 2.3.2.0 DumpLogs for both Edit Recipe and ordinary Programmer tests.
-- Confirmed `GetProgPhaser()` returns an `abs_preset` handle and reliably followed Position preset 2.5 then 2.4 across 28 selected fixtures.
-- Confirmed ordinary Programmer has zero ProgPart Recipe children while the Edit Recipe test had two, providing a read-only mode safety check.
-- Updated the diagnostic to summarize a unique preset/feature, reject ambiguous/raw phasers, detect Recipe content in ProgrammerPart, and avoid thousands of repetitive per-fixture lines.
-- Verified diagnostic 0.1.1.0 on 2.3.2.0 with ordinary Programmer Position 2.7 and 2.5 calls; both compact summaries resolved the correct unique preset with high confidence and no runtime error.
-- Added `docs/api-reference-comparison.md`, comparing the requested read-only patopesto v2.2 HelpLua/API dump against official research and observed 2.3.2.0 behavior.
-- Added capability-guarded, bounded read-only probes for `GetProgPhaserValue`, `GetPresetData`, Attribute/UIChannel identity, and ChannelFunction identity. `SetProgPhaser*` remains capability-report-only and is never invoked.
-- Recreated the missing local deployment directory on 2026-09-02 and resynchronized diagnostic 0.1.2.0 after validating the XML component reference.
-- Analyzed 2026-09-02 2.3.2.0 Position and Color DumpLogs. Both resolved exactly one absolute preset with high confidence and no runtime error; Color resolved `Color Index` ChannelFunction/index 67.
-- Confirmed on 2.3.2.0 that the current object tree exposes `Cue -> Part -> Recipe` and readable Recipe properties `Selection=Group 401` and `Values=Preset 1.1`.
-- Analyzed the 2026-09-02 14:11 DumpLog: Sequence 8 Cue 3 was current, ProgrammerPart contained one Recipe, and phasers had `mask_cooked=255`, identifying Edit Recipe mode. No provenance field appeared in the parent ProgPart Dump.
-- Updated diagnostic 0.1.3.0 to traverse and Dump ProgrammerPart Recipe children, so a subsequent Recipe-content run captures their properties instead of only listing the child name.
-- Recorded the product requirement that the final Plugin work both with and without Edit Recipe. Diagnostic 0.1.4.0 now treats both as supported workflows: direct ProgrammerPart Recipe candidates in Edit Recipe mode, tracked-target resolution in normal mode.
-- Verified diagnostic 0.1.4.0 in Edit Recipe mode on 2.3.2.0. It found the direct Programmer Recipe at `...Programmer.Part Zero.Recipe 1` and read `INDEX=1`, `SELECTION=Group 9`, `PRESET=Position 2.4`, `VALUES=FeatureGroup 2 Position.Preset 4`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. The full Dump contained no Cue/Part/source/origin mapping property.
-- Verified diagnostic 0.1.4.0 ordinary mode on Sequence 8 Cue 3: ProgrammerPart had zero Recipe children, Position 2.8 `Full` resolved across 40 Pan/Tilt phasers, and no direct provenance or Group field appeared. Cue 3 Part 0 exposed `Selection` as an unexpanded Lua table.
-- Updated diagnostic 0.1.5.0 to print raw Selection tables and inspect a bounded 24-object Group-pool sample without mutating the selection.
-- Diagnostic 0.1.5.0 confirmed Group `Selection[*].sf_index` supports read-only set comparison. Do not infer counts from its bounded text output: the 80-field printer truncated Group 9, which the user confirmed actually contains all 20 fixtures. Diagnostic 0.1.6.0 compares the complete live Lua tables instead.
-- Updated diagnostic 0.1.6.0 to scan up to 2048 Groups compactly and accept only one unique exact `sf_index` set match; zero or multiple matches remain unresolved/ambiguous.
-- Diagnostic 0.1.6.0 scanned 63 Groups and correctly reported three identical 20-fixture set candidates: Group 2 `S TOP ALL`, Group 9 `SPOT TOP GRID`, and Group 261 `S TOP SNAKE`.
-- Updated diagnostic 0.1.7.0 to capture X/Y/Z from `SelectionFirst/Next` and compare translation-normalized grid fingerprints after exact fixture-set matching, allowing groups with identical members but different layouts/orders to be distinguished read-only.
-- Updated diagnostic 0.1.8.0 with a bounded ordinary-mode provenance candidate scan across the selected Sequence's Cue/Part/Recipe hierarchy. It lists only Recipes whose Selection Group exactly matches the current fixture set and whose Values match the Programmer feature; a unique result is labeled `INFERRED HIGH`, not native provenance proof.
-- Verified 0.1.8.0 on 2.3.2.0: grid fingerprint uniquely resolved Group 9; scanning five Cues/two Recipes uniquely inferred Sequence 8 Cue 1 Part 0 Recipe 1, Group 9, old Position 2.4 as the source for Cue 3's selected Position data.
-- Updated diagnostic 0.1.9.0 to show the inferred Current/Source/Group/Old/New chain in a read-only MessageBox and to report the unique candidate in the final Recipe summary instead of the stale `UNRESOLVED` line.
-- User visually verified the 0.1.9.0 MessageBox. Source resolution was correct, but generic object labels exposed `function: 000...` pointers for Part/Recipe and made the source line too long. Diagnostic 0.1.10.0 adds clean Cue/Part/Recipe display helpers and one field per line.
-- User visually checked 0.1.10.0: line layout was fixed, but Cue numbers rendered as `3.0/1.0` and Recipe `Index` collided with an object method. Diagnostic 0.1.11.0 uses `%g` Cue formatting and uppercase Dump properties `PART`/`INDEX` with function-pointer rejection.
-- User visually verified the final 0.1.11.0 MessageBox on 2.3.2.0: Current Cue 3, Source Cue 1, Part 0, Recipe 1, Group 9, old Position 2.4, new Position 2.8, confidence, and read-only status all render correctly and legibly.
-- Tested one selected fixture (patch index 79) from the 20-fixture Group 9 in ordinary mode. Exact-set Group and Recipe matching correctly returned zero. Diagnostic 0.1.12.0 changes provenance matching to Recipe-first subset containment plus feature matching, and displays fixture coverage such as `1 selected / 20 in Group`.
-- Final UI requirement: replace modal run-on-demand MessageBox UX with a non-blocking persistent `Recipe Tracking Inspector` that refreshes when fixture selection, Attribute/Feature, Programmer preset, current Cue, or Edit Recipe mode changes. It needs explicit Start/Stop, hook cleanup, duplicate-instance prevention, and ambiguous/no-source states. The documented `HookObjectChange` API is the preferred event mechanism; docked/custom UI creation remains a version-sensitive prototype area.
-- Added `RecipeTracking_Inspector.lua` as a separate component. It creates a bounded overlay panel on the focused display, refreshes every 0.25 seconds, updates text only when content changes, supports ordinary Programmer and Edit Recipe, shows selection/Attribute/current Cue/source Cue/Part/Recipe/Group/coverage/old/new/confidence, and renders unresolved or ambiguous states.
-- Inspector lifecycle is explicit: the STOP button sets a state flag, rerunning the component toggles an existing instance off, a global state prevents duplicate active instances, and cleanup deletes only the two UI handles created by the Inspector. No Show data is written.
-- Updated the XML descriptor to 0.2.0.0 with separate diagnostic and Inspector components.
-- After the first UI test launched the legacy diagnostic MessageBox from component 1, reordered descriptor 0.2.0.1 so `recipe_tracking_inspector` is the first/default component and renamed the Plugin `Recipe Tracking Inspector`; the legacy diagnostic remains component 2.
-- First live Inspector test showed that selection refresh worked (`Selection: 1 fixture`) but feature matching failed: the panel showed `PanTilt` and no Recipe while the Programmer preset was Position 2.8 Full. Inspector 0.2.0.2 now resolves object addresses using the diagnostic's proven `AddrNative` -> `Addr` -> `ToAddr` order, preserving `PresetPools.Position` instead of a collapsed display address and allowing the existing one-of-20 subset match.
-- User requested a draggable panel. Version 0.2.0.3 emits one bounded Dump of the created panel on startup so the real 2.3.2 UI object's supported gesture/signal properties can be identified; remove this temporary probe after native dragging is implemented.
-- The 0.2.0.3 real-console panel Dump confirmed native `TOUCHSTART`, `TOUCHUPDATE`, and `TOUCHEND` signals with pointer X/Y arguments. Version 0.2.1.0 wires these signals to bounded panel movement, keeps STOP aligned with the panel, and removes the temporary Dump probe.
-- Version 0.2.1.0 no longer requires a Programmer preset to resolve tracking. Selecting fixtures plus an Attribute scans matching Recipe sources and displays `New Preset: No Programmer value` when appropriate. It normalizes the observed `PanTilt` UI feature to Recipe feature group `Position`.
-- Live 0.2.1.0 validation passed selection, Attribute-only source resolution, and no-Programmer-value behavior, but onPC mouse dragging did not start. Version 0.2.1.1 additionally binds the confirmed `MOUSEDOWN`/`MOUSEUP` signals, enables hover interaction, and clears the panel Button's default click action while retaining touch bindings.
-- A one-fixture Position selection at Cue 10 displayed two matching Recipes. This is expected under the conservative subset scan when two Recipe Groups both contain the fixture; `No Programmer value` is also expected for Attribute-only inspection. Version 0.2.1.2 lists up to three ambiguous candidates with Cue/Part/Recipe, Group, Values, coverage, and a Current-Cue marker so the cause can be distinguished without guessing.
+Primary implementation:
 
-## What remains
+* `RecipeTracking_Inspector.lua`
+* `recipe_update_diagnostic.xml`
 
-- Real-test 0.2.3.1 title text/X layout, compact fields, complete detail text, ResizeCorner behavior, and STYLE colors/transparency on grandMA3 2.3.2.0.
-- Real-test 0.2.3.0 startup, non-modal behavior, title-bar mouse dragging, close cleanup, and DETAIL/COMPACT resizing on grandMA3 2.3.2.0. This dynamic construction uses classes evidenced by installed system resources but remains an undocumented UserPlugin UI path.
-- Verify compact/expanded layout and the Pool-qualified Old/New labels on real 2.3.2.0.
-- Verify at Cue 0.5 that future Cues 1 and 8.5 are excluded, and verify the new `MOVE` button on the user's 2.3.2.0 system.
-- Research whether 2.3.2.0 exposes a read-only UI highlight/flash mechanism for existing Preset Pool cells. Do not simulate it by changing Appearance, repeatedly selecting Presets, or issuing `At` commands.
+Legacy/read-only research implementation:
 
-- Repeat on a 2.4.x installation.
-- Validate the persistent Inspector's position, dimensions, STOP callback, refresh behavior, and cleanup on real grandMA3 2.3.2.0.
-- Use controlled tracking tests to resolve original Cue/Part provenance and an unambiguous Group strategy.
-- Establish and undo-test exact isolated assignment behavior for the direct Edit Recipe `Values` property and for an ordinary Cue Recipe `Values` property without relying on display text.
-- Wait for user-provided real-console results before Phase 2.
+* `RecipeUpdate_Diagnostic.lua`
 
-## Important technical decisions
+The persistent Inspector uses a non-modal native-style grandMA3 UI hierarchy and is deployed for real onPC testing.
 
-- Official MA Lighting documentation is the baseline; UI labels are not assumed to be Lua property names.
-- `GetProgPhaser` is only release-note evidenced in the researched official material, so calls are capability-detected and protected with `pcall`.
-- The diagnostic never mutates selection to reverse-match groups because that would violate its strict read-only/no-show-change contract.
-- Recipe candidate scoring stays disabled until feature, group/selection, original source, and old Values reference can all be read reliably.
-- Dumps are intentionally verbose in the development diagnostic but traversal and table printing are bounded.
-- Phase 1 contains no command execution or Undo creation because it performs no write.
-- Reference confidence order is real test, official MA docs/HelpLua, requested versioned repository dump, forum evidence, then explicit inference.
-- The v2.2 dump's second `GetProgPhaser` argument is tried first; the verified one-argument 2.3.2.0 form is retained as fallback.
+Repository state and actual source files are authoritative.
 
-## Known issues or blockers
+Always run:
 
-- No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
-- `ModalOverlay` button creation is evidenced by installed 2.3.2 system plugins, but this custom panel and callback must still be exercised on the user's console/onPC. Polling is used because no single verified hook target covers fixture selection, Attribute, Programmer, Cue, and Edit Recipe changes.
-- No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
-- `abs_preset` is confirmed for ordinary Position and Color calls on 2.3.2.0, but pure-relative, multi-feature, and 2.4.x shapes remain unverified.
-- `GetProgPhaserValue`, UIChannel round-trip, and ChannelFunction results vary by phaser/attribute shape and are not universal writer contracts.
-- Static validation cannot prove runtime compatibility with grandMA3's embedded Lua environment.
+* `git status --short --branch`
+* `git log -5 --oneline`
 
-## Failed approaches that should not be repeated
+before continuing.
 
-- `npm exec --package luaparse -- node -e ...` did not expose the temporary package to Node's `require()` path. Use the working direct CLI command `npx --yes luaparse RecipeUpdate_Diagnostic.lua` instead.
-- Do not infer internal Recipe properties from the UI's visible column names.
-- Do not treat System Monitor visibility as proof that Lua can read command history.
-- Do not reject Edit Recipe mode: ProgrammerPart Recipe children are direct target candidates. Keep its target-resolution path separate from ordinary tracked-cue mode.
-- Do not reconstruct Group membership counts from bounded `printTable` output; it truncates by fields, not fixtures. Compare the complete live `Selection` tables.
+---
 
-## Relevant files
+## Latest Real-World User Test
 
-- `RecipeUpdate_Diagnostic.lua`: Phase 1 read-only diagnostic plugin.
-- `RecipeTracking_Inspector.lua`: persistent read-only tracking panel prototype.
-- `recipe_update_diagnostic.xml`: grandMA3 Plugin descriptor referencing the diagnostic Lua component.
-- `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\RecipeUpdate_Diagnostic.lua`: synchronized local test copy (repository-external).
-- `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\recipe_update_diagnostic.xml`: synchronized local descriptor (repository-external).
-- `docs/research.md`: Phase 0 evidence, compatibility matrix, and real-console test procedure.
-- `docs/api-reference-comparison.md`: secondary v2.2 API dump comparison and seven-question analysis.
-- `2.3.2.0_26-09-02T14.01.txt`: complete 2026-09-02 Position and Color real-console DumpLog evidence (matches the system_monitor source SHA-256).
-- `AGENTS.md`: repository-wide agent instructions.
-- `HANDOFF.md`: current continuation record.
+The latest Inspector UI still has problems:
 
-## Commands used
+1. Close `X` still visually looks like a separate inset button.
 
-- `git status --short --branch`
-- `git log -5 --oneline --decorate`
-- `git diff --check`
-- `rg -n --glob '*.lua' '(?i)(^|[^A-Za-z])(Cmd|Store|Assign|Cook|Delete|Acquire|CreateUndo|CloseUndo)\s*\('`
-- `npx --yes luaparse RecipeUpdate_Diagnostic.lua`
+   * User wants the X visually integrated into the title bar like a normal window close control.
+   * The X glyph itself may be small while retaining a usable click area.
 
-## Test/build/validation status
+2. Title text is too small.
 
-- Lua 5.3 syntax parse with `luaparse`: passed.
-- Forbidden write/command call static scan: passed (no matches).
-- `git diff --check`: passed.
-- Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for the current diagnostic (`A8F2006F3A5C7862BBF5468B7B65D1BD2C68E9A0D1EA15894335C1AB1004CB36`).
-- Inspector 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`287F3180122AA7F40BC4F2A80B7AE7AE452F2AA6B01B745ABB8A0CE40068CC5A`).
-- XML descriptor parse/reference validation: passed; both referenced Lua components exist.
-- XML 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`5F5D5A3BFC9F36E621F82281C5EE5DF27E81F47BA26900980641CAED545EB097`).
-- Inspector 0.2.1.3 Lua syntax parse and read-only static safety scan: passed.
-- Inspector 0.2.1.3 local deployment source/destination SHA-256 comparison: passed (`E6F59AB4E8894CEC3A38C56CFEA84AE0C4667F79ED9ACF7C5FB4865CC00507AD`).
-- XML 0.2.1.3 parse/component-reference and deployment hash comparison: passed (`036AE88EE5A3E8D087575A908CAC351E768E4E445476EED851BA9D44C0AB6A16`).
-- Inspector 0.2.1.4 Lua syntax, XML component references, `git diff --check`, and read-only static safety scan: passed.
-- Inspector 0.2.1.4 deployment source/destination SHA-256 comparison: passed (`9AEF41838C361A519040F4261C271AD9E7A585E56690A1D440A930BF961BA10C`).
-- XML 0.2.1.4 deployment source/destination SHA-256 comparison: passed (`01DF2640B5C1F40B6EF0D064E9A6FE354F1322DB655F56A796A037D0A5D5C0AF`).
-- Inspector 0.2.2.0 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
-- Inspector 0.2.2.0 deployment hash comparison: passed (`31678EDC18917F7FA21BDA44CA64B87C056942A33CB8956D9955CC1EB630EDEE`).
-- XML 0.2.2.0 deployment hash comparison: passed (`72DDADC28D97333D852C59EC611E8E2AE3DD1F4BF642D8F1267FBF05721102CA`).
-- Inspector 0.2.3.0 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
-- Inspector 0.2.3.0 deployment hash comparison: passed (`65231F4DEE2DD97FC0FEB94DD3C56132240C1DE7CF6CE0D59617D3EE570FC561`).
-- XML 0.2.3.0 deployment hash comparison: passed (`9DC80CA442AFDD0C14BBBF8DC6281D4436B332E139208CD284B0AF52885611EB`).
-- Inspector 0.2.3.1 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
-- Inspector 0.2.3.1 deployment hash comparison: passed (`BD3DA28370711B55132215D7B796C353A1658DEECAF9C4734D652902A77524D9`).
-- XML 0.2.3.1 deployment hash comparison: passed (`8C9B271F4CEA80C6F32806FE44F3A1664B348AB15273DD7CEA61D184653A5A3C`).
-- grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
-- grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
-- grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
-- Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated and exercised on real 2.3.2.0.
-- Diagnostic 0.1.2.0 Position and Color probes on 2.3.2.0: passed; no runtime errors. UIChannel/ChannelFunction results are shape-dependent and remain unsuitable as universal writer assumptions.
-- Diagnostic 0.1.3.0 ProgrammerPart Recipe-child traversal: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
-- Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation and Edit Recipe real-console validation passed; ordinary tracked-target run remains pending.
-- Diagnostic 0.1.4.0 Edit Recipe classification and direct Recipe-child inspection on 2.3.2.0: passed; exact address and Recipe fields captured with no runtime error.
-- Diagnostic 0.1.5.0 Selection-table and bounded Group-pool probes: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
-- Diagnostic 0.1.6.0 compact exact Group matcher: Lua syntax/static safety/XML and real-console validation passed; correctly preserved ambiguity across three identical fixture sets.
-- Diagnostic 0.1.7.0 normalized grid-fingerprint matcher: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
-- Diagnostic 0.1.8.0 bounded tracking provenance candidate scan: Lua syntax/static safety/XML and real-console validation passed; one expected source Recipe was inferred.
-- Diagnostic 0.1.9.0 visual tracking summary: Lua syntax/static safety/XML and real-console MessageBox validation passed; label/layout cleanup followed in 0.1.10.0.
-- Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML and real-console visual validation passed; numeric/property label cleanup followed in 0.1.11.0.
-- Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML, deployment hash, and real-console visual validation passed.
-- Diagnostic 0.1.12.0 Recipe-first subset provenance matching: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console single-fixture result pending.
-- Inspector 0.2.0.0 Lua syntax, `git diff --check`, XML reference, read-only command scan, and local deployment hash validation passed; real-console UI/lifecycle validation pending.
-- grandMA3 2.4.x runtime comparison: pending user real-console run.
+   * It should be larger and visually belong to the title bar.
 
-## Current branch
+3. Transparency behavior is wrong.
 
-`main`
+   * Current transparency appears dependent on mouse hover/pointer being inside the window.
+   * User wants the intended transparency to remain without requiring hover.
 
-## Latest relevant commit
+4. `Cue Recipe Update Tool` should not appear centered as unwanted content.
 
-Phase 0/1 implementation and API-reference probe update will be represented by the current `HEAD`; use `git log -1 --oneline` after commit for its authoritative hash.
+   * Determine which UI element creates this text and remove/reposition it appropriately.
 
-## Push status
+5. `STYLE` still does not produce the required visible behavior.
 
-Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `main` is synchronized with its upstream branch.
+   * Changing only button text is not sufficient.
+   * The actual window/panel style or transparency must change.
 
-## Recommended next steps
+These observations override assumptions from previous UI commits.
 
-1. Import/reload Plugin 0.2.1.2, reproduce the one-fixture ambiguity, and capture the candidate details now shown in the panel.
-2. Use those candidate Cue/Recipe details to decide whether safe temporal ranking is sufficient or whether the overlap is genuinely ambiguous.
-3. Press STOP, then rerun twice to verify cleanup and duplicate-instance prevention.
-4. Repeat on 2.4.x if available. Do not implement the production writer until all Phase 2 gates are satisfied.
+---
+
+## Verified Facts
+
+* The persistent Inspector can run as a non-modal grandMA3 UI.
+* Native title-bar dragging has worked in real grandMA3 2.3.2.0 testing.
+* Read-only Recipe/source resolution research is substantially validated for the current Phase 0/1 scope.
+* Local deployment path is:
+
+`C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`
+
+* Deployment must include XML plus referenced Lua components.
+* Repository/deployment SHA256 equality verifies file identity only; it does not verify UI correctness.
+* No Phase 2 writer implementation should begin yet.
+
+---
+
+## Current Problem
+
+The current task is not deployment verification.
+
+The current task is to change the Inspector implementation so that the latest real-world UI feedback is actually addressed.
+
+Do not simply redeploy the existing implementation.
+
+A new requested UI behavior change should produce a relevant source diff before deployment.
+
+---
+
+## Known Failed Attempt
+
+The previous UI adjustment reduced/repositioned the close button and changed styling, but the real grandMA3 result still did not satisfy the requested visual behavior.
+
+Do not repeat the same close-button sizing approach without first inspecting the UI hierarchy.
+
+Previous successful SHA256 deployment verification does not mean the UI requirement passed.
+
+---
+
+## Important Files
+
+### Current implementation
+
+* `RecipeTracking_Inspector.lua`
+* `recipe_update_diagnostic.xml`
+
+### Supporting research
+
+* `docs/research.md`
+* `docs/api-reference-comparison.md`
+* `docs/pool-window-research.md`
+
+### Project rules/state
+
+* `AGENTS.md`
+* `HANDOFF.md`
+
+Read supporting research only when needed to answer a specific implementation question.
+
+---
+
+## Current Branch / Commit
+
+Do not trust an old handoff value.
+
+Run:
+
+`git branch --show-current`
+
+and:
+
+`git log -1 --oneline`
+
+to determine the authoritative current branch and commit.
+
+Preserve any existing uncommitted work.
+
+---
+
+## Exact Next Action
+
+Inspect the current `RecipeTracking_Inspector.lua` implementation for:
+
+* title-bar hierarchy
+* close/X control
+* title text/font/layout
+* STYLE callback
+* transparency/background properties
+* mouse/hover bindings
+* any UI element producing `Cue Recipe Update Tool`
+
+Determine why the latest real-world result differs from the requested behavior.
+
+Then:
+
+1. make a new relevant source-code change
+2. inspect `git diff`
+3. run available local validation
+4. deploy the changed files
+5. verify source/deployment hashes
+6. stop for user testing only when the new implementation is actually deployed
+
+Do not stop after describing these steps.
+
+Do not commit merely because deployment succeeded; for visual grandMA3 changes, prefer user validation before committing the final coherent state.
