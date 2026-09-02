@@ -210,6 +210,9 @@ local function readSelection()
 
     local firstResults, firstErr = safeCall("SelectionFirst", SelectionFirst)
     local patchIndex = firstResults and firstResults[1] or nil
+    local gridX = firstResults and firstResults[2] or nil
+    local gridY = firstResults and firstResults[3] or nil
+    local gridZ = firstResults and firstResults[4] or nil
     if firstErr then
         warn("SelectionFirst failed: %s", firstErr)
         return {}
@@ -226,9 +229,14 @@ local function readSelection()
             local fixtureResults = safeCall("GetSubfixture", GetSubfixture, patchIndex)
             fixture = fixtureResults and fixtureResults[1] or nil
         end
-        fixtures[#fixtures + 1] = { index = patchIndex, handle = fixture }
-        log("Selection %d: patchIndex=%s fixture=%s class=%s address=%s",
-            #fixtures, tostring(patchIndex), objectLabel(fixture), objectClass(fixture), objectAddress(fixture))
+        fixtures[#fixtures + 1] = {
+            index = patchIndex,
+            handle = fixture,
+            grid = { x = gridX, y = gridY, z = gridZ }
+        }
+        log("Selection %d: patchIndex=%s grid=%s/%s/%s fixture=%s class=%s address=%s",
+            #fixtures, tostring(patchIndex), tostring(gridX), tostring(gridY), tostring(gridZ),
+            objectLabel(fixture), objectClass(fixture), objectAddress(fixture))
 
         local nextResults, nextErr = safeCall("SelectionNext", SelectionNext, patchIndex)
         if nextErr then
@@ -236,6 +244,9 @@ local function readSelection()
             break
         end
         patchIndex = nextResults and nextResults[1] or nil
+        gridX = nextResults and nextResults[2] or nil
+        gridY = nextResults and nextResults[3] or nil
+        gridZ = nextResults and nextResults[4] or nil
     end
     if #fixtures >= MAX_SELECTION then warn("Selection output truncated at %d fixtures", MAX_SELECTION) end
     log("Selected fixture count reported by traversal: %d", #fixtures)
@@ -551,12 +562,19 @@ local function inspectGroupPool(fixtures)
         local selectionOk, selection = pcall(function() return group.Selection end)
         if selectionOk and type(selection) == "table" then
             local members = {}
+            local memberGrid = {}
             local memberCount = 0
             for _, item in pairs(selection) do
                 local index = type(item) == "table" and tonumber(item.sf_index) or nil
                 if index ~= nil and not members[index] then
                     members[index] = true
                     memberCount = memberCount + 1
+                    local grid = item.grid
+                    if type(grid) == "table" then
+                        memberGrid[index] = {
+                            x = tonumber(grid.x), y = tonumber(grid.y), z = tonumber(grid.z)
+                        }
+                    end
                 end
             end
             if memberCount == selectedCount then
@@ -567,21 +585,63 @@ local function inspectGroupPool(fixtures)
                         break
                     end
                 end
-                if exact then matches[#matches + 1] = group end
+                if exact then matches[#matches + 1] = { handle = group, grid = memberGrid } end
             end
         end
     end
 
     log("Group exact-set scan: selected=%d groups_scanned=%d exact_matches=%d",
         selectedCount, scanned, #matches)
-    if #matches == 1 then
-        log("Possible Group: %s | class=%s | address=%s | confidence=HIGH exact sf_index set match",
-            objectLabel(matches[1]), objectClass(matches[1]), objectAddress(matches[1]))
-    elseif #matches == 0 then
+    if #matches == 0 then
         warn("Possible Group: UNRESOLVED - no exact sf_index set match")
+        return
+    end
+
+    local function normalizedGrid(gridByIndex)
+        local minX, minY, minZ = nil, nil, nil
+        for index in pairs(selected) do
+            local grid = gridByIndex[index]
+            if not grid or grid.x == nil or grid.y == nil or grid.z == nil then return nil end
+            minX = minX == nil and grid.x or math.min(minX, grid.x)
+            minY = minY == nil and grid.y or math.min(minY, grid.y)
+            minZ = minZ == nil and grid.z or math.min(minZ, grid.z)
+        end
+        local normalized = {}
+        for index in pairs(selected) do
+            local grid = gridByIndex[index]
+            normalized[index] = string.format("%s/%s/%s", grid.x - minX, grid.y - minY, grid.z - minZ)
+        end
+        return normalized
+    end
+
+    local currentGrid = {}
+    for _, fixture in ipairs(fixtures) do currentGrid[tonumber(fixture.index)] = fixture.grid end
+    local normalizedCurrent = normalizedGrid(currentGrid)
+    local gridMatches = {}
+    if normalizedCurrent then
+        for _, candidate in ipairs(matches) do
+            local normalizedCandidate = normalizedGrid(candidate.grid)
+            local equal = normalizedCandidate ~= nil
+            if equal then
+                for index in pairs(selected) do
+                    if normalizedCandidate[index] ~= normalizedCurrent[index] then equal = false break end
+                end
+            end
+            if equal then gridMatches[#gridMatches + 1] = candidate end
+        end
+    end
+
+    log("Group grid-fingerprint scan: set_candidates=%d grid_matches=%d", #matches, #gridMatches)
+    if #gridMatches == 1 then
+        local group = gridMatches[1].handle
+        log("Possible Group: %s | class=%s | address=%s | confidence=HIGH exact sf_index+normalized-grid match",
+            objectLabel(group), objectClass(group), objectAddress(group))
     else
-        warn("Possible Group: AMBIGUOUS - %d Groups have the same exact sf_index set", #matches)
-        for _, group in ipairs(matches) do
+        local candidates = #gridMatches > 1 and gridMatches or matches
+        local reason = normalizedCurrent and "grid fingerprint not unique" or "current grid coordinates unavailable"
+        warn("Possible Group: AMBIGUOUS - %d candidates; %s", #candidates, reason)
+        for _, candidate in ipairs(candidates) do
+            local group = candidate.handle
             log("Group candidate: %s | %s", objectLabel(group), objectAddress(group))
         end
     end

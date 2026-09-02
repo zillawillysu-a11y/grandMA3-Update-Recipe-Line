@@ -37,6 +37,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Updated diagnostic 0.1.5.0 to print raw Selection tables and inspect a bounded 24-object Group-pool sample without mutating the selection.
 - Diagnostic 0.1.5.0 confirmed Group `Selection[*].sf_index` supports read-only set comparison. Do not infer counts from its bounded text output: the 80-field printer truncated Group 9, which the user confirmed actually contains all 20 fixtures. Diagnostic 0.1.6.0 compares the complete live Lua tables instead.
 - Updated diagnostic 0.1.6.0 to scan up to 2048 Groups compactly and accept only one unique exact `sf_index` set match; zero or multiple matches remain unresolved/ambiguous.
+- Diagnostic 0.1.6.0 scanned 63 Groups and correctly reported three identical 20-fixture set candidates: Group 2 `S TOP ALL`, Group 9 `SPOT TOP GRID`, and Group 261 `S TOP SNAKE`.
+- Updated diagnostic 0.1.7.0 to capture X/Y/Z from `SelectionFirst/Next` and compare translation-normalized grid fingerprints after exact fixture-set matching, allowing groups with identical members but different layouts/orders to be distinguished read-only.
 
 ## What remains
 
@@ -98,9 +100,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.6.0 (`ACF4BF9D05F4E2CFB8ACF5C9CED83611D59710653DBAB7CFACCCC2A956B8FB80`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.7.0 (`7E0414102F84D401A5D9C845AAB97124F65C6652EDDB492B10FDBA94611A1B1F`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.6.0 (`8086C84302187496306963B25A916FF5AC845FCBEC99574406F6C8C3F068CA65`).
+- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.7.0 (`2800B63CA58AB371998C5804BE8A5BDBE409274CDC9034D58E140E93673420FD`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -110,7 +112,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation and Edit Recipe real-console validation passed; ordinary tracked-target run remains pending.
 - Diagnostic 0.1.4.0 Edit Recipe classification and direct Recipe-child inspection on 2.3.2.0: passed; exact address and Recipe fields captured with no runtime error.
 - Diagnostic 0.1.5.0 Selection-table and bounded Group-pool probes: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
-- Diagnostic 0.1.6.0 compact exact Group matcher: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
+- Diagnostic 0.1.6.0 compact exact Group matcher: Lua syntax/static safety/XML and real-console validation passed; correctly preserved ambiguity across three identical fixture sets.
+- Diagnostic 0.1.7.0 normalized grid-fingerprint matcher: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
