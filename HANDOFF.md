@@ -35,7 +35,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Verified diagnostic 0.1.4.0 in Edit Recipe mode on 2.3.2.0. It found the direct Programmer Recipe at `...Programmer.Part Zero.Recipe 1` and read `INDEX=1`, `SELECTION=Group 9`, `PRESET=Position 2.4`, `VALUES=FeatureGroup 2 Position.Preset 4`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. The full Dump contained no Cue/Part/source/origin mapping property.
 - Verified diagnostic 0.1.4.0 ordinary mode on Sequence 8 Cue 3: ProgrammerPart had zero Recipe children, Position 2.8 `Full` resolved across 40 Pan/Tilt phasers, and no direct provenance or Group field appeared. Cue 3 Part 0 exposed `Selection` as an unexpanded Lua table.
 - Updated diagnostic 0.1.5.0 to print raw Selection tables and inspect a bounded 24-object Group-pool sample without mutating the selection.
-- Diagnostic 0.1.5.0 confirmed Group `Selection[*].sf_index` supports read-only set comparison. The current 20-fixture selection had no exact Group match; Groups 1, 2, 3, and 9 each overlapped only eight fixtures, so Group 9 must not be guessed.
+- Diagnostic 0.1.5.0 confirmed Group `Selection[*].sf_index` supports read-only set comparison. Do not infer counts from its bounded text output: the 80-field printer truncated Group 9, which the user confirmed actually contains all 20 fixtures. Diagnostic 0.1.6.0 compares the complete live Lua tables instead.
 - Updated diagnostic 0.1.6.0 to scan up to 2048 Groups compactly and accept only one unique exact `sf_index` set match; zero or multiple matches remain unresolved/ambiguous.
 
 ## What remains
@@ -70,6 +70,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Do not infer internal Recipe properties from the UI's visible column names.
 - Do not treat System Monitor visibility as proof that Lua can read command history.
 - Do not reject Edit Recipe mode: ProgrammerPart Recipe children are direct target candidates. Keep its target-resolution path separate from ordinary tracked-cue mode.
+- Do not reconstruct Group membership counts from bounded `printTable` output; it truncates by fields, not fixtures. Compare the complete live `Selection` tables.
 
 ## Relevant files
 
