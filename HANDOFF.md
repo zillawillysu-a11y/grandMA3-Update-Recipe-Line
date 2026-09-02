@@ -26,6 +26,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Verified diagnostic 0.1.1.0 on 2.3.2.0 with ordinary Programmer Position 2.7 and 2.5 calls; both compact summaries resolved the correct unique preset with high confidence and no runtime error.
 - Added `docs/api-reference-comparison.md`, comparing the requested read-only patopesto v2.2 HelpLua/API dump against official research and observed 2.3.2.0 behavior.
 - Added capability-guarded, bounded read-only probes for `GetProgPhaserValue`, `GetPresetData`, Attribute/UIChannel identity, and ChannelFunction identity. `SetProgPhaser*` remains capability-report-only and is never invoked.
+- Recreated the missing local deployment directory on 2026-09-02 and resynchronized diagnostic 0.1.2.0 after validating the XML component reference.
 
 ## What remains
 
@@ -85,9 +86,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed (`DBB668F4982D4426AAFAB0AE00196D8090BCB2325923E88B313493C4F9844D68`).
+- Local Lua deployment source/destination SHA-256 comparison: passed (`65DC4BBDCFD6472881C817BF4EE290E50474B2D937FE70D999684596E33A5AA0`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed (`E09003235711BE029B91DF0A8FF4C14F03867A61B1E79CBBF4328B3D8B0DEA58`).
+- XML deployment source/destination SHA-256 comparison: passed (`4E09560BD7EC5D7607987ACF859BE666223B5CE801E2DF8721C38D9CEC51A046`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
