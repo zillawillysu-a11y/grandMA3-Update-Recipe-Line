@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <GMA3 DataVersion="0.8.84.0">
-    <UserPlugin Name="Recipe Update Diagnostic" Version="0.1.9.0" Path="/Update Plugin">
+    <UserPlugin Name="Recipe Update Diagnostic" Version="0.1.10.0" Path="/Update Plugin">
         <ComponentLua Name="recipe_update_diagnostic" FileName="RecipeUpdate_Diagnostic.lua" />
     </UserPlugin>
 </GMA3>

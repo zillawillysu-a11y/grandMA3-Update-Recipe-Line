@@ -517,6 +517,24 @@ local function dumpProgrammerObjects()
     return nil
 end
 
+local function cleanObjectName(object)
+    local name = objectText(object, "Name") or objectText(object, "name")
+    if name and not string.match(name, "^function:") then return name end
+    local address = objectAddress(object)
+    return string.match(address, "([^%.]+)$") or objectClass(object)
+end
+
+local function cueDisplay(cue)
+    local number = tonumber(objectText(cue, "No") or objectText(cue, "NO"))
+    if number and number % 1000 == 0 then number = number / 1000 end
+    return string.format("%s - %s", number and tostring(number) or "?", cleanObjectName(cue))
+end
+
+local function indexedDisplay(object, property, fallback)
+    local value = objectText(object, property)
+    return value or cleanObjectName(object) or fallback
+end
+
 local function inspectGroupPool(fixtures)
     if #fixtures == 0 then
         warn("Possible Group: UNRESOLVED - no current fixture selection")
@@ -745,9 +763,9 @@ local function showTrackingSummary(currentCue, programmerInfo, candidates)
     if #candidates == 1 then
         local candidate = candidates[1]
         message = string.format(
-            "Current: %s\n\nSource: %s / %s / %s\nGroup: %s\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
-            objectLabel(currentCue), objectLabel(candidate.cue), objectLabel(candidate.part),
-            objectLabel(candidate.recipe), objectLabel(candidate.group), tostring(candidate.values),
+            "Current Cue: %s\n\nSource Cue: %s\nPart: %s\nRecipe: %s\nGroup: %s\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
+            cueDisplay(currentCue), cueDisplay(candidate.cue), indexedDisplay(candidate.part, "Part", "Part 0"),
+            indexedDisplay(candidate.recipe, "Index", "Recipe 1"), objectLabel(candidate.group), tostring(candidate.values),
             objectLabel(programmerInfo.preset))
     elseif #candidates == 0 then
         message = "No matching tracking Recipe was found.\n\nREAD-ONLY - no update performed"
