@@ -10,8 +10,8 @@ local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
 local PANEL_WIDTH = 520
-local COMPACT_HEIGHT = 150
-local DETAIL_HEIGHT = 360
+local COMPACT_HEIGHT = 220
+local DETAIL_HEIGHT = 520
 
 local function callable(name)
     return type(_G[name]) == "function"
@@ -314,18 +314,22 @@ local function render(state)
     end
     if not state or not state.expanded then
         local oldValue, newValue, status
+        local group
         for _, line in ipairs(lines) do
             oldValue = oldValue or string.match(line, "^Old Values:%s*(.+)$")
             newValue = newValue or string.match(line, "^New Preset:%s*(.+)$")
             status = status or string.match(line, "^%s*Status:%s*(.+)$")
+            group = group or string.match(line, "^Group:%s*(.+)$")
         end
-        local summary = oldValue and newValue and (oldValue .. " -> " .. newValue)
-            or status or (lines[#lines] or "")
+        local details = oldValue and newValue and {
+            "Group: " .. tostring(group or "UNRESOLVED") .. " | Current Cue: " .. cueLabel(currentCue),
+            "Old Preset: " .. oldValue,
+            "New Preset: " .. newValue
+        } or { status or (lines[#lines] or "") }
         return table.concat({
-            "RECIPE TRACKING INSPECTOR  [READ-ONLY]",
-            string.format("%s | %s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
-                cueLabel(currentCue), #fixtures, #fixtures == 1 and "" or "s"),
-            summary
+            string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
+                #fixtures, #fixtures == 1 and "" or "s"),
+            table.concat(details, "\n")
         }, "\n")
     end
     return table.concat(lines, "\n")
@@ -356,6 +360,21 @@ signalTable.ToggleRecipeTrackingDetails = function()
     state.forceRefresh = true
 end
 
+signalTable.CycleRecipeTrackingStyle = function()
+    local state = _G[STATE_KEY]
+    if not state or not state.window then return end
+    state.styleIndex = ((state.styleIndex or 1) % 3) + 1
+    local colors = safe(function() return Root().ColorTheme.ColorGroups.Global end)
+    local choices = colors and {
+        safe(function() return colors.Transparent75 end),
+        safe(function() return colors.Transparent50 end),
+        safe(function() return colors.Background end)
+    } or {}
+    if choices[state.styleIndex] ~= nil then
+        pcall(function() state.window.BackColor = choices[state.styleIndex] end)
+    end
+end
+
 local function createPanel(state)
     local display = callable("GetFocusDisplay") and safe(GetFocusDisplay) or nil
     if display == nil then return nil, "GetFocusDisplay unavailable" end
@@ -366,15 +385,17 @@ local function createPanel(state)
     local window = safe(function() return overlay:Append("BaseInput") end)
     if window == nil then return nil, "could not append BaseInput" end
     window.Name = "RecipeTrackingInspectorWindow"
+    pcall(function() window.Title = "Cue Recipe Update Tool" end)
+    pcall(function() window.Text = "Cue Recipe Update Tool" end)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
     window.Columns = 1
     window.Rows = 3
     window[1][1].SizePolicy = "Fixed"
-    window[1][1].Size = "50"
+    window[1][1].Size = "36"
     window[1][2].SizePolicy = "Stretch"
     window[1][3].SizePolicy = "Fixed"
-    window[1][3].Size = "50"
+    window[1][3].Size = "44"
     window.AutoClose = "No"
     window.CloseOnEscape = "No"
     pcall(function() window.WantsModal = "0" end)
@@ -387,12 +408,12 @@ local function createPanel(state)
     title.Rows = 1
     title[1][1].SizePolicy = "Stretch"
     title[2][1].SizePolicy = "Fixed"
-    title[2][1].Size = "50"
+    title[2][1].Size = "36"
 
     local titleButton = safe(function() return title:Append("TitleButton") end)
     if titleButton == nil then deleteHandle(window) return nil, "could not append TitleButton" end
     titleButton.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-    titleButton.Text = "Recipe Tracking Inspector [READ-ONLY]"
+    titleButton.Text = "Cue Recipe Update Tool"
     titleButton.Texture = "corner1"
 
     local close = safe(function() return title:Append("CloseButton") end)
@@ -416,7 +437,7 @@ local function createPanel(state)
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append footer" end
     footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
-    footer.Columns = 2
+    footer.Columns = 3
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
@@ -428,16 +449,34 @@ local function createPanel(state)
     detail.PluginComponent = componentHandle
     detail.Clicked = "ToggleRecipeTrackingDetails"
 
+    local style = safe(function() return footer:Append("Button") end)
+    if style == nil then deleteHandle(window) return nil, "could not append style button" end
+    style.Name = "RecipeTrackingInspectorStyle"
+    style.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    style.Text = "STYLE"
+    style.Font = "Medium20"
+    style.PluginComponent = componentHandle
+    style.Clicked = "CycleRecipeTrackingStyle"
+
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    stop.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
     stop.Clicked = "StopRecipeTrackingInspector"
-    state.window, state.panel, state.detail, state.stop = window, panel, detail, stop
+    local resize = safe(function() return window:Append("ResizeCorner") end)
+    if resize ~= nil then
+        resize.Name = "Resizer"
+        resize.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
+        resize.AlignmentH = "Right"
+        resize.AlignmentV = "Bottom"
+    end
+
+    state.window, state.panel, state.detail, state.style, state.stop = window, panel, detail, style, stop
     state.expanded = false
+    state.styleIndex = 1
     return panel
 end
 

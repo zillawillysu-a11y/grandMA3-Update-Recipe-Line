@@ -10,6 +10,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 
 ## What has been completed
 
+- Real 2.3.2.0 validation confirmed the 0.2.3.0 native `BaseInput` window can be freely dragged by its title bar. Inspector 0.2.3.1 renames the title to `Cue Recipe Update Tool`, reduces the title/close-button row to 36 px, and keeps X at the right edge.
+- Compact mode now reserves enough height and always shows Group, Current Cue, Old Preset, and New Preset when a unique Recipe is resolved. Detail mode grows to 520 px and includes an experimental native `ResizeCorner`.
+- Added a `STYLE` button to cycle capability-detected UI background choices. A title-bar right-click menu was not used because no stable 2.3.2.0 UserPlugin context-menu signal/API is confirmed.
 - Inspector 0.2.3.0 replaces the free-floating Button assembly and guessed pointer callbacks with the native 2.3.2.0 dialog hierarchy: non-modal `BaseInput`, `TitleBar`/`TitleButton`, content object, footer grid, and close/DETAIL/STOP controls. The intent is native title-bar dragging with a Plugin-popup appearance.
 - Researched a true Pool-style dockable Plugin window on installed grandMA3 2.3.2.0 and the requested patopesto reference repository. `ScreenContent` can instantiate only registered `CurrentProfile().Windowtypes`; no supported UserPlugin registration path was found. Findings are recorded in `docs/pool-window-research.md`.
 - Inspector 0.2.2.0 therefore uses the safe fallback: a compact three-line status bar with `DETAIL`, `MOVE`, and `STOP`. `DETAIL` expands to the existing 360-pixel diagnostic view.
@@ -69,6 +72,7 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 
 ## What remains
 
+- Real-test 0.2.3.1 title text/X layout, compact fields, complete detail text, ResizeCorner behavior, and STYLE colors/transparency on grandMA3 2.3.2.0.
 - Real-test 0.2.3.0 startup, non-modal behavior, title-bar mouse dragging, close cleanup, and DETAIL/COMPACT resizing on grandMA3 2.3.2.0. This dynamic construction uses classes evidenced by installed system resources but remains an undocumented UserPlugin UI path.
 - Verify compact/expanded layout and the Pool-qualified Old/New labels on real 2.3.2.0.
 - Verify at Cue 0.5 that future Cues 1 and 8.5 are excluded, and verify the new `MOVE` button on the user's 2.3.2.0 system.
@@ -151,6 +155,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - Inspector 0.2.3.0 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
 - Inspector 0.2.3.0 deployment hash comparison: passed (`65231F4DEE2DD97FC0FEB94DD3C56132240C1DE7CF6CE0D59617D3EE570FC561`).
 - XML 0.2.3.0 deployment hash comparison: passed (`9DC80CA442AFDD0C14BBBF8DC6281D4436B332E139208CD284B0AF52885611EB`).
+- Inspector 0.2.3.1 Lua syntax, XML references, read-only scan, and `git diff --check`: passed.
+- Inspector 0.2.3.1 deployment hash comparison: passed (`BD3DA28370711B55132215D7B796C353A1658DEECAF9C4734D652902A77524D9`).
+- XML 0.2.3.1 deployment hash comparison: passed (`8C9B271F4CEA80C6F32806FE44F3A1664B348AB15273DD7CEA61D184653A5A3C`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
