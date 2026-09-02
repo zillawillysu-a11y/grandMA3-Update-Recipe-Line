@@ -417,7 +417,8 @@ local RECIPE_PROPERTY_PROBES = {
 }
 
 local function inspectObject(object, depth, state)
-    if object == nil or state.count >= MAX_OBJECTS then return end
+    local objectLimit = state.max or MAX_OBJECTS
+    if object == nil or state.count >= objectLimit then return end
     state.count = state.count + 1
     local indent = string.rep("  ", depth)
     log("%sObject %d: label=%s class=%s address=%s", indent, state.count,
@@ -426,6 +427,13 @@ local function inspectObject(object, depth, state)
     for _, property in ipairs(RECIPE_PROPERTY_PROBES) do
         local value = objectText(object, property)
         if value ~= nil then log("%s  property[%s]=%s", indent, property, value) end
+        if property == "Selection" then
+            local rawOk, rawValue = pcall(function() return object[property] end)
+            if rawOk and type(rawValue) == "table" then
+                log("%s  property[%s] raw table:", indent, property)
+                printTable(rawValue, indent .. "selection", 0)
+            end
+        end
     end
 
     local classText = string.lower(objectClass(object))
@@ -439,8 +447,8 @@ local function inspectObject(object, depth, state)
     local ok, children = pcall(function() return object:Children() end)
     if not ok or type(children) ~= "table" then return end
     for _, child in ipairs(children) do
-        if state.count >= MAX_OBJECTS then
-            warn("Object traversal truncated at %d objects", MAX_OBJECTS)
+        if state.count >= objectLimit then
+            warn("Object traversal truncated at %d objects", objectLimit)
             return
         end
         inspectObject(child, depth + 1, state)
@@ -494,6 +502,26 @@ local function dumpProgrammerObjects()
             inspectObject(part, 0, { count = 0 })
         end
     end
+end
+
+local function inspectGroupPool()
+    if not callable("DataPool") then
+        warn("Group pool inspection unavailable: DataPool unavailable")
+        return
+    end
+    local results, err = safeCall("DataPool", DataPool)
+    local dataPool = results and results[1] or nil
+    if not dataPool then
+        warn("Group pool inspection unavailable: %s", err or "no DataPool handle")
+        return
+    end
+    local ok, groups = pcall(function() return dataPool.Groups end)
+    if not ok or groups == nil then
+        warn("Group pool inspection unavailable: Groups handle unresolved")
+        return
+    end
+    log("=== GROUP POOL OBJECT SAMPLE (bounded to 24 objects) ===")
+    inspectObject(groups, 0, { count = 0, max = 24 })
 end
 
 local function inspectProgrammerMode()
@@ -554,6 +582,7 @@ local function main()
     dumpProgrammerObjects()
 
     log("=== GROUP RESOLUTION ===")
+    inspectGroupPool()
     log("Possible Group: UNRESOLVED - no confirmed non-mutating membership API")
     log("Command-history hint: DISABLED - no confirmed stable reader")
 
