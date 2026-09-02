@@ -671,10 +671,10 @@ local function inspectGroupPool(fixtures)
     end
 end
 
-local function selectionSetMatches(group, fixtures)
-    if group == nil or #fixtures == 0 then return false end
+local function selectionRelation(group, fixtures)
+    if group == nil or #fixtures == 0 then return false, false, 0, 0 end
     local ok, selection = pcall(function() return group.Selection end)
-    if not ok or type(selection) ~= "table" then return false end
+    if not ok or type(selection) ~= "table" then return false, false, 0, 0 end
     local selected, members = {}, {}
     local selectedCount, memberCount = 0, 0
     for _, fixture in ipairs(fixtures) do
@@ -685,9 +685,10 @@ local function selectionSetMatches(group, fixtures)
         local index = type(item) == "table" and tonumber(item.sf_index) or nil
         if index ~= nil and not members[index] then members[index] = true memberCount = memberCount + 1 end
     end
-    if selectedCount ~= memberCount then return false end
-    for index in pairs(selected) do if not members[index] then return false end end
-    return true
+    for index in pairs(selected) do
+        if not members[index] then return false, false, selectedCount, memberCount end
+    end
+    return true, selectedCount == memberCount, selectedCount, memberCount
 end
 
 local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerInfo)
@@ -724,10 +725,16 @@ local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerIn
                                     local valuesAddress = valuesOk and objectAddress(values) or ""
                                     local featureMatches = string.find(string.lower(valuesText), featureLower, 1, true)
                                         or string.find(string.lower(valuesAddress), featureLower, 1, true)
-                                    if selectionOk and selectionSetMatches(selectionGroup, fixtures) and featureMatches then
+                                    local subset, exact, selectedCount, groupCount = false, false, 0, 0
+                                    if selectionOk then
+                                        subset, exact, selectedCount, groupCount =
+                                            selectionRelation(selectionGroup, fixtures)
+                                    end
+                                    if subset and featureMatches then
                                         candidates[#candidates + 1] = {
                                             cue = cue, part = part, recipe = recipe, group = selectionGroup,
-                                            values = values, current = cue == currentCue
+                                            values = values, current = cue == currentCue, exact = exact,
+                                            selectedCount = selectedCount, groupCount = groupCount
                                         }
                                     end
                                 end
@@ -741,15 +748,17 @@ local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerIn
 
     log("Tracking candidate scan: cues=%d recipes=%d matches=%d", cuesScanned, recipesScanned, #candidates)
     for index, candidate in ipairs(candidates) do
-        log("Tracking candidate %d: Cue=%s | Part=%s | Recipe=%s | Group=%s | Values=%s | currentCue=%s",
+        log("Tracking candidate %d: Cue=%s | Part=%s | Recipe=%s | Group=%s | Values=%s | coverage=%d/%d exact=%s | currentCue=%s",
             index, objectLabel(candidate.cue), objectLabel(candidate.part), objectLabel(candidate.recipe),
-            objectLabel(candidate.group), tostring(candidate.values), tostring(candidate.current))
+            objectLabel(candidate.group), tostring(candidate.values), candidate.selectedCount, candidate.groupCount,
+            tostring(candidate.exact), tostring(candidate.current))
         log("Tracking candidate %d addresses: cue=%s | part=%s | recipe=%s | group=%s | values=%s",
             index, objectAddress(candidate.cue), objectAddress(candidate.part), objectAddress(candidate.recipe),
             objectAddress(candidate.group), objectAddress(candidate.values))
     end
     if #candidates == 1 then
-        log("Tracking provenance: INFERRED HIGH - one Recipe matches exact fixture set and feature; console-native source proof still unavailable")
+        log("Tracking provenance: INFERRED HIGH - one Recipe Group contains the full selection and matches feature; coverage=%d/%d exact=%s; console-native source proof still unavailable",
+            candidates[1].selectedCount, candidates[1].groupCount, tostring(candidates[1].exact))
     elseif #candidates == 0 then
         warn("Tracking provenance: UNRESOLVED - no Recipe matches exact fixture set and feature")
     else
@@ -767,9 +776,10 @@ local function showTrackingSummary(currentCue, programmerInfo, candidates)
     if #candidates == 1 then
         local candidate = candidates[1]
         message = string.format(
-            "Current Cue: %s\n\nSource Cue: %s\nPart: %s\nRecipe: %s\nGroup: %s\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
+            "Current Cue: %s\n\nSource Cue: %s\nPart: %s\nRecipe: %s\nGroup: %s\nFixture Coverage: %d selected / %d in Group\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
             cueDisplay(currentCue), cueDisplay(candidate.cue), indexedDisplay(candidate.part, "PART", "Part 0"),
-            indexedDisplay(candidate.recipe, "INDEX", "Recipe 1"), objectLabel(candidate.group), tostring(candidate.values),
+            indexedDisplay(candidate.recipe, "INDEX", "Recipe 1"), objectLabel(candidate.group),
+            candidate.selectedCount, candidate.groupCount, tostring(candidate.values),
             objectLabel(programmerInfo.preset))
     elseif #candidates == 0 then
         message = "No matching tracking Recipe was found.\n\nREAD-ONLY - no update performed"

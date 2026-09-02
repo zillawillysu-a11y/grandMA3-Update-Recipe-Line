@@ -45,10 +45,13 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - User visually verified the 0.1.9.0 MessageBox. Source resolution was correct, but generic object labels exposed `function: 000...` pointers for Part/Recipe and made the source line too long. Diagnostic 0.1.10.0 adds clean Cue/Part/Recipe display helpers and one field per line.
 - User visually checked 0.1.10.0: line layout was fixed, but Cue numbers rendered as `3.0/1.0` and Recipe `Index` collided with an object method. Diagnostic 0.1.11.0 uses `%g` Cue formatting and uppercase Dump properties `PART`/`INDEX` with function-pointer rejection.
 - User visually verified the final 0.1.11.0 MessageBox on 2.3.2.0: Current Cue 3, Source Cue 1, Part 0, Recipe 1, Group 9, old Position 2.4, new Position 2.8, confidence, and read-only status all render correctly and legibly.
+- Tested one selected fixture (patch index 79) from the 20-fixture Group 9 in ordinary mode. Exact-set Group and Recipe matching correctly returned zero. Diagnostic 0.1.12.0 changes provenance matching to Recipe-first subset containment plus feature matching, and displays fixture coverage such as `1 selected / 20 in Group`.
+- Final UI requirement: replace modal run-on-demand MessageBox UX with a non-blocking persistent `Recipe Tracking Inspector` that refreshes when fixture selection, Attribute/Feature, Programmer preset, current Cue, or Edit Recipe mode changes. It needs explicit Start/Stop, hook cleanup, duplicate-instance prevention, and ambiguous/no-source states. The documented `HookObjectChange` API is the preferred event mechanism; docked/custom UI creation remains a version-sensitive prototype area.
 
 ## What remains
 
 - Repeat on a 2.4.x installation.
+- Build and validate the persistent non-blocking Inspector prototype separately from the diagnostic component.
 - Use controlled tracking tests to resolve original Cue/Part provenance and an unambiguous Group strategy.
 - Establish and undo-test exact isolated assignment behavior for the direct Edit Recipe `Values` property and for an ordinary Cue Recipe `Values` property without relying on display text.
 - Wait for user-provided real-console results before Phase 2.
@@ -106,9 +109,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.11.0 (`B0A18F7A655772A33ABE3457E61D41672FC1BC63F477223DD073412ED4FA2C44`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.12.0 (`F9167D6F271145D045BA848768C0F5A747F7AA46676E61FC9C82C170D8E8C157`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.11.0 (`B27B50825364F09F0056601D0B543AA16A6FFFA6EEDECCDB3753E7F89793EEEC`).
+- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.12.0 (`EB56A3DF9778DF685FD9625BB2775EBF7709ADBA98B51FDAFA401262B2A730EE`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -124,6 +127,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.9.0 visual tracking summary: Lua syntax/static safety/XML and real-console MessageBox validation passed; label/layout cleanup followed in 0.1.10.0.
 - Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML and real-console visual validation passed; numeric/property label cleanup followed in 0.1.11.0.
 - Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML, deployment hash, and real-console visual validation passed.
+- Diagnostic 0.1.12.0 Recipe-first subset provenance matching: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console single-fixture result pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
