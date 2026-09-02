@@ -6,7 +6,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 
 ## Current status
 
-**Phase 0 complete; Phase 1 substantially validated on real grandMA3 2.3.2.0.** Ordinary-Programmer Position and Color preset resolution plus Cue/Part/Recipe hierarchy and Recipe property reads are evidence-backed. Original Cue/Part provenance, Group matching, and exact isolated Recipe Values addressing remain unresolved. Do not begin Phase 2.
+**Phase 0 complete; Phase 1 substantially validated on real grandMA3 2.3.2.0.** Both Edit Recipe and ordinary Programmer are required supported workflows. Position/Color preset resolution plus Cue/Part/Recipe hierarchy and Recipe property reads are evidence-backed. Ordinary-mode original Cue/Part provenance, Group matching, and exact isolated Recipe Values addressing remain unresolved. Do not begin Phase 2 writer work.
 
 ## What has been completed
 
@@ -29,8 +29,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Recreated the missing local deployment directory on 2026-09-02 and resynchronized diagnostic 0.1.2.0 after validating the XML component reference.
 - Analyzed 2026-09-02 2.3.2.0 Position and Color DumpLogs. Both resolved exactly one absolute preset with high confidence and no runtime error; Color resolved `Color Index` ChannelFunction/index 67.
 - Confirmed on 2.3.2.0 that the current object tree exposes `Cue -> Part -> Recipe` and readable Recipe properties `Selection=Group 401` and `Values=Preset 1.1`.
-- Analyzed the 2026-09-02 14:11 tracking-test DumpLog: Sequence 8 Cue 3 was current, but ProgrammerPart contained one Recipe and phasers had `mask_cooked=255`, proving the run was still in Recipe-content/Edit Recipe mode. The safety detector correctly required NO-OP; no provenance field appeared in the parent ProgPart Dump.
+- Analyzed the 2026-09-02 14:11 DumpLog: Sequence 8 Cue 3 was current, ProgrammerPart contained one Recipe, and phasers had `mask_cooked=255`, identifying Edit Recipe mode. No provenance field appeared in the parent ProgPart Dump.
 - Updated diagnostic 0.1.3.0 to traverse and Dump ProgrammerPart Recipe children, so a subsequent Recipe-content run captures their properties instead of only listing the child name.
+- Recorded the product requirement that the final Plugin work both with and without Edit Recipe. Diagnostic 0.1.4.0 now treats both as supported workflows: direct ProgrammerPart Recipe candidates in Edit Recipe mode, tracked-target resolution in normal mode.
 
 ## What remains
 
@@ -63,7 +64,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - `npm exec --package luaparse -- node -e ...` did not expose the temporary package to Node's `require()` path. Use the working direct CLI command `npx --yes luaparse RecipeUpdate_Diagnostic.lua` instead.
 - Do not infer internal Recipe properties from the UI's visible column names.
 - Do not treat System Monitor visibility as proof that Lua can read command history.
-- Do not treat a run with ProgrammerPart Recipe children or `mask_cooked=255` as an ordinary tracked-cue Programmer test; exit Edit Recipe and clear the Programmer first.
+- Do not reject Edit Recipe mode: ProgrammerPart Recipe children are direct target candidates. Keep its target-resolution path separate from ordinary tracked-cue mode.
 
 ## Relevant files
 
@@ -91,15 +92,16 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.3.0 (`A7B97DDA5927FA283458DBA4E9BD9DBEF78D6ECFBFBCAE272797E3BEEDB6F2A9`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.4.0 (`86B781F70B48CC0467E0EAA1D6D802D4D9FA04C5661206E5BA382548CA687EF1`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.3.0 (`C751E7FE5BB8BC6A13CE66852319C0FBA6703A2AADF572C4C65B9B989F2665E9`).
+- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.4.0 (`9DDC76FD01199302C606E7387192D04417742EEC83DB1285C8E40F634991CFB3`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
 - Diagnostic 0.1.2.0 new read-only API probes: locally syntax/static validated and exercised on real 2.3.2.0.
 - Diagnostic 0.1.2.0 Position and Color probes on 2.3.2.0: passed; no runtime errors. UIChannel/ChannelFunction results are shape-dependent and remain unsuitable as universal writer assumptions.
 - Diagnostic 0.1.3.0 ProgrammerPart Recipe-child traversal: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
+- Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -116,8 +118,8 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Exit Edit Recipe, clear the Programmer, then rerun the controlled Cue 3 tracking case with diagnostic 0.1.3.0.
-2. Repeat the same Position and Color tests on 2.4.x if available.
-3. Use the controlled tracked-cue result to investigate original Cue/Part provenance and Group matching.
-4. Review and encode only observed version differences in `Compat`.
-5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied.
+1. Run diagnostic 0.1.4.0 once with Edit Recipe open to capture the direct ProgrammerPart Recipe child properties.
+2. Exit Edit Recipe, clear the Programmer, then rerun the controlled Cue 3 tracking case to capture the ordinary tracked-target path.
+3. Repeat the same Position and Color tests on 2.4.x if available.
+4. Use the controlled tracked-cue result to investigate original Cue/Part provenance and Group matching.
+5. Do not implement Phase 2 until all five items in the research document's Phase 2 gate are satisfied for both workflows.

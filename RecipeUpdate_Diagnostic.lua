@@ -499,23 +499,32 @@ end
 local function inspectProgrammerMode()
     if not callable("ProgrammerPart") then
         warn("Programmer mode: UNRESOLVED - ProgrammerPart unavailable")
-        return
+        return "unresolved"
     end
     local results, err = safeCall("ProgrammerPart", ProgrammerPart)
     local part = results and results[1] or nil
     if not part then
         warn("Programmer mode: UNRESOLVED - %s", err or "no ProgrammerPart handle")
-        return
+        return "unresolved"
     end
-    local ok, count = pcall(function() return part:Count() end)
-    if not ok then
-        warn("Programmer mode: UNRESOLVED - ProgPart Count failed")
-    elseif tonumber(count) and tonumber(count) > 0 then
-        warn("Programmer mode: RECIPE CONTENT DETECTED (%d Recipe children); normal-Programmer update must NO-OP",
-            tonumber(count))
-    else
-        log("Programmer mode: NORMAL (ProgPart Recipe children=0)")
+    local ok, children = pcall(function() return part:Children() end)
+    if not ok or type(children) ~= "table" then
+        warn("Programmer mode: UNRESOLVED - ProgPart Children failed")
+        return "unresolved"
     end
+    local recipeCount = 0
+    for _, child in ipairs(children) do
+        if string.find(string.lower(objectClass(child)), "recipe", 1, true) then
+            recipeCount = recipeCount + 1
+        end
+    end
+    if recipeCount > 0 then
+        log("Programmer mode: EDIT RECIPE (%d direct Recipe candidates); supported workflow, inspect exact target",
+            recipeCount)
+        return "edit_recipe"
+    end
+    log("Programmer mode: NORMAL (ProgPart Recipe children=0); supported workflow, resolve tracked target")
+    return "normal"
 end
 
 local function main()
@@ -540,7 +549,7 @@ local function main()
     inspectContext(sequence, cue)
 
     local fixtures = readSelection()
-    inspectProgrammerMode()
+    local programmerMode = inspectProgrammerMode()
     readProgrammer(fixtures)
     dumpProgrammerObjects()
 
@@ -549,7 +558,11 @@ local function main()
     log("Command-history hint: DISABLED - no confirmed stable reader")
 
     log("=== RECIPE RESOLUTION ===")
-    log("Candidate Recipe: UNRESOLVED - scoring intentionally disabled")
+    if programmerMode == "edit_recipe" then
+        log("Candidate Recipe: DIRECT ProgrammerPart Recipe candidates available - inspect object tree; no write in diagnostic")
+    else
+        log("Candidate Recipe: UNRESOLVED - tracked-target scoring intentionally disabled")
+    end
     log("Current Recipe Reference: UNRESOLVED - inspect Recipe Dumps")
     log("NO-OP: this diagnostic cannot and will not update the Showfile")
     log("Copy this complete output for 2.3.2.0 vs 2.4.x comparison")

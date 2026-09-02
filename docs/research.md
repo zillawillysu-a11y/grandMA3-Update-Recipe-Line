@@ -127,6 +127,7 @@ The following are not safe foundations for production writes yet:
 - It uses shallow, bounded table output so unexpected API data cannot flood Command Line History indefinitely.
 - It dumps the selected sequence, current cue, cue descendants, Programmer, and current ProgrammerPart when available. Dumps are verbose by design in this research build.
 - Candidate scoring is not enabled until feature, selection, old preset reference, and original provenance can be read reliably. Printing a guessed candidate number would violate the NO-OP policy.
+- Product requirement: both Edit Recipe and ordinary Programmer workflows must be supported. Edit Recipe exposes direct Recipe candidates under ProgrammerPart; ordinary Programmer requires tracked-target resolution. Recipe children are a mode discriminator, not a reason to reject the Plugin operation.
 
 ## Required real-console test
 
