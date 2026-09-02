@@ -43,6 +43,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Verified 0.1.8.0 on 2.3.2.0: grid fingerprint uniquely resolved Group 9; scanning five Cues/two Recipes uniquely inferred Sequence 8 Cue 1 Part 0 Recipe 1, Group 9, old Position 2.4 as the source for Cue 3's selected Position data.
 - Updated diagnostic 0.1.9.0 to show the inferred Current/Source/Group/Old/New chain in a read-only MessageBox and to report the unique candidate in the final Recipe summary instead of the stale `UNRESOLVED` line.
 - User visually verified the 0.1.9.0 MessageBox. Source resolution was correct, but generic object labels exposed `function: 000...` pointers for Part/Recipe and made the source line too long. Diagnostic 0.1.10.0 adds clean Cue/Part/Recipe display helpers and one field per line.
+- User visually checked 0.1.10.0: line layout was fixed, but Cue numbers rendered as `3.0/1.0` and Recipe `Index` collided with an object method. Diagnostic 0.1.11.0 uses `%g` Cue formatting and uppercase Dump properties `PART`/`INDEX` with function-pointer rejection.
 
 ## What remains
 
@@ -104,9 +105,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.10.0 (`DEADA9CB82796B23DC302F1D98CE5B6F22FCEE8EF1FB9BA7AE40C46036112691`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.11.0 (`B0A18F7A655772A33ABE3457E61D41672FC1BC63F477223DD073412ED4FA2C44`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.10.0 (`05E97F65250E8BFC8CEF9AE68DB48460DC79CFABA1CBB40C15F71B766E20E29C`).
+- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.11.0 (`B27B50825364F09F0056601D0B543AA16A6FFFA6EEDECCDB3753E7F89793EEEC`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -120,7 +121,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.7.0 normalized grid-fingerprint matcher: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
 - Diagnostic 0.1.8.0 bounded tracking provenance candidate scan: Lua syntax/static safety/XML and real-console validation passed; one expected source Recipe was inferred.
 - Diagnostic 0.1.9.0 visual tracking summary: Lua syntax/static safety/XML and real-console MessageBox validation passed; label/layout cleanup followed in 0.1.10.0.
-- Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console visual check pending.
+- Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML and real-console visual validation passed; numeric/property label cleanup followed in 0.1.11.0.
+- Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console visual check pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch

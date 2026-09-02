@@ -527,11 +527,15 @@ end
 local function cueDisplay(cue)
     local number = tonumber(objectText(cue, "No") or objectText(cue, "NO"))
     if number and number % 1000 == 0 then number = number / 1000 end
-    return string.format("%s - %s", number and tostring(number) or "?", cleanObjectName(cue))
+    return string.format("%s - %s", number and string.format("%g", number) or "?", cleanObjectName(cue))
 end
 
 local function indexedDisplay(object, property, fallback)
     local value = objectText(object, property)
+    if not value or string.match(value, "^function:") then
+        value = objectText(object, string.upper(property))
+    end
+    if value and string.match(value, "^function:") then value = nil end
     return value or cleanObjectName(object) or fallback
 end
 
@@ -764,8 +768,8 @@ local function showTrackingSummary(currentCue, programmerInfo, candidates)
         local candidate = candidates[1]
         message = string.format(
             "Current Cue: %s\n\nSource Cue: %s\nPart: %s\nRecipe: %s\nGroup: %s\nOld Values: %s\nNew Preset: %s\n\nConfidence: INFERRED HIGH\nREAD-ONLY - no update performed",
-            cueDisplay(currentCue), cueDisplay(candidate.cue), indexedDisplay(candidate.part, "Part", "Part 0"),
-            indexedDisplay(candidate.recipe, "Index", "Recipe 1"), objectLabel(candidate.group), tostring(candidate.values),
+            cueDisplay(currentCue), cueDisplay(candidate.cue), indexedDisplay(candidate.part, "PART", "Part 0"),
+            indexedDisplay(candidate.recipe, "INDEX", "Recipe 1"), objectLabel(candidate.group), tostring(candidate.values),
             objectLabel(programmerInfo.preset))
     elseif #candidates == 0 then
         message = "No matching tracking Recipe was found.\n\nREAD-ONLY - no update performed"
