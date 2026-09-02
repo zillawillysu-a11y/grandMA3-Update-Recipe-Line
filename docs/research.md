@@ -38,6 +38,7 @@ The following was observed in two System Monitor dumps from an actual 2.3.2.0 on
 - The current cue tree directly exposed `Cue -> Part -> Recipe`. The observed Recipe had readable properties `Selection=Group 401` and `Values=Preset 1.1`, confirming the hierarchy and property names on 2.3.2.0. The property rendering does not yet establish exact isolated write syntax or original-source provenance.
 - Diagnostic 0.1.4.0 verified the Edit Recipe path on 2026-09-02. ProgrammerPart exposed one direct Recipe at `ShowData.UserProfiles.Default.Environments.UserEnvironment 1.Programmer.Part Zero.Recipe 1`, with `INDEX=1`, `SELECTION=9 'SPOT TOP GRID'`, `PRESET=2 'Position'.4 '<<<>>>'`, `VALUES=FeatureGroup 2 'Position'.Preset 4 '<<<>>>'`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. No Cue/Part/source/origin mapping property appeared in its full Dump.
 - This establishes two separate target strategies: Edit Recipe mode operates on the direct ProgrammerPart Recipe candidate; ordinary mode must resolve the tracked Cue/Part Recipe. The direct object address and readable `VALUES` field still do not authorize a write until assignment and commit/cook behavior are isolated and undo-tested.
+- Diagnostic 0.1.5.0 confirmed that Group `Selection` is a structured table containing each member's zero-based `sf_index` plus grid coordinates. This enables a strictly read-only reverse match against `SelectionFirst/Next` output. The observed 20-fixture selection had no exact Group match; Groups 1, 2, 3, and 9 each overlapped only eight fixtures, so choosing Group 9 would have been an unsafe guess.
 
 These observations justify a Phase 1 high-confidence summary only when exactly one `abs_preset` handle is found and there are no active phasers without that reference. They do not yet prove original Cue/Part or Recipe-line resolution.
 
@@ -104,7 +105,7 @@ The following are not safe foundations for production writes yet:
 | `GetProgPhaser` | Release-note evidence; contract incomplete | Capability-detect | `pcall`; report raw bounded structure; no update |
 | `GetProgPhaserValue` | Not confirmed in official 2.3 index | Capability-detect only | Do not require or call in Phase 1 |
 | Preset link / `integrated` | Shape unknown | Capability-detect keys | Report `UNRESOLVED` until real dump proves semantics |
-| Group source | No stable API confirmed | Capability-detect future API | Future exact reverse match; ambiguous/no match means NO-OP |
+| Group source | Exact set comparison of Group `Selection[*].sf_index` to current selection observed | Verify on later version | Unique exact match only; ambiguous/no match means NO-OP |
 | Recipe object access | `Cue -> Part -> Recipe` and `ProgrammerPart -> Recipe` observed on 2.3.2.0 | Traverse handles and inspect classes | Branch by Edit Recipe vs ordinary mode |
 | Recipe Selection | `Selection` observed as `Group 401` on 2.3.2.0 | Verify shape/version read-only | Never write from display text alone |
 | Recipe Values | `Values` observed as `Preset 1.1` on 2.3.2.0 | Verify shape/version read-only | Exact isolated addressing still unresolved |

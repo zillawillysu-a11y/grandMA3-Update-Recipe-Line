@@ -35,6 +35,8 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Verified diagnostic 0.1.4.0 in Edit Recipe mode on 2.3.2.0. It found the direct Programmer Recipe at `...Programmer.Part Zero.Recipe 1` and read `INDEX=1`, `SELECTION=Group 9`, `PRESET=Position 2.4`, `VALUES=FeatureGroup 2 Position.Preset 4`, `TYPE=Preset`, `PRESETMODE=Selective`, and `ENABLED=Yes`. The full Dump contained no Cue/Part/source/origin mapping property.
 - Verified diagnostic 0.1.4.0 ordinary mode on Sequence 8 Cue 3: ProgrammerPart had zero Recipe children, Position 2.8 `Full` resolved across 40 Pan/Tilt phasers, and no direct provenance or Group field appeared. Cue 3 Part 0 exposed `Selection` as an unexpanded Lua table.
 - Updated diagnostic 0.1.5.0 to print raw Selection tables and inspect a bounded 24-object Group-pool sample without mutating the selection.
+- Diagnostic 0.1.5.0 confirmed Group `Selection[*].sf_index` supports read-only set comparison. The current 20-fixture selection had no exact Group match; Groups 1, 2, 3, and 9 each overlapped only eight fixtures, so Group 9 must not be guessed.
+- Updated diagnostic 0.1.6.0 to scan up to 2048 Groups compactly and accept only one unique exact `sf_index` set match; zero or multiple matches remain unresolved/ambiguous.
 
 ## What remains
 
@@ -95,9 +97,9 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Forbidden write/command call static scan: passed (no matches).
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
-- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.5.0 (`57AD479C0AD32799AA9971FF36578936C0C5FF64FD6B23BB19D804B2F38A98DA`).
+- Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.6.0 (`ACF4BF9D05F4E2CFB8ACF5C9CED83611D59710653DBAB7CFACCCC2A956B8FB80`).
 - XML descriptor parse/reference validation: passed; one referenced Lua component exists.
-- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.5.0 (`E8920E65B2C528CB7A1E1C92E3BD34CDF2CDBA411FD04D20EEABD77BE2ABA609`).
+- XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.6.0 (`8086C84302187496306963B25A916FF5AC845FCBEC99574406F6C8C3F068CA65`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -107,6 +109,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.4.0 dual-workflow classification: Lua syntax/static safety/XML validation and Edit Recipe real-console validation passed; ordinary tracked-target run remains pending.
 - Diagnostic 0.1.4.0 Edit Recipe classification and direct Recipe-child inspection on 2.3.2.0: passed; exact address and Recipe fields captured with no runtime error.
 - Diagnostic 0.1.5.0 Selection-table and bounded Group-pool probes: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
+- Diagnostic 0.1.6.0 compact exact Group matcher: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console output pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch

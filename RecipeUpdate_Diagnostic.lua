@@ -504,7 +504,11 @@ local function dumpProgrammerObjects()
     end
 end
 
-local function inspectGroupPool()
+local function inspectGroupPool(fixtures)
+    if #fixtures == 0 then
+        warn("Possible Group: UNRESOLVED - no current fixture selection")
+        return
+    end
     if not callable("DataPool") then
         warn("Group pool inspection unavailable: DataPool unavailable")
         return
@@ -520,8 +524,67 @@ local function inspectGroupPool()
         warn("Group pool inspection unavailable: Groups handle unresolved")
         return
     end
-    log("=== GROUP POOL OBJECT SAMPLE (bounded to 24 objects) ===")
-    inspectObject(groups, 0, { count = 0, max = 24 })
+    local childrenOk, groupObjects = pcall(function() return groups:Children() end)
+    if not childrenOk or type(groupObjects) ~= "table" then
+        warn("Possible Group: UNRESOLVED - Groups children unavailable")
+        return
+    end
+
+    local selected = {}
+    local selectedCount = 0
+    for _, fixture in ipairs(fixtures) do
+        local index = tonumber(fixture.index)
+        if index ~= nil and not selected[index] then
+            selected[index] = true
+            selectedCount = selectedCount + 1
+        end
+    end
+
+    local matches = {}
+    local scanned = 0
+    for _, group in ipairs(groupObjects) do
+        if scanned >= 2048 then
+            warn("Group matching truncated at 2048 Group objects")
+            break
+        end
+        scanned = scanned + 1
+        local selectionOk, selection = pcall(function() return group.Selection end)
+        if selectionOk and type(selection) == "table" then
+            local members = {}
+            local memberCount = 0
+            for _, item in pairs(selection) do
+                local index = type(item) == "table" and tonumber(item.sf_index) or nil
+                if index ~= nil and not members[index] then
+                    members[index] = true
+                    memberCount = memberCount + 1
+                end
+            end
+            if memberCount == selectedCount then
+                local exact = true
+                for index in pairs(selected) do
+                    if not members[index] then
+                        exact = false
+                        break
+                    end
+                end
+                if exact then matches[#matches + 1] = group end
+            end
+        end
+    end
+
+    log("Group exact-set scan: selected=%d groups_scanned=%d exact_matches=%d",
+        selectedCount, scanned, #matches)
+    if #matches == 1 then
+        log("Possible Group: %s | class=%s | address=%s | confidence=HIGH exact sf_index set match",
+            objectLabel(matches[1]), objectClass(matches[1]), objectAddress(matches[1]))
+    elseif #matches == 0 then
+        warn("Possible Group: UNRESOLVED - no exact sf_index set match")
+    else
+        warn("Possible Group: AMBIGUOUS - %d Groups have the same exact sf_index set", #matches)
+        for _, group in ipairs(matches) do
+            log("Group candidate: %s | %s", objectLabel(group), objectAddress(group))
+        end
+    end
 end
 
 local function inspectProgrammerMode()
@@ -582,8 +645,7 @@ local function main()
     dumpProgrammerObjects()
 
     log("=== GROUP RESOLUTION ===")
-    inspectGroupPool()
-    log("Possible Group: UNRESOLVED - no confirmed non-mutating membership API")
+    inspectGroupPool(fixtures)
     log("Command-history hint: DISABLED - no confirmed stable reader")
 
     log("=== RECIPE RESOLUTION ===")
