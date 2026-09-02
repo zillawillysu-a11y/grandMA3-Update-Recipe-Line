@@ -2,11 +2,11 @@
 
 ## Current objective
 
-Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: deliver a strictly read-only diagnostic plugin for grandMA3 2.3.2.0+ and wait for real-console evidence before any writer work.
+Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking Recipe Tracking Inspector for grandMA3 2.3.2.0+.
 
 ## Current status
 
-**Phase 0 complete; Phase 1 substantially validated on real grandMA3 2.3.2.0.** Both Edit Recipe and ordinary Programmer are required supported workflows. Position/Color preset resolution plus Cue/Part/Recipe hierarchy and Recipe property reads are evidence-backed. Ordinary-mode original Cue/Part provenance, Group matching, and exact isolated Recipe Values addressing remain unresolved. Do not begin Phase 2 writer work.
+**Persistent Inspector prototype 0.2.0.0 implemented and locally deployed; real-console UI validation is pending.** Phase 0 is complete and Phase 1 resolution is substantially validated on real grandMA3 2.3.2.0. Do not begin Phase 2 writer work.
 
 ## What has been completed
 
@@ -47,11 +47,14 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - User visually verified the final 0.1.11.0 MessageBox on 2.3.2.0: Current Cue 3, Source Cue 1, Part 0, Recipe 1, Group 9, old Position 2.4, new Position 2.8, confidence, and read-only status all render correctly and legibly.
 - Tested one selected fixture (patch index 79) from the 20-fixture Group 9 in ordinary mode. Exact-set Group and Recipe matching correctly returned zero. Diagnostic 0.1.12.0 changes provenance matching to Recipe-first subset containment plus feature matching, and displays fixture coverage such as `1 selected / 20 in Group`.
 - Final UI requirement: replace modal run-on-demand MessageBox UX with a non-blocking persistent `Recipe Tracking Inspector` that refreshes when fixture selection, Attribute/Feature, Programmer preset, current Cue, or Edit Recipe mode changes. It needs explicit Start/Stop, hook cleanup, duplicate-instance prevention, and ambiguous/no-source states. The documented `HookObjectChange` API is the preferred event mechanism; docked/custom UI creation remains a version-sensitive prototype area.
+- Added `RecipeTracking_Inspector.lua` as a separate component. It creates a bounded overlay panel on the focused display, refreshes every 0.25 seconds, updates text only when content changes, supports ordinary Programmer and Edit Recipe, shows selection/Attribute/current Cue/source Cue/Part/Recipe/Group/coverage/old/new/confidence, and renders unresolved or ambiguous states.
+- Inspector lifecycle is explicit: the STOP button sets a state flag, rerunning the component toggles an existing instance off, a global state prevents duplicate active instances, and cleanup deletes only the two UI handles created by the Inspector. No Show data is written.
+- Updated the XML descriptor to 0.2.0.0 with separate diagnostic and Inspector components.
 
 ## What remains
 
 - Repeat on a 2.4.x installation.
-- Build and validate the persistent non-blocking Inspector prototype separately from the diagnostic component.
+- Validate the persistent Inspector's position, dimensions, STOP callback, refresh behavior, and cleanup on real grandMA3 2.3.2.0.
 - Use controlled tracking tests to resolve original Cue/Part provenance and an unambiguous Group strategy.
 - Establish and undo-test exact isolated assignment behavior for the direct Edit Recipe `Values` property and for an ordinary Cue Recipe `Values` property without relying on display text.
 - Wait for user-provided real-console results before Phase 2.
@@ -70,6 +73,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 ## Known issues or blockers
 
 - No grandMA3 runtime is available in this development environment, so object hierarchy and return shapes cannot be validated locally.
+- `ModalOverlay` button creation is evidenced by installed 2.3.2 system plugins, but this custom panel and callback must still be exercised on the user's console/onPC. Polling is used because no single verified hook target covers fixture selection, Attribute, Programmer, Cue, and Edit Recipe changes.
 - No confirmed official Lua contract has yet been found for original tracking provenance, Group source, command-history reading, or Recipe Selection/Values internal property names.
 - `abs_preset` is confirmed for ordinary Position and Color calls on 2.3.2.0, but pure-relative, multi-feature, and 2.4.x shapes remain unverified.
 - `GetProgPhaserValue`, UIChannel round-trip, and ChannelFunction results vary by phaser/attribute shape and are not universal writer contracts.
@@ -86,6 +90,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 ## Relevant files
 
 - `RecipeUpdate_Diagnostic.lua`: Phase 1 read-only diagnostic plugin.
+- `RecipeTracking_Inspector.lua`: persistent read-only tracking panel prototype.
 - `recipe_update_diagnostic.xml`: grandMA3 Plugin descriptor referencing the diagnostic Lua component.
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\RecipeUpdate_Diagnostic.lua`: synchronized local test copy (repository-external).
 - `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin\recipe_update_diagnostic.xml`: synchronized local descriptor (repository-external).
@@ -110,8 +115,10 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
 - Local Lua deployment source/destination SHA-256 comparison: passed for diagnostic 0.1.12.0 (`F9167D6F271145D045BA848768C0F5A747F7AA46676E61FC9C82C170D8E8C157`).
-- XML descriptor parse/reference validation: passed; one referenced Lua component exists.
+- Inspector deployment source/destination SHA-256 comparison: passed (`7345FD4937BB4682376F41CD01F7098FA346B0F32A53411FDD8E3877B15EE0E0`).
+- XML descriptor parse/reference validation: passed; both referenced Lua components exist.
 - XML deployment source/destination SHA-256 comparison: passed for descriptor 0.1.12.0 (`EB56A3DF9778DF685FD9625BB2775EBF7709ADBA98B51FDAFA401262B2A730EE`).
+- XML 0.2.0.0 deployment source/destination SHA-256 comparison: passed (`ED17916893272BC03E7F03FA6241C3865DED0542FA3724597C3BB42BC13EAA00`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -128,6 +135,7 @@ Complete Phase 0 research and Phase 1 of the grandMA3 Recipe Update project: del
 - Diagnostic 0.1.10.0 cleaned visual labels/layout: Lua syntax/static safety/XML and real-console visual validation passed; numeric/property label cleanup followed in 0.1.11.0.
 - Diagnostic 0.1.11.0 numeric/property label cleanup: Lua syntax/static safety/XML, deployment hash, and real-console visual validation passed.
 - Diagnostic 0.1.12.0 Recipe-first subset provenance matching: Lua syntax/static safety/XML validation passed and local deployment hashes matched; real-console single-fixture result pending.
+- Inspector 0.2.0.0 Lua syntax, `git diff --check`, XML reference, read-only command scan, and local deployment hash validation passed; real-console UI/lifecycle validation pending.
 - grandMA3 2.4.x runtime comparison: pending user real-console run.
 
 ## Current branch
@@ -144,8 +152,7 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Exit Edit Recipe, clear the Programmer, then rerun the controlled Cue 3 tracking case to capture the ordinary tracked-target path.
-2. Repeat the same Position and Color tests on 2.4.x if available.
-3. Use the controlled tracked-cue result to investigate original Cue/Part provenance and Group matching.
-4. Design a disposable, undo-verified assignment test for the direct Edit Recipe `Values` property, but do not enable production writes yet.
-5. Do not implement the production writer until all five items in the research document's Phase 2 gate are satisfied for both workflows.
+1. Import/reload Plugin 0.2.0.0, run component `recipe_tracking_inspector`, and visually verify that the right-side panel does not block normal operation.
+2. Select different fixture subsets and Position/Color presets; confirm immediate source/Group changes and capture any System Monitor error.
+3. Press STOP, then rerun twice to verify cleanup and duplicate-instance prevention.
+4. Repeat on 2.4.x if available. Do not implement the production writer until all Phase 2 gates are satisfied.
