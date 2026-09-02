@@ -410,6 +410,7 @@ local function readProgrammer(fixtures)
         else
             warn("GetPresetData sample unavailable: %s", tostring(presetDataErr))
         end
+        return { feature = feature, preset = preset, presetAddress = address }
     elseif #presetAddresses == 0 then
         warn("Current Preset Reference: UNRESOLVED - no abs_preset handle found")
     else
@@ -513,6 +514,7 @@ local function dumpProgrammerObjects()
             inspectObject(part, 0, { count = 0 })
         end
     end
+    return nil
 end
 
 local function inspectGroupPool(fixtures)
@@ -647,6 +649,92 @@ local function inspectGroupPool(fixtures)
     end
 end
 
+local function selectionSetMatches(group, fixtures)
+    if group == nil or #fixtures == 0 then return false end
+    local ok, selection = pcall(function() return group.Selection end)
+    if not ok or type(selection) ~= "table" then return false end
+    local selected, members = {}, {}
+    local selectedCount, memberCount = 0, 0
+    for _, fixture in ipairs(fixtures) do
+        local index = tonumber(fixture.index)
+        if index ~= nil and not selected[index] then selected[index] = true selectedCount = selectedCount + 1 end
+    end
+    for _, item in pairs(selection) do
+        local index = type(item) == "table" and tonumber(item.sf_index) or nil
+        if index ~= nil and not members[index] then members[index] = true memberCount = memberCount + 1 end
+    end
+    if selectedCount ~= memberCount then return false end
+    for index in pairs(selected) do if not members[index] then return false end end
+    return true
+end
+
+local function scanRecipeProvenance(sequence, currentCue, fixtures, programmerInfo)
+    log("=== TRACKING PROVENANCE CANDIDATE SCAN ===")
+    if not sequence or #fixtures == 0 or not programmerInfo or not programmerInfo.feature then
+        warn("Tracking provenance candidates: UNRESOLVED - missing sequence, selection, or Programmer feature")
+        return
+    end
+    local childrenOk, cueObjects = pcall(function() return sequence:Children() end)
+    if not childrenOk or type(cueObjects) ~= "table" then
+        warn("Tracking provenance candidates: UNRESOLVED - Sequence children unavailable")
+        return
+    end
+
+    local candidates, cuesScanned, recipesScanned = {}, 0, 0
+    local featureLower = string.lower(programmerInfo.feature)
+    for _, cue in ipairs(cueObjects) do
+        if cuesScanned >= 512 or recipesScanned >= 2048 then break end
+        if string.lower(objectClass(cue)) == "cue" then
+            cuesScanned = cuesScanned + 1
+            local partsOk, parts = pcall(function() return cue:Children() end)
+            if partsOk and type(parts) == "table" then
+                for _, part in ipairs(parts) do
+                    if string.lower(objectClass(part)) == "part" then
+                        local recipesOk, recipes = pcall(function() return part:Children() end)
+                        if recipesOk and type(recipes) == "table" then
+                            for _, recipe in ipairs(recipes) do
+                                if recipesScanned >= 2048 then break end
+                                if string.find(string.lower(objectClass(recipe)), "recipe", 1, true) then
+                                    recipesScanned = recipesScanned + 1
+                                    local selectionOk, selectionGroup = pcall(function() return recipe.Selection end)
+                                    local valuesOk, values = pcall(function() return recipe.Values end)
+                                    local valuesText = valuesOk and tostring(values) or ""
+                                    local valuesAddress = valuesOk and objectAddress(values) or ""
+                                    local featureMatches = string.find(string.lower(valuesText), featureLower, 1, true)
+                                        or string.find(string.lower(valuesAddress), featureLower, 1, true)
+                                    if selectionOk and selectionSetMatches(selectionGroup, fixtures) and featureMatches then
+                                        candidates[#candidates + 1] = {
+                                            cue = cue, part = part, recipe = recipe, group = selectionGroup,
+                                            values = values, current = cue == currentCue
+                                        }
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    log("Tracking candidate scan: cues=%d recipes=%d matches=%d", cuesScanned, recipesScanned, #candidates)
+    for index, candidate in ipairs(candidates) do
+        log("Tracking candidate %d: Cue=%s | Part=%s | Recipe=%s | Group=%s | Values=%s | currentCue=%s",
+            index, objectLabel(candidate.cue), objectLabel(candidate.part), objectLabel(candidate.recipe),
+            objectLabel(candidate.group), tostring(candidate.values), tostring(candidate.current))
+        log("Tracking candidate %d addresses: cue=%s | part=%s | recipe=%s | group=%s | values=%s",
+            index, objectAddress(candidate.cue), objectAddress(candidate.part), objectAddress(candidate.recipe),
+            objectAddress(candidate.group), objectAddress(candidate.values))
+    end
+    if #candidates == 1 then
+        log("Tracking provenance: INFERRED HIGH - one Recipe matches exact fixture set and feature; console-native source proof still unavailable")
+    elseif #candidates == 0 then
+        warn("Tracking provenance: UNRESOLVED - no Recipe matches exact fixture set and feature")
+    else
+        warn("Tracking provenance: AMBIGUOUS - %d Recipe candidates match", #candidates)
+    end
+end
+
 local function inspectProgrammerMode()
     if not callable("ProgrammerPart") then
         warn("Programmer mode: UNRESOLVED - ProgrammerPart unavailable")
@@ -701,12 +789,16 @@ local function main()
 
     local fixtures = readSelection()
     local programmerMode = inspectProgrammerMode()
-    readProgrammer(fixtures)
+    local programmerInfo = readProgrammer(fixtures)
     dumpProgrammerObjects()
 
     log("=== GROUP RESOLUTION ===")
     inspectGroupPool(fixtures)
     log("Command-history hint: DISABLED - no confirmed stable reader")
+
+    if programmerMode == "normal" then
+        scanRecipeProvenance(sequence, cue, fixtures, programmerInfo)
+    end
 
     log("=== RECIPE RESOLUTION ===")
     if programmerMode == "edit_recipe" then
