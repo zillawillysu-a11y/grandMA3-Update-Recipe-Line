@@ -270,6 +270,18 @@ local function render()
         else
             lines[#lines + 1] = string.format("\nStatus: AMBIGUOUS (%d matching Recipes)", #candidates)
             lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
+            for index, item in ipairs(candidates) do
+                if index > 3 then
+                    lines[#lines + 1] = string.format("...and %d more", #candidates - 3)
+                    break
+                end
+                lines[#lines + 1] = string.format("%d) Cue %s / %s / %s%s", index,
+                    cueLabel(item.cue), indexedLabel(item.part, "PART", "Part 0"),
+                    indexedLabel(item.recipe, "INDEX", "Recipe 1"),
+                    item.current and " [CURRENT]" or "")
+                lines[#lines + 1] = string.format("   %s | %s | %d/%d", label(item.group),
+                    tostring(item.values or "UNRESOLVED"), item.selectedCount, item.groupCount)
+            end
         end
     end
     return table.concat(lines, "\n")

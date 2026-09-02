@@ -56,6 +56,7 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - The 0.2.0.3 real-console panel Dump confirmed native `TOUCHSTART`, `TOUCHUPDATE`, and `TOUCHEND` signals with pointer X/Y arguments. Version 0.2.1.0 wires these signals to bounded panel movement, keeps STOP aligned with the panel, and removes the temporary Dump probe.
 - Version 0.2.1.0 no longer requires a Programmer preset to resolve tracking. Selecting fixtures plus an Attribute scans matching Recipe sources and displays `New Preset: No Programmer value` when appropriate. It normalizes the observed `PanTilt` UI feature to Recipe feature group `Position`.
 - Live 0.2.1.0 validation passed selection, Attribute-only source resolution, and no-Programmer-value behavior, but onPC mouse dragging did not start. Version 0.2.1.1 additionally binds the confirmed `MOUSEDOWN`/`MOUSEUP` signals, enables hover interaction, and clears the panel Button's default click action while retaining touch bindings.
+- A one-fixture Position selection at Cue 10 displayed two matching Recipes. This is expected under the conservative subset scan when two Recipe Groups both contain the fixture; `No Programmer value` is also expected for Attribute-only inspection. Version 0.2.1.2 lists up to three ambiguous candidates with Cue/Part/Recipe, Group, Values, coverage, and a Current-Cue marker so the cause can be distinguished without guessing.
 
 ## What remains
 
@@ -121,9 +122,9 @@ Complete Phase 0/1 read-only resolution and prototype a persistent, non-blocking
 - `git diff --check`: passed.
 - Documentation/manual code review: passed.
 - Local Lua deployment source/destination SHA-256 comparison: passed for the current diagnostic (`A8F2006F3A5C7862BBF5468B7B65D1BD2C68E9A0D1EA15894335C1AB1004CB36`).
-- Inspector 0.2.1.1 deployment source/destination SHA-256 comparison: passed (`44B89A465ED3A7AE99DFFC2629D89301BB56F1FF32E1D5AE8A762D129469013F`).
+- Inspector 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`287F3180122AA7F40BC4F2A80B7AE7AE452F2AA6B01B745ABB8A0CE40068CC5A`).
 - XML descriptor parse/reference validation: passed; both referenced Lua components exist.
-- XML 0.2.1.1 deployment source/destination SHA-256 comparison: passed (`B1032982CE136B098059F0075E0418AAFB1C2EA58AC8E4B734359229DB5B454D`).
+- XML 0.2.1.2 deployment source/destination SHA-256 comparison: passed (`5F5D5A3BFC9F36E621F82281C5EE5DF27E81F47BA26900980641CAED545EB097`).
 - grandMA3 2.3.2.0 runtime coverage: partial; Position ordinary Programmer passed, remaining cases below are pending.
 - grandMA3 2.3.2.0 ordinary Position preset resolution: passed from DumpLog evidence.
 - grandMA3 2.3.2.0 diagnostic 0.1.1.0 compact Position summary: passed for Position 2.7 `Full` and Position 2.5 `<<<>>>`.
@@ -157,7 +158,7 @@ Complete. The Phase 0/1 implementation was pushed to `origin/main`, and local `m
 
 ## Recommended next steps
 
-1. Import/reload Plugin 0.2.0.0, run component `recipe_tracking_inspector`, and visually verify that the right-side panel does not block normal operation.
-2. Select different fixture subsets and Position/Color presets; confirm immediate source/Group changes and capture any System Monitor error.
+1. Import/reload Plugin 0.2.1.2, reproduce the one-fixture ambiguity, and capture the candidate details now shown in the panel.
+2. Use those candidate Cue/Recipe details to decide whether safe temporal ranking is sufficient or whether the overlap is genuinely ambiguous.
 3. Press STOP, then rerun twice to verify cleanup and duplicate-instance prevention.
 4. Repeat on 2.4.x if available. Do not implement the production writer until all Phase 2 gates are satisfied.
