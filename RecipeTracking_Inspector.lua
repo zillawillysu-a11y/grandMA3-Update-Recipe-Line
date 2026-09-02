@@ -321,9 +321,14 @@ signalTable.UpdateRecipeTrackingDrag = function(_, _, x, y)
         state.drag.panelY + (tonumber(y) or state.drag.pointerY) - state.drag.pointerY)
 end
 
-signalTable.EndRecipeTrackingDrag = function()
+signalTable.EndRecipeTrackingDrag = function(_, _, x, y)
     local state = _G[STATE_KEY]
-    if state then state.drag = nil end
+    if state and state.drag then
+        movePanel(state,
+            state.drag.panelX + (tonumber(x) or state.drag.pointerX) - state.drag.pointerX,
+            state.drag.panelY + (tonumber(y) or state.drag.pointerY) - state.drag.pointerY)
+        state.drag = nil
+    end
 end
 
 local function createPanel(state)
@@ -341,7 +346,7 @@ local function createPanel(state)
     panel.H = "360"
     panel.X = math.max(0, displayWidth - 540)
     panel.Y = "20"
-    panel.HasHover = "No"
+    panel.HasHover = "Yes"
     panel.Font = "Medium20"
     panel.TextalignmentH = "Left"
     panel.TextalignmentV = "Top"
@@ -349,6 +354,9 @@ local function createPanel(state)
     panel.Padding = { left = 16, right = 16, top = 14, bottom = 14 }
     panel.BackColor = Root().ColorTheme.ColorGroups.Global.Transparent75
     panel.PluginComponent = componentHandle
+    panel.Clicked = ""
+    panel.MouseDown = "StartRecipeTrackingDrag"
+    panel.MouseUp = "EndRecipeTrackingDrag"
     panel.TouchStart = "StartRecipeTrackingDrag"
     panel.TouchUpdate = "UpdateRecipeTrackingDrag"
     panel.TouchEnd = "EndRecipeTrackingDrag"

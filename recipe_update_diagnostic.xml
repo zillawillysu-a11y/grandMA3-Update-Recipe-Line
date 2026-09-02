@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <GMA3 DataVersion="0.8.84.0">
-    <UserPlugin Name="Recipe Tracking Inspector" Version="0.2.1.0" Path="/Update Plugin">
+    <UserPlugin Name="Recipe Tracking Inspector" Version="0.2.1.1" Path="/Update Plugin">
         <ComponentLua Name="recipe_tracking_inspector" FileName="RecipeTracking_Inspector.lua" />
         <ComponentLua Name="recipe_update_diagnostic" FileName="RecipeUpdate_Diagnostic.lua" />
     </UserPlugin>
