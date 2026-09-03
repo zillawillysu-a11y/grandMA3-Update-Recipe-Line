@@ -4,9 +4,9 @@
 
 Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2.0.
 
-Current focus is the persistent Inspector UI and interaction behavior.
+The persistent Inspector UI is real-world verified at plugin version `0.2.3.4`.
 
-Do not begin Phase 2 Recipe writer work yet.
+Phase 2 Recipe writer work has not started yet; it awaits user approval.
 
 ---
 
@@ -15,7 +15,7 @@ Do not begin Phase 2 Recipe writer work yet.
 Primary implementation:
 
 * `RecipeTracking_Inspector.lua`
-* `recipe_update_diagnostic.xml`
+* `recipe_update_diagnostic.xml` (plugin version `0.2.3.4`)
 
 Legacy/read-only research implementation:
 
@@ -36,32 +36,16 @@ before continuing.
 
 ## Latest Real-World User Test
 
-The latest Inspector UI still has problems:
+Version `0.2.3.4` is confirmed PASS on real grandMA3 2.3.2.0 (user report, after the v0.2.3.2/v0.2.3.3 failures). All requirements of that round are met:
 
-1. Close `X` still visually looks like a separate inset button.
+1. Close `X` is visually integrated into the title bar: proven `CloseButton` element with `corner2` texture at the right edge, full 36 px bar height.
+2. X height matches the title bar height (36 px).
+3. Title font is larger (`Medium20`) and the full title text renders because the `TitleButton` is forced to an explicit 484x36 size (PANEL_WIDTH - 36).
+4. Transparency no longer depends on mouse hover (`HasHover = "No"` on window, title bar, and panel).
+5. No centered `Cue Recipe Update Tool` text (`window.Text` assignment removed; only `window.Title` remains for the native title bar).
+6. `STYLE` now changes the actual window/panel background, not only button text (`window.BackColor` and `panel.BackColor` are set to the resolved `Root().ColorTheme.ColorGroups.Global` color object with `Global.*` string fallback).
 
-   * User wants the X visually integrated into the title bar like a normal window close control.
-   * The X glyph itself may be small while retaining a usable click area.
-
-2. Title text is too small.
-
-   * It should be larger and visually belong to the title bar.
-
-3. Transparency behavior is wrong.
-
-   * Current transparency appears dependent on mouse hover/pointer being inside the window.
-   * User wants the intended transparency to remain without requiring hover.
-
-4. `Cue Recipe Update Tool` should not appear centered as unwanted content.
-
-   * Determine which UI element creates this text and remove/reposition it appropriately.
-
-5. `STYLE` still does not produce the required visible behavior.
-
-   * Changing only button text is not sufficient.
-   * The actual window/panel style or transparency must change.
-
-These observations override assumptions from previous UI commits.
+The coherent change is committed and pushed to the `qwen` branch.
 
 ---
 
@@ -69,6 +53,10 @@ These observations override assumptions from previous UI commits.
 
 * The persistent Inspector can run as a non-modal grandMA3 UI.
 * Native title-bar dragging has worked in real grandMA3 2.3.2.0 testing.
+* The proven title-bar geometry is a single-cell `TitleBar` (`Columns = 1`, children anchored `0,0,0,0`) with explicit `W/H/MinSize/MaxSize`: `TitleButton` at 484x36 left-aligned, `CloseButton` at 36x36 with `AlignmentH = "Right"`. `TitleButton` does not stretch to fill its cell, so explicit sizing is required.
+* `HasHover` is a real grandMA3 element property and suppresses hover-state rendering on the elements it is set on.
+* The `CloseButton` element type is the proven close control (used with `corner2` texture since v0.2.2).
+* `Global.Transparent75/50/Background` back-color cycling changes the visible window/panel style on real 2.3.2.0 (user-confirmed with v0.2.3.4).
 * Read-only Recipe/source resolution research is substantially validated for the current Phase 0/1 scope.
 * Local deployment path is:
 
@@ -76,29 +64,22 @@ These observations override assumptions from previous UI commits.
 
 * Deployment must include XML plus referenced Lua components.
 * Repository/deployment SHA256 equality verifies file identity only; it does not verify UI correctness.
-* No Phase 2 writer implementation should begin yet.
+* No Phase 2 writer implementation has begun.
 
 ---
 
 ## Current Problem
 
-The current task is not deployment verification.
-
-The current task is to change the Inspector implementation so that the latest real-world UI feedback is actually addressed.
-
-Do not simply redeploy the existing implementation.
-
-A new requested UI behavior change should produce a relevant source diff before deployment.
+None outstanding. The inspector UI is at a user-confirmed good state.
 
 ---
 
-## Known Failed Attempt
+## Known Failed Attempts (do not repeat without new evidence)
 
-The previous UI adjustment reduced/repositioned the close button and changed styling, but the real grandMA3 result still did not satisfy the requested visual behavior.
+* v0.2.3.2: single-cell layout with a 28x28 default-textured close `Button` - X looked like a separate inset button, X height did not match the bar, title truncated, transparency stayed hover-dependent, and `window.Text` rendered the title centered in the window.
+* v0.2.3.3: two-column title-bar grid (`title.Columns = 2`) with the close anchored to column 2 and `AlignmentH = "Center"` - the X left the right edge and rendered toward the middle; the title stayed truncated; two unguarded property assignments (`titleButton.Font`, `close.Texture`) risked hard errors during panel creation.
 
-Do not repeat the same close-button sizing approach without first inspecting the UI hierarchy.
-
-Previous successful SHA256 deployment verification does not mean the UI requirement passed.
+The fix that worked (v0.2.3.4): proven 0.2.3.2 placement (single cell, `AlignmentH = "Right"`, explicit sizes), explicit full-width `TitleButton` sizing, proven `CloseButton` element type, and capability-guarded element-specific properties.
 
 ---
 
@@ -144,27 +125,9 @@ Preserve any existing uncommitted work.
 
 ## Exact Next Action
 
-Inspect the current `RecipeTracking_Inspector.lua` implementation for:
+The real-world-verified v0.2.3.4 state is committed and pushed to `qwen`.
 
-* title-bar hierarchy
-* close/X control
-* title text/font/layout
-* STYLE callback
-* transparency/background properties
-* mouse/hover bindings
-* any UI element producing `Cue Recipe Update Tool`
+Next:
 
-Determine why the latest real-world result differs from the requested behavior.
-
-Then:
-
-1. make a new relevant source-code change
-2. inspect `git diff`
-3. run available local validation
-4. deploy the changed files
-5. verify source/deployment hashes
-6. stop for user testing only when the new implementation is actually deployed
-
-Do not stop after describing these steps.
-
-Do not commit merely because deployment succeeded; for visual grandMA3 changes, prefer user validation before committing the final coherent state.
+1. If the user approves starting Phase 2, begin the Recipe writer research/planning (separate from the read-only inspector).
+2. If further UI feedback arrives, follow the standard workflow: inspect the new observation, produce a relevant source diff, local validation, deploy, SHA256 verification, user real-world test, then commit the coherent confirmed state.

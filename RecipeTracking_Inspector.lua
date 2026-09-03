@@ -360,13 +360,28 @@ signalTable.ToggleRecipeTrackingDetails = function()
     state.forceRefresh = true
 end
 
+local STYLE_KEYS = { "Transparent75", "Transparent50", "Background" }
+local STYLE_LABELS = { "STYLE 75", "STYLE 50", "STYLE SOLID" }
+
+local function styleColor(index)
+    local key = STYLE_KEYS[index] or STYLE_KEYS[1]
+    local color = "Global." .. key
+    local groups = safe(function() return Root().ColorTheme.ColorGroups.Global end)
+    if type(groups) == "table" then
+        local named = safe(function() return groups[key] end)
+        if named ~= nil then color = named end
+    end
+    return color
+end
+
 signalTable.CycleRecipeTrackingStyle = function()
     local state = _G[STATE_KEY]
     if not state or not state.panel then return end
     state.styleIndex = ((state.styleIndex or 1) % 3) + 1
-    local choices = { "Global.Transparent75", "Global.Transparent50", "Global.Background" }
-    pcall(function() state.panel.BackColor = choices[state.styleIndex] end)
-    if state.style then state.style.Text = ({ "STYLE 75", "STYLE 50", "STYLE SOLID" })[state.styleIndex] end
+    local color = styleColor(state.styleIndex)
+    if state.window then pcall(function() state.window.BackColor = color end) end
+    pcall(function() state.panel.BackColor = color end)
+    if state.style then state.style.Text = STYLE_LABELS[state.styleIndex] end
 end
 
 local function createPanel(state)
@@ -380,7 +395,7 @@ local function createPanel(state)
     if window == nil then return nil, "could not append BaseInput" end
     window.Name = "RecipeTrackingInspectorWindow"
     pcall(function() window.Title = "Cue Recipe Update Tool" end)
-    pcall(function() window.Text = "Cue Recipe Update Tool" end)
+    pcall(function() window.HasHover = "No" end)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
     window.Columns = 1
@@ -398,29 +413,39 @@ local function createPanel(state)
     if title == nil then deleteHandle(window) return nil, "could not append TitleBar" end
     title.Name = "TitleBar"
     title.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    pcall(function() title.HasHover = "No" end)
     title.Columns = 1
     title.Rows = 1
     title[1][1].SizePolicy = "Stretch"
 
+    local titleWidth = tostring(PANEL_WIDTH - 36)
     local titleButton = safe(function() return title:Append("TitleButton") end)
     if titleButton == nil then deleteHandle(window) return nil, "could not append TitleButton" end
     titleButton.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    pcall(function() titleButton.AlignmentH = "Left" end)
+    pcall(function() titleButton.AlignmentV = "Center" end)
+    pcall(function() titleButton.W = titleWidth end)
+    pcall(function() titleButton.H = "36" end)
+    pcall(function() titleButton.MinSize = titleWidth .. ",36" end)
+    pcall(function() titleButton.MaxSize = titleWidth .. ",36" end)
     titleButton.Text = "Cue Recipe Update Tool"
-    titleButton.Texture = "corner1"
+    pcall(function() titleButton.Font = "Medium20" end)
+    pcall(function() titleButton.Texture = "corner1" end)
     titleButton.TextalignmentH = "Left"
-    titleButton.Padding = { left = 10, right = 34, top = 0, bottom = 0 }
+    pcall(function() titleButton.Padding = { left = 10, right = 36, top = 0, bottom = 0 } end)
 
-    local close = safe(function() return title:Append("Button") end)
+    local close = safe(function() return title:Append("CloseButton") end)
     if close ~= nil then
         close.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-        close.AlignmentH = "Right"
-        close.AlignmentV = "Center"
-        close.W = "28"
-        close.H = "28"
-        close.MinSize = "28,28"
-        close.MaxSize = "28,28"
-        close.Text = "X"
-        close.Font = "Regular14"
+        pcall(function() close.AlignmentH = "Right" end)
+        pcall(function() close.AlignmentV = "Center" end)
+        pcall(function() close.W = "36" end)
+        pcall(function() close.H = "36" end)
+        pcall(function() close.MinSize = "36,36" end)
+        pcall(function() close.MaxSize = "36,36" end)
+        pcall(function() close.Text = "X" end)
+        pcall(function() close.Font = "Regular14" end)
+        pcall(function() close.Texture = "corner2" end)
         close.PluginComponent = componentHandle
         close.Clicked = "StopRecipeTrackingInspector"
     end
@@ -434,7 +459,8 @@ local function createPanel(state)
     panel.TextalignmentV = "Top"
     panel.TextAutoAdjust = "No"
     panel.Padding = { left = 12, right = 12, top = 8, bottom = 8 }
-    panel.BackColor = "Global.Transparent75"
+    pcall(function() panel.HasHover = "No" end)
+    pcall(function() panel.BackColor = styleColor(1) end)
 
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append footer" end
