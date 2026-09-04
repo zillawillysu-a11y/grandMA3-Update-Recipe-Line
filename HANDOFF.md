@@ -4,7 +4,7 @@
 
 Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2.0.
 
-The persistent Inspector UI is real-world verified at plugin version `0.2.3.4`. Version `0.2.4.0` adds visible version labels, nearest-prior-Cue tracking resolution, Preset Name fallback, SELECT GROUP, and dynamic title-fill sizing; real-world validation is pending.
+The persistent Inspector UI is real-world verified at plugin version `0.2.3.4`. Version `0.2.4.1` adds visible version labels, nearest-prior-Cue tracking resolution, Preset Name fallback, SELECT GROUP, selected-Attribute priority, and All Preset/Phaser-aware matching; real-world validation is pending.
 
 Phase 2 Recipe writer work has not started yet; it awaits user approval.
 
@@ -70,7 +70,7 @@ The coherent change is committed and pushed to the `qwen` branch.
 
 ## Current Problem
 
-Version `0.2.4.0` awaits grandMA3 validation for four user-reported requirements: resolve only the latest applicable Recipe instead of listing older superseded candidates, show Position Preset names via `Get("Name")` fallback, select the uniquely resolved Recipe Group, and fill the title background after horizontal resize.
+Version `0.2.4.1` awaits grandMA3 validation. It keeps the clicked Attribute authoritative even when another Programmer Preset exists, reports raw/multi-step Programmer phasers, checks Recipe Values through `GetPresetData` for All Preset/Phaser content, and places SELECT GROUP at the far left. The 0.2.4.0 tracking/name/title-fill changes also remain under validation.
 
 ---
 

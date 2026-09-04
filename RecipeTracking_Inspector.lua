@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.2.4.0"
+local PLUGIN_VERSION = "0.2.4.1"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -135,6 +135,10 @@ local function normalizeFeature(name)
     local compact = string.lower(string.gsub(text, "[%s_/%-]", ""))
     if compact == "pantilt" or compact == "pan" or compact == "tilt" then return "Position" end
     if compact == "rgb" or compact == "colorrgb" or compact == "colourrgb" then return "Color" end
+    if compact == "r" or compact == "g" or compact == "b" or compact == "red"
+        or compact == "green" or compact == "blue" then return "Color" end
+    if compact == "dim" or compact == "dimmer" then return "Dimmer" end
+    if string.find(compact, "gobo", 1, true) then return "Gobo" end
     return text
 end
 
@@ -145,8 +149,9 @@ end
 
 local function readProgrammer(fixtures)
     local presets, rawCount = {}, 0
+    local selectedFeature = normalizeFeature(selectedFeatureLabel())
     if #fixtures == 0 or not callable("GetUIChannels") then
-        return { feature = normalizeFeature(selectedFeatureLabel()) }
+        return { feature = selectedFeature }
     end
     for _, fixture in ipairs(fixtures) do
         local channels = safe(GetUIChannels, fixture.handle or fixture.index, true)
@@ -156,9 +161,16 @@ local function readProgrammer(fixtures)
                 if uiIndex then
                     local phaser = getProgPhaser(uiIndex - 1)
                     if type(phaser) == "table" then
+                        local channelFeature = normalizeFeature(property(channel, "SUBATTRIBUTE")
+                            or property(channel, "SubAttribute") or property(channel, "Name"))
                         if type(phaser.abs_preset) == "userdata" then
-                            presets[address(phaser.abs_preset)] = phaser.abs_preset
-                        else
+                            local presetAddress = address(phaser.abs_preset)
+                            local pool = string.match(presetAddress, "PresetPools%.([^%.]+)%.")
+                            if pool == selectedFeature or pool == "All" then
+                                presets[presetAddress] = phaser.abs_preset
+                                if type(phaser[2]) == "table" then rawCount = rawCount + 1 end
+                            end
+                        elseif channelFeature == selectedFeature then
                             rawCount = rawCount + 1
                         end
                     end
@@ -169,21 +181,52 @@ local function readProgrammer(fixtures)
     local keys = {}
     for key in pairs(presets) do keys[#keys + 1] = key end
     table.sort(keys)
-    if #keys == 1 and rawCount == 0 then
+    if #keys == 1 then
         local preset = presets[keys[1]]
         return {
             preset = preset,
             presetAddress = keys[1],
-            feature = string.match(keys[1], "PresetPools%.([^%.]+)%.")
-                or normalizeFeature(selectedFeatureLabel())
+            feature = selectedFeature,
+            rawCount = rawCount
         }
     end
     return {
-        feature = normalizeFeature(selectedFeatureLabel()),
+        feature = selectedFeature,
         ambiguous = #keys > 1 or rawCount > 0,
         presetCount = #keys,
         rawCount = rawCount
     }
+end
+
+local function programmerValueText(info)
+    if info.preset then
+        local text = presetText(info.preset, info.feature)
+        if (info.rawCount or 0) > 0 then text = text .. " + Phaser/multi-step" end
+        return text
+    end
+    if (info.rawCount or 0) > 0 then return "Programmer Phaser / multi-step" end
+    return "No Programmer value"
+end
+
+local function presetDataHasFeature(values, feature)
+    if values == nil or not callable("GetPresetData") or not callable("GetAttributeByUIChannel") then return false end
+    local data = safe(GetPresetData, values, true, false)
+    if type(data) ~= "table" then return false end
+    for uiIndex in pairs(data) do
+        local numericIndex = tonumber(uiIndex)
+        if numericIndex ~= nil then
+            local attribute = safe(GetAttributeByUIChannel, numericIndex)
+            if attribute and normalizeFeature(label(attribute)) == feature then return true end
+        end
+    end
+    return false
+end
+
+local function valuesMatchFeature(values, feature)
+    local identity = string.lower(tostring(values or "") .. " " .. address(values))
+    if string.find(identity, string.lower(feature), 1, true) then return true end
+    if presetDataHasFeature(values, feature) then return true end
+    return string.find(identity, "presetpools.all", 1, true) ~= nil
 end
 
 local function selectionRelation(group, fixtures)
@@ -217,7 +260,6 @@ end
 local function scanTracking(sequence, currentCue, fixtures, info)
     if not sequence or #fixtures == 0 or not info.feature or info.feature == "UNRESOLVED" then return {} end
     local candidates, cueCount, recipeCount = {}, 0, 0
-    local feature = string.lower(info.feature)
     local currentNumber = cueNumber(currentCue)
     for _, cue in ipairs(children(sequence)) do
         if cueCount >= MAX_CUES or recipeCount >= MAX_RECIPES then break end
@@ -237,9 +279,8 @@ local function scanTracking(sequence, currentCue, fixtures, info)
                             recipeCount = recipeCount + 1
                             local selection = safe(function() return recipe.Selection end)
                             local values = safe(function() return recipe.Values end)
-                            local valueIdentity = string.lower(tostring(values or "") .. " " .. address(values))
                             local subset, exact, selectedCount, groupCount = selectionRelation(selection, fixtures)
-                            if subset and string.find(valueIdentity, feature, 1, true) then
+                            if subset and valuesMatchFeature(values, info.feature) then
                                 candidates[#candidates + 1] = {
                                     cue = cue, part = part, recipe = recipe, group = selection,
                                     values = values, exact = exact, selectedCount = selectedCount,
@@ -293,7 +334,7 @@ local function render(state)
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
             lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
-            lines[#lines + 1] = "New Preset: " .. presetText(info.preset, info.feature)
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
             lines[#lines + 1] = "Confidence: DIRECT"
         else
             lines[#lines + 1] = string.format("Status: AMBIGUOUS (%d direct Recipes)", #direct)
@@ -309,14 +350,14 @@ local function render(state)
             lines[#lines + 1] = "Group: " .. label(item.group)
             lines[#lines + 1] = string.format("Coverage: %d selected / %d in Group", item.selectedCount, item.groupCount)
             lines[#lines + 1] = "Old Values: " .. presetText(item.values, info.feature)
-            lines[#lines + 1] = "New Preset: " .. presetText(info.preset, info.feature)
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
             lines[#lines + 1] = "Confidence: INFERRED HIGH"
         elseif #candidates == 0 then
             lines[#lines + 1] = "\nStatus: No matching tracking Recipe"
-            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
         else
             lines[#lines + 1] = string.format("\nStatus: AMBIGUOUS (%d matching Recipes)", #candidates)
-            lines[#lines + 1] = "New Preset: " .. (info.preset and label(info.preset) or "No Programmer value")
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
             for index, item in ipairs(candidates) do
                 if index > 3 then
                     lines[#lines + 1] = string.format("...and %d more", #candidates - 3)
@@ -527,7 +568,7 @@ local function createPanel(state)
     local detail = safe(function() return footer:Append("Button") end)
     if detail == nil then deleteHandle(window) return nil, "could not append detail button" end
     detail.Name = "RecipeTrackingInspectorDetail"
-    detail.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    detail.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
     detail.Text = "DETAIL"
     detail.Font = "Medium20"
     detail.PluginComponent = componentHandle
@@ -536,7 +577,7 @@ local function createPanel(state)
     local style = safe(function() return footer:Append("Button") end)
     if style == nil then deleteHandle(window) return nil, "could not append style button" end
     style.Name = "RecipeTrackingInspectorStyle"
-    style.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    style.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     style.Text = "STYLE 75"
     style.Font = "Medium20"
     style.PluginComponent = componentHandle
@@ -545,7 +586,7 @@ local function createPanel(state)
     local selectGroup = safe(function() return footer:Append("Button") end)
     if selectGroup == nil then deleteHandle(window) return nil, "could not append select Group button" end
     selectGroup.Name = "RecipeTrackingInspectorSelectGroup"
-    selectGroup.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    selectGroup.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
     selectGroup.Text = "SELECT GROUP"
     selectGroup.Font = "Medium20"
     selectGroup.PluginComponent = componentHandle
