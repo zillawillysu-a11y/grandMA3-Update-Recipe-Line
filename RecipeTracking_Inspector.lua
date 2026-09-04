@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.1.1"
+local PLUGIN_VERSION = "0.4.1.2"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -380,28 +380,33 @@ local function scanTracking(sequence, currentCue, fixtures, info)
 end
 
 local function coloredTextLayers(text)
-    local baseLines, greenLines = {}, {}
+    local baseLines, sourceLines, presetLines = {}, {}, {}
     for line in (tostring(text or "") .. "\n"):gmatch("(.-)\n") do
-        local first, last
+        local first, last, layer
         local _, sourcePrefixEnd = string.find(line, "^%s*Source Cue:%s*")
         if sourcePrefixEnd then
             first = sourcePrefixEnd + 1
-            local separator = string.find(line, " | Current Cue:", first, true)
-            last = separator and (separator - 1) or #line
+            last = #line
+            layer = "source"
         else
             first = string.find(line, "Preset%s+[%d%.]+")
-            if first then last = #line end
+            if first then
+                last = #line
+                layer = "preset"
+            end
         end
         if first and last and last >= first then
             baseLines[#baseLines + 1] = line:sub(1, first - 1)
-                .. string.rep(" ", last - first + 1) .. line:sub(last + 1)
-            greenLines[#greenLines + 1] = string.rep(" ", first - 1) .. line:sub(first, last)
+            sourceLines[#sourceLines + 1] = layer == "source" and line:sub(first, last) or ""
+            presetLines[#presetLines + 1] = layer == "preset" and line:sub(first, last) or ""
         else
             baseLines[#baseLines + 1] = line
-            greenLines[#greenLines + 1] = ""
+            sourceLines[#sourceLines + 1] = ""
+            presetLines[#presetLines + 1] = ""
         end
     end
-    return table.concat(baseLines, "\n"), table.concat(greenLines, "\n")
+    return table.concat(baseLines, "\n"), table.concat(sourceLines, "\n"),
+        table.concat(presetLines, "\n")
 end
 
 local function render(state)
@@ -515,7 +520,8 @@ local function render(state)
         end
         local details = oldValue and newValue and {
             "Group: " .. tostring(group or "UNRESOLVED"),
-            "Source Cue: " .. tostring(sourceCue or "DIRECT") .. " | Current Cue: " .. cueLabel(currentCue),
+            "Source Cue: " .. tostring(sourceCue or "DIRECT"),
+            "Current Cue: " .. cueLabel(currentCue),
             "Old Preset: " .. oldValue,
             "New Preset: " .. newValue
         } or { status or (lines[#lines] or "") }
@@ -639,7 +645,10 @@ end
 signalTable.SelectRecipeTrackingGroup = function()
     local state = _G[STATE_KEY]
     local command = state and groupCommand(state.currentGroup) or nil
-    if command and callable("Cmd") then safe(Cmd, command) end
+    if command and callable("Cmd") then
+        safe(Cmd, "ClearSelection")
+        safe(Cmd, "SelectFixtures " .. command)
+    end
 end
 
 local function notify(title, message)
@@ -921,18 +930,31 @@ local function createPanel(state)
     pcall(function() panel.HasHover = "No" end)
     pcall(function() panel.BackColor = styleColor(1) end)
 
-    local highlights = safe(function() return window:Append("UIObject") end)
-    if highlights == nil then deleteHandle(window) return nil, "could not append highlight layer" end
-    highlights.Name = "RecipeTrackingInspectorHighlights"
-    highlights.Anchors = { left = 0, right = 0, top = 1, bottom = 1 }
-    highlights.Font = "Medium20"
-    highlights.TextalignmentH = "Left"
-    highlights.TextalignmentV = "Top"
-    highlights.TextAutoAdjust = "No"
-    highlights.Padding = { left = 12, right = 12, top = 8, bottom = 8 }
-    pcall(function() highlights.HasHover = "No" end)
-    pcall(function() highlights.BackColor = "00000000" end)
-    pcall(function() highlights.TextColor = "Global.SuccessText" end)
+    local sourceHighlights = safe(function() return window:Append("UIObject") end)
+    if sourceHighlights == nil then deleteHandle(window) return nil, "could not append Source Cue layer" end
+    sourceHighlights.Name = "RecipeTrackingInspectorSourceHighlights"
+    sourceHighlights.Anchors = { left = 0, right = 0, top = 1, bottom = 1 }
+    sourceHighlights.Font = "Medium20"
+    sourceHighlights.TextalignmentH = "Left"
+    sourceHighlights.TextalignmentV = "Top"
+    sourceHighlights.TextAutoAdjust = "No"
+    sourceHighlights.Padding = { left = 112, right = 12, top = 8, bottom = 8 }
+    pcall(function() sourceHighlights.HasHover = "No" end)
+    pcall(function() sourceHighlights.BackColor = "Global.Transparent" end)
+    pcall(function() sourceHighlights.TextColor = "Global.SuccessText" end)
+
+    local presetHighlights = safe(function() return window:Append("UIObject") end)
+    if presetHighlights == nil then deleteHandle(window) return nil, "could not append Preset layer" end
+    presetHighlights.Name = "RecipeTrackingInspectorPresetHighlights"
+    presetHighlights.Anchors = { left = 0, right = 0, top = 1, bottom = 1 }
+    presetHighlights.Font = "Medium20"
+    presetHighlights.TextalignmentH = "Left"
+    presetHighlights.TextalignmentV = "Top"
+    presetHighlights.TextAutoAdjust = "No"
+    presetHighlights.Padding = { left = 220, right = 12, top = 8, bottom = 8 }
+    pcall(function() presetHighlights.HasHover = "No" end)
+    pcall(function() presetHighlights.BackColor = "Global.Transparent" end)
+    pcall(function() presetHighlights.TextColor = "Global.SuccessText" end)
 
     local actions = safe(function() return window:Append("UILayoutGrid") end)
     if actions == nil then deleteHandle(window) return nil, "could not append action row" end
@@ -1019,9 +1041,11 @@ local function createPanel(state)
         resize.AlignmentV = "Bottom"
     end
 
-    state.window, state.panel, state.highlights, state.detail, state.style, state.selectGroup,
+    state.window, state.panel, state.sourceHighlights, state.presetHighlights,
+        state.detail, state.style, state.selectGroup,
         state.update, state.updateCurrent, state.updateNew, state.stop =
-        window, panel, highlights, detail, style, selectGroup, update, updateCurrent, updateNew, stop
+        window, panel, sourceHighlights, presetHighlights, detail, style, selectGroup,
+        update, updateCurrent, updateNew, stop
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
@@ -1044,22 +1068,25 @@ local function main()
         return
     end
 
-    local previous, previousHighlights = nil, nil
+    local previous, previousSourceHighlights, previousPresetHighlights = nil, nil, nil
     while state.running do
         syncTitleWidth(state)
         processPendingVerification(state)
-        local ok, text, highlightText = pcall(render, state)
+        local ok, text, sourceHighlightText, presetHighlightText = pcall(render, state)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
                 "\n\nStatus: ERROR\n" .. tostring(text)
-            highlightText = ""
+            sourceHighlightText, presetHighlightText = "", ""
         end
-        if text ~= previous or highlightText ~= previousHighlights or state.forceRefresh then
+        if text ~= previous or sourceHighlightText ~= previousSourceHighlights
+            or presetHighlightText ~= previousPresetHighlights or state.forceRefresh then
             state.forceRefresh = false
             previous = text
-            previousHighlights = highlightText
+            previousSourceHighlights = sourceHighlightText
+            previousPresetHighlights = presetHighlightText
             pcall(function() panel.Text = text end)
-            pcall(function() state.highlights.Text = highlightText or "" end)
+            pcall(function() state.sourceHighlights.Text = sourceHighlightText or "" end)
+            pcall(function() state.presetHighlights.Text = presetHighlightText or "" end)
         end
         coroutine.yield(REFRESH_SECONDS)
     end

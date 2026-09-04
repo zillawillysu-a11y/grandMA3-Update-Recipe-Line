@@ -6,7 +6,7 @@ Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector w
 
 ## Current Working State
 
-Version `0.4.1.1` adds green visual emphasis for the resolved Source Cue value and displayed Preset references while preserving white labels and surrounding text.
+Version `0.4.1.2` fixes two user-reported issues in v0.4.1.1: SELECT GROUP could activate fixture properties, and the full-size green overlay hid white text in solid style and drifted horizontally in transparent styles.
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
@@ -14,7 +14,7 @@ The button is enabled only when the current selection/Attribute resolves to exac
 
 Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
 
-The content uses two aligned UIObject text layers because grandMA3 2.3.2 exposes per-object `TextColor`, not verified inline rich-text colors. The base layer blanks only the highlighted spans; a transparent `Global.SuccessText` overlay renders the Source Cue value and each `Preset X.X ...` span. Both compact and detail output use the same transformation. Real grandMA3 visual testing is pending.
+SELECT GROUP now runs `ClearSelection` followed by explicit `SelectFixtures Group X`, avoiding pool-action/toggle side effects. Highlighting now uses two independent `Global.Transparent` layers with fixed pixel offsets: one for Source Cue values and one for Preset references. The compact Source Cue and Current Cue were split onto separate lines so no suffix needs proportional-font alignment. Real grandMA3 testing is pending.
 
 The XML and both referenced Lua components were deployed locally, and all three source/deployment SHA-256 hashes matched.
 
@@ -44,8 +44,8 @@ The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm t
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.4.1.1` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.4.1.2` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-Import/run v0.4.1.1. Verify that only the value after `Source Cue:` and the `Preset X.X "Name"` portions are green in both compact and detail views, with no opaque overlay or alignment drift. Continue testing the three update modes afterward.
+Import/run v0.4.1.2. Verify SELECT GROUP changes only fixture selection and does not activate attributes. Check green Source Cue/Preset text in STYLE SOLID, 75, and 50 for visibility and alignment.
