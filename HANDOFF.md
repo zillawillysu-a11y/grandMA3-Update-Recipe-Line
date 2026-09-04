@@ -6,7 +6,7 @@ Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector w
 
 ## Current Working State
 
-Version `0.4.1.3` makes the final UI spacing adjustments requested after v0.4.1.2 passed functional/visual testing.
+Version `0.4.1.4` aligns the Current Cue, Source Cue, and Preset value columns and makes compact/detail Cue ordering consistent.
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
@@ -14,7 +14,7 @@ The button is enabled only when the current selection/Attribute resolves to exac
 
 Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
 
-The user reported v0.4.1.2 as mostly successful. The Source Cue highlight still overlapped its label and the three action captions collided at the default width. v0.4.1.3 moves the Source Cue value offset from 112 to 140 px, increases default width from 540 to 640 px, and uses `Regular14` for the three long Update captions. Real grandMA3 visual retesting is pending.
+The user confirmed the prior transparent-layer fix mostly worked, but Source Cue still had excess spacing and did not align with Current Cue; the Preset column also had excess spacing. v0.4.1.4 gives Current Cue its own white transparent layer, shares a 122 px value origin with green Source Cue, moves Preset values to 200 px, and orders Current Cue above Source Cue in compact mode to match detail mode. Real grandMA3 visual retesting is pending.
 
 The XML and both referenced Lua components were deployed locally, and all three source/deployment SHA-256 hashes matched.
 
@@ -44,8 +44,8 @@ The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm t
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.4.1.3` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.4.1.4` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-Import/run v0.4.1.3. Verify Source Cue no longer overlaps and all three Update captions remain readable at the 640 px default width and the user's current UI scale.
+Import/run v0.4.1.4. Verify Current Cue appears above Source Cue in compact and detail views, both values share the same X origin without gaps/overlap, and Preset values sit closer to their white prefixes.
