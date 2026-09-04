@@ -6,7 +6,7 @@ Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2
 
 The persistent Inspector UI and 0.2.4.1 tracking behavior are user-validated. Version `0.2.4.2` adds Source Cue to compact mode; real-world validation is pending. The user explicitly approved beginning Phase 2 Update-function work.
 
-Phase 2 Recipe writer work has not started yet; it awaits user approval.
+Phase 2 Recipe writer work is now approved by the user. Implementation has not started; first validate an isolated, undo-safe Recipe Values write path.
 
 ---
 
