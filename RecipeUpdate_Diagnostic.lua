@@ -7,6 +7,7 @@
 -- enumerates tables/children, and prints/Dumps diagnostic data.
 
 local PLUGIN_TAG = "[RecipeUpdate][DIAG]"
+local PLUGIN_VERSION = "0.2.3.5"
 local MAX_SELECTION = 256
 local MAX_TABLE_DEPTH = 3
 local MAX_TABLE_ITEMS = 80
@@ -836,7 +837,7 @@ end
 
 local function main()
     log("============================================================")
-    log("grandMA3 Recipe Update - Phase 1 READ-ONLY diagnostic")
+    log("grandMA3 Recipe Update v%s - Phase 1 READ-ONLY diagnostic", PLUGIN_VERSION)
     log("No Showfile write commands or property assignments are present")
 
     local version, versionParts = Compat.getVersion()

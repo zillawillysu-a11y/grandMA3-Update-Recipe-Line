@@ -4,6 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
+local PLUGIN_VERSION = "0.2.3.5"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -258,7 +259,7 @@ local function render(state)
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
     local lines = {
-        "RECIPE TRACKING INSPECTOR  [READ-ONLY]",
+        "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION .. "  [READ-ONLY]",
         string.format("Selection: %d fixture%s", #fixtures, #fixtures == 1 and "" or "s"),
         "Attribute: " .. tostring(info.feature or "UNRESOLVED"),
         "Current Cue: " .. cueLabel(currentCue)
@@ -394,7 +395,7 @@ local function createPanel(state)
     local window = safe(function() return overlay:Append("BaseInput") end)
     if window == nil then return nil, "could not append BaseInput" end
     window.Name = "RecipeTrackingInspectorWindow"
-    pcall(function() window.Title = "Cue Recipe Update Tool" end)
+    pcall(function() window.Title = "Cue Recipe Update Tool v" .. PLUGIN_VERSION end)
     pcall(function() window.HasHover = "No" end)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
@@ -428,7 +429,7 @@ local function createPanel(state)
     pcall(function() titleButton.H = "36" end)
     pcall(function() titleButton.MinSize = titleWidth .. ",36" end)
     pcall(function() titleButton.MaxSize = titleWidth .. ",36" end)
-    titleButton.Text = "Cue Recipe Update Tool"
+    titleButton.Text = "Cue Recipe Update Tool v" .. PLUGIN_VERSION
     pcall(function() titleButton.Font = "Medium20" end)
     pcall(function() titleButton.Texture = "corner1" end)
     titleButton.TextalignmentH = "Left"
@@ -527,7 +528,8 @@ local function main()
     local previous = nil
     while state.running do
         local ok, text = pcall(render, state)
-        if not ok then text = "RECIPE TRACKING INSPECTOR  [READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
+        if not ok then text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
+            "  [READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
         if text ~= previous or state.forceRefresh then
             state.forceRefresh = false
             previous = text
