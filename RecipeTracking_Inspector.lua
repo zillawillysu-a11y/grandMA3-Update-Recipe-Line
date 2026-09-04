@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.1.4"
+local PLUGIN_VERSION = "0.4.1.5"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -1022,7 +1022,7 @@ local function createPanel(state)
     update.Name = "RecipeTrackingInspectorUpdate"
     update.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
     update.Text = "UPDATE ORIGINAL"
-    update.Font = "Regular14"
+    update.Font = "Medium20"
     update.PluginComponent = componentHandle
     update.Clicked = "UpdateRecipeTrackingValue"
     update.Enabled = "No"
@@ -1032,7 +1032,7 @@ local function createPanel(state)
     updateCurrent.Name = "RecipeTrackingInspectorUpdateCurrent"
     updateCurrent.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
     updateCurrent.Text = "UPDATE CURRENT CUE"
-    updateCurrent.Font = "Regular14"
+    updateCurrent.Font = "Medium20"
     updateCurrent.PluginComponent = componentHandle
     updateCurrent.Clicked = "UpdateCurrentCueRecipe"
     updateCurrent.Enabled = "No"
@@ -1042,7 +1042,7 @@ local function createPanel(state)
     updateNew.Name = "RecipeTrackingInspectorUpdateNew"
     updateNew.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     updateNew.Text = "UPDATE NEW CONTENT"
-    updateNew.Font = "Regular14"
+    updateNew.Font = "Medium20"
     updateNew.PluginComponent = componentHandle
     updateNew.Clicked = "UpdateNewCueRecipe"
     updateNew.Enabled = "No"

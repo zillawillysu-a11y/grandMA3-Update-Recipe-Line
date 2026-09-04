@@ -7,7 +7,7 @@
 -- enumerates tables/children, and prints/Dumps diagnostic data.
 
 local PLUGIN_TAG = "[RecipeUpdate][DIAG]"
-local PLUGIN_VERSION = "0.4.1.4"
+local PLUGIN_VERSION = "0.4.1.5"
 local MAX_SELECTION = 256
 local MAX_TABLE_DEPTH = 3
 local MAX_TABLE_ITEMS = 80

@@ -6,7 +6,7 @@ Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector w
 
 ## Current Working State
 
-Version `0.4.1.4` aligns the Current Cue, Source Cue, and Preset value columns and makes compact/detail Cue ordering consistent.
+Version `0.4.1.5` restores the three Update action captions to the readable `Medium20` font while retaining the 640 px default width and two-row control layout.
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
@@ -14,9 +14,13 @@ The button is enabled only when the current selection/Attribute resolves to exac
 
 Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
 
-The user confirmed the prior transparent-layer fix mostly worked, but Source Cue still had excess spacing and did not align with Current Cue; the Preset column also had excess spacing. v0.4.1.4 gives Current Cue its own white transparent layer, shares a 122 px value origin with green Source Cue, moves Preset values to 200 px, and orders Current Cue above Source Cue in compact mode to match detail mode. Real grandMA3 visual retesting is pending.
+The user reported the `Regular14` Update captions in v0.4.1.4 were too small. At the new 640 px width each action has enough space, so v0.4.1.5 restores `Medium20` without changing the aligned Cue/Preset layers. Real grandMA3 visual retesting is pending.
 
-The XML and both referenced Lua components were deployed locally, and all three source/deployment SHA-256 hashes matched.
+The XML and both referenced Lua components were deployed locally for v0.4.1.5, and all three source/deployment SHA-256 hashes matched:
+
+- `recipe_update_diagnostic.xml`: `3BCCCFDED91367B18CAB89148794CF2DA7C08A1B10FA18AC4423C23EDA2FE089`
+- `RecipeTracking_Inspector.lua`: `DD9C8138C27FBD2021BA12F3A05D5BE25422756F55161A03EB788898DA802507`
+- `RecipeUpdate_Diagnostic.lua`: `1A2D7101FC29BEC449F43B7CE092CE2975A0869A14C99E13F7931BE332F7C428`
 
 ## Verified Facts
 
@@ -44,8 +48,8 @@ The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm t
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.4.1.4` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.4.1.5` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-Import/run v0.4.1.4. Verify Current Cue appears above Source Cue in compact and detail views, both values share the same X origin without gaps/overlap, and Preset values sit closer to their white prefixes.
+Import/run v0.4.1.5. Verify all three Update captions are readable at `Medium20` and do not overlap at the 640 px default width.
