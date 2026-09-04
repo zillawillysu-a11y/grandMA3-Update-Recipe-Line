@@ -2,11 +2,11 @@
 
 ## Current Goal
 
-Develop and real-world validate Phase 2 of the grandMA3 2.3.2.0 Recipe Tracking Inspector: update the uniquely resolved Recipe Values preset safely, with every write available as one Oops (Undo).
+Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector writer. It now supports updating either the tracking source Recipe or the current Cue, with every operation available as one Oops.
 
 ## Current Working State
 
-Version `0.3.0.4` implements the clarified Programmer cleanup requirement. The user wants the assigned Attribute removed from the Programmer, not merely deactivated, while unrelated Attributes remain untouched.
+Version `0.4.0.0` adds separate `UPDATE SOURCE` and `UPDATE CURRENT` actions.
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
@@ -14,7 +14,7 @@ The button is enabled only when the current selection/Attribute resolves to exac
 
 Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
 
-Version `0.3.0.4` collects the concrete subattributes contributing the selected Feature/Preset (for example the RGB attributes for Color), then runs `Off Attribute "<name>"` for each after Assign. These commands affect the current fixture selection and share the same Undo group as the Recipe update. `ClearActive` is no longer used, so unrelated Programmer attributes are preserved. Real grandMA3 retesting of targeted removal and the combined Oops is pending.
+`UPDATE SOURCE` retains the user-validated source update behavior. `UPDATE CURRENT` updates the same Recipe when the source is already the current Cue; otherwise it creates the next free Recipe line in the current Cue and same Part, assigns the resolved source Group and new Preset, and removes only the contributing Programmer attributes. Store, Group Assign, Values Assign, and Programmer cleanup all share one Undo transaction. Real grandMA3 testing of both current-Cue branches is pending.
 
 The XML and both referenced Lua components were deployed locally, and all three source/deployment SHA-256 hashes matched.
 
@@ -44,8 +44,8 @@ The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm t
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.3.0.4` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.4.0.0` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-Import/run v0.3.0.4 in grandMA3 2.3.2.0. Keep another Feature active in the Programmer, update the intended Feature, and verify only the assigned subattributes disappear while the unrelated Feature remains. Then press Oops once and verify both the original Recipe Values preset and removed Programmer data return.
+Import/run v0.4.0.0. Test `UPDATE CURRENT` first where the current Cue already owns the displayed Recipe, then where the source is an earlier Cue and a new Recipe must be created. In both cases verify targeted Programmer cleanup and one-Oops restoration. Capture the full failure dialog and system monitor dump if any command fails.
