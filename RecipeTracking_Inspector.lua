@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.3.0.0"
+local PLUGIN_VERSION = "0.3.0.1"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -203,6 +203,16 @@ local function commandAddress(object)
     local value = safe(function() return object:ToAddr() end)
     if value == nil or tostring(value) == "" then return nil end
     return tostring(value)
+end
+
+local function sameReference(left, right)
+    if left == nil or right == nil then return false end
+    local ok, equal = pcall(function() return left == right end)
+    if ok and equal then return true end
+    local leftCommand, rightCommand = commandAddress(left), commandAddress(right)
+    if leftCommand and rightCommand and leftCommand == rightCommand then return true end
+    local leftAddress, rightAddress = address(left), address(right)
+    return leftAddress ~= "" and rightAddress ~= "" and leftAddress == rightAddress
 end
 
 local function programmerValueText(info)
@@ -562,23 +572,60 @@ signalTable.UpdateRecipeTrackingValue = function()
     local command = "Assign " .. newAddress .. " At " .. recipeAddress
     local feedback = safe(Cmd, command, undo)
     local closed = safe(CloseUndo, undo)
-    local actualPreset = safe(function() return recipe.Values end)
-    local verified = commandAddress(actualPreset) == newAddress
-    state.updating = false
     state.forceRefresh = true
 
-    if closed == true and verified then
+    if feedback == "OK" and closed == true then
+        -- Recipe cooking and its object model refresh can finish after Cmd()
+        -- returns. Verify from the normal refresh loop instead of reading the
+        -- old Recipe handle immediately inside this button callback.
+        state.pendingVerification = {
+            recipe = recipe,
+            recipeAddress = recipeAddress,
+            expectedPreset = newPreset,
+            expectedAddress = newAddress,
+            checksRemaining = 3
+        }
+        return
+    end
+
+    state.updating = false
+    notify("Recipe Update Failed", table.concat({
+        "grandMA3 did not complete the undo-safe command.",
+        "Command feedback: " .. tostring(feedback),
+        "Undo close: " .. tostring(closed)
+    }, "\n"))
+end
+
+local function processPendingVerification(state)
+    local pending = state and state.pendingVerification
+    if not pending then return end
+    pending.checksRemaining = (pending.checksRemaining or 1) - 1
+    if pending.checksRemaining > 0 then return end
+
+    state.pendingVerification = nil
+    local freshRecipe = pending.recipe
+    if callable("ObjectList") then
+        local resolved = safe(ObjectList, pending.recipeAddress)
+        if type(resolved) == "table" and resolved[1] ~= nil then freshRecipe = resolved[1] end
+    end
+    local actualPreset = safe(function() return freshRecipe.Values end)
+    if sameReference(actualPreset, pending.expectedPreset) then
+        state.updating = false
+        state.forceRefresh = true
         notify("Recipe Updated", "Recipe Values updated successfully.\nUse Oops once to undo this update.")
         return
     end
 
-    -- If MA accepted the command and the undo group closed, restore the old
-    -- state immediately when post-write verification fails.
-    if closed == true and feedback == "OK" and not verified then safe(Cmd, "Oops") end
+    -- The Assign command was accepted and its Undo group closed, so one Oops
+    -- targets this update. Restore it when delayed verification still fails.
+    local rollback = safe(Cmd, "Oops")
+    state.updating = false
+    state.forceRefresh = true
     notify("Recipe Update Failed", table.concat({
-        "The update could not be verified and was not left as a completed update.",
-        "Command feedback: " .. tostring(feedback),
-        "Undo close: " .. tostring(closed)
+        "The delayed verification still did not match, so the update was rolled back with Oops.",
+        "Expected: " .. tostring(pending.expectedAddress),
+        "Actual: " .. tostring(commandAddress(actualPreset) or actualPreset or "nil"),
+        "Rollback feedback: " .. tostring(rollback)
     }, "\n"))
 end
 
@@ -758,6 +805,7 @@ local function main()
     local previous = nil
     while state.running do
         syncTitleWidth(state)
+        processPendingVerification(state)
         local ok, text = pcall(render, state)
         if not ok then text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
             "\n\nStatus: ERROR\n" .. tostring(text) end
