@@ -4,14 +4,14 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.2.4.2"
+local PLUGIN_VERSION = "0.2.4.3"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
 local PANEL_WIDTH = 520
-local COMPACT_HEIGHT = 220
+local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
 
 local function callable(name)
@@ -380,7 +380,7 @@ local function render(state)
             newValue = newValue or string.match(line, "^New Preset:%s*(.+)$")
             status = status or string.match(line, "^%s*Status:%s*(.+)$")
             group = group or string.match(line, "^Group:%s*(.+)$")
-            sourceCue = sourceCue or string.match(line, "^Source Cue:%s*(.+)$")
+            sourceCue = sourceCue or string.match(line, "^%s*Source Cue:%s*(.+)$")
         end
         local details = oldValue and newValue and {
             "Group: " .. tostring(group or "UNRESOLVED"),

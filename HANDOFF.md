@@ -4,7 +4,7 @@
 
 Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2.0.
 
-The persistent Inspector UI and 0.2.4.1 tracking behavior are user-validated. Version `0.2.4.2` adds Source Cue to compact mode; real-world validation is pending. The user explicitly approved beginning Phase 2 Update-function work.
+The persistent Inspector UI and 0.2.4.1 tracking behavior are user-validated. Version `0.2.4.3` fixes compact Source Cue parsing and increases its default height to prevent clipping; real-world validation is pending. The user explicitly approved beginning Phase 2 Update-function work.
 
 Phase 2 Recipe writer work is now approved by the user. Implementation has not started; first validate an isolated, undo-safe Recipe Values write path.
 
@@ -70,7 +70,7 @@ The coherent change is committed and pushed to the `qwen` branch.
 
 ## Current Problem
 
-Version `0.2.4.2` awaits visual validation of Source Cue in compact mode. Phase 2 must begin with an isolated, undo-verified Recipe Values write test before exposing a production UPDATE action.
+Version `0.2.4.3` awaits visual validation that compact mode shows the actual tracking Source Cue and opens without clipped lines. Phase 2 must begin with an isolated, undo-verified Recipe Values write test before exposing a production UPDATE action.
 
 ---
 
