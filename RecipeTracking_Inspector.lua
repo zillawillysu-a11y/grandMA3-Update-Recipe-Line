@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.2.4.1"
+local PLUGIN_VERSION = "0.2.4.2"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -373,16 +373,18 @@ local function render(state)
         end
     end
     if not state or not state.expanded then
-        local oldValue, newValue, status
+        local oldValue, newValue, status, sourceCue
         local group
         for _, line in ipairs(lines) do
             oldValue = oldValue or string.match(line, "^Old Values:%s*(.+)$")
             newValue = newValue or string.match(line, "^New Preset:%s*(.+)$")
             status = status or string.match(line, "^%s*Status:%s*(.+)$")
             group = group or string.match(line, "^Group:%s*(.+)$")
+            sourceCue = sourceCue or string.match(line, "^Source Cue:%s*(.+)$")
         end
         local details = oldValue and newValue and {
-            "Group: " .. tostring(group or "UNRESOLVED") .. " | Current Cue: " .. cueLabel(currentCue),
+            "Group: " .. tostring(group or "UNRESOLVED"),
+            "Source Cue: " .. tostring(sourceCue or "DIRECT") .. " | Current Cue: " .. cueLabel(currentCue),
             "Old Preset: " .. oldValue,
             "New Preset: " .. newValue
         } or { status or (lines[#lines] or "") }
