@@ -12,7 +12,7 @@ The button is enabled only when the current selection/Attribute resolves to exac
 
 ## Latest Real-World User Test
 
-The user confirmed v0.4.1.5 passed: the larger Update captions and prior layout/tracking behavior are acceptable. v0.5.0.0 batch preview still requires real grandMA3 validation.
+v0.4.1.5 passed earlier (larger Update captions, layout/tracking). v0.5.0.0 batch preview passed: 36 fixtures, 7 features reported independently with correct per-feature sources — Color new Preset 4.6 "D GOLD" sourced from Cue 0.5 original Preset (Available: ORIGINAL | NEW CONTENT, no CURRENT CUE), Dimmer sourced from Song EFX Preset in current Cue 5.3, Position sourced from current Cue 5.3 (both include CURRENT CUE). Focus1/PT Speed/Shutter1/Zoom (Programmer Phaser / multi-step) correctly shown as REVIEW ONLY.
 
 ## Verified Facts
 
@@ -24,7 +24,7 @@ The user confirmed v0.4.1.5 passed: the larger Update captions and prior layout/
 
 ## Current Problem
 
-The batch preview needs a controlled grandMA3 test with at least two simultaneous Programmer features (for example Position and Color), plus raw/Phaser data if available. Batch writing is intentionally not enabled yet.
+Batch preview is validated. Next milestone: multi-Attribute batch UPDATE (writing) is intentionally not enabled yet and needs user go-ahead, since it writes multiple Attributes in one Undo transaction.
 
 ## Known Failed Attempts
 
@@ -40,8 +40,8 @@ The batch preview needs a controlled grandMA3 test with at least two simultaneou
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.5.0.0` will be committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.5.0.0` committed and pushed (`dd0db78`); this handoff update is the next commit.
 
 ## Exact Next Action
 
-Import/run v0.5.0.0, select fixtures with simultaneous Position and Color Programmer changes, press `BATCH`, and verify each feature reports the correct source independently. Confirm raw/Phaser content is shown as review-only rather than writable.
+Await user go-ahead for batch writing, then implement multi-Attribute batch UPDATE: resolve all writable features, show combined target/old/new confirmation, apply all `Assign` operations inside one `CreateUndo`/`CloseUndo` transaction, verify every `recipe.Values` afterward, and remove only the contributing Programmer attributes.
