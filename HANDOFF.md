@@ -2,132 +2,50 @@
 
 ## Current Goal
 
-Continue development of the grandMA3 Recipe Tracking Inspector on grandMA3 2.3.2.0.
-
-The persistent Inspector UI and 0.2.4.1 tracking behavior are user-validated. Version `0.2.4.3` fixes compact Source Cue parsing and increases its default height to prevent clipping; real-world validation is pending. The user explicitly approved beginning Phase 2 Update-function work.
-
-Phase 2 Recipe writer work is now approved by the user. Implementation has not started; first validate an isolated, undo-safe Recipe Values write path.
-
----
+Develop and real-world validate Phase 2 of the grandMA3 2.3.2.0 Recipe Tracking Inspector: update the uniquely resolved Recipe Values preset safely, with every write available as one Oops (Undo).
 
 ## Current Working State
 
-Primary implementation:
+Version `0.3.0.0` adds the first guarded UPDATE implementation to `RecipeTracking_Inspector.lua`.
 
-* `RecipeTracking_Inspector.lua`
-* `recipe_update_diagnostic.xml` (plugin version `0.2.3.4`)
-
-Legacy/read-only research implementation:
-
-* `RecipeUpdate_Diagnostic.lua`
-
-The persistent Inspector uses a non-modal native-style grandMA3 UI hierarchy and is deployed for real onPC testing. The current version is shown in the imported Plugin name, Inspector title/content, and Diagnostic startup output.
-
-Repository state and actual source files are authoritative.
-
-Always run:
-
-* `git status --short --branch`
-* `git log -5 --oneline`
-
-before continuing.
-
----
+The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, performs one `Assign <Preset:ToAddr()> At <Recipe:ToAddr()>` command inside `CreateUndo`/`CloseUndo`, and verifies `recipe.Values` afterward. A successful update is one Oops entry. Unsupported or ambiguous states do not write.
 
 ## Latest Real-World User Test
 
-Version `0.2.3.4` is confirmed PASS on real grandMA3 2.3.2.0 (user report, after the v0.2.3.2/v0.2.3.3 failures). All requirements of that round are met:
+Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
 
-1. Close `X` is visually integrated into the title bar: proven `CloseButton` element with `corner2` texture at the right edge, full 36 px bar height.
-2. X height matches the title bar height (36 px).
-3. Title font is larger (`Medium20`) and the full title text renders because the `TitleButton` is forced to an explicit 484x36 size (PANEL_WIDTH - 36).
-4. Transparency no longer depends on mouse hover (`HasHover = "No"` on window, title bar, and panel).
-5. No centered `Cue Recipe Update Tool` text (`window.Text` assignment removed; only `window.Title` remains for the native title bar).
-6. `STYLE` now changes the actual window/panel background, not only button text (`window.BackColor` and `panel.BackColor` are set to the resolved `Root().ColorTheme.ColorGroups.Global` color object with `Global.*` string fallback).
+Version `0.3.0.0` still needs real grandMA3 testing.
 
-The coherent change is committed and pushed to the `qwen` branch.
-
----
+The XML and both referenced Lua components were deployed locally, and all three source/deployment SHA-256 hashes matched.
 
 ## Verified Facts
 
-* The persistent Inspector can run as a non-modal grandMA3 UI.
-* Native title-bar dragging has worked in real grandMA3 2.3.2.0 testing.
-* The proven title-bar geometry is a single-cell `TitleBar` (`Columns = 1`, children anchored `0,0,0,0`) with explicit `W/H/MinSize/MaxSize`: `TitleButton` at 484x36 left-aligned, `CloseButton` at 36x36 with `AlignmentH = "Right"`. `TitleButton` does not stretch to fill its cell, so explicit sizing is required.
-* `HasHover` is a real grandMA3 element property and suppresses hover-state rendering on the elements it is set on.
-* The `CloseButton` element type is the proven close control (used with `corner2` texture since v0.2.2).
-* `Global.Transparent75/50/Background` back-color cycling changes the visible window/panel style on real 2.3.2.0 (user-confirmed with v0.2.3.4).
-* Read-only Recipe/source resolution research is substantially validated for the current Phase 0/1 scope.
-* Local deployment path is:
-
-`C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`
-
-* Deployment must include XML plus referenced Lua components.
-* Repository/deployment SHA256 equality verifies file identity only; it does not verify UI correctness.
-* No Phase 2 writer implementation has begun.
-
----
+- Persistent non-modal UI, native title dragging, resize behavior, compact/detail, styles, tracking resolution, All preset/Phaser inspection, and SELECT GROUP have passed prior real-world tests.
+- Installed grandMA3 2.3.2 system tests use `Assign <Preset:ToAddr()> At <Recipe:ToAddr()>` to replace Recipe Values and verify the operation with Undo (`shared/resource/lib_plugins/systemtests/db/system_test_prog_cook.lua`).
+- The official Lua API supports grouping `Cmd` operations into one Oops entry with `CreateUndo` and `CloseUndo`.
+- Raw programmer values or a raw Phaser without one unambiguous Preset reference are deliberately not writable in this first version.
+- Deployment destination: `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`.
 
 ## Current Problem
 
-Version `0.2.4.3` awaits visual validation that compact mode shows the actual tracking Source Cue and opens without clipped lines. Phase 2 must begin with an isolated, undo-verified Recipe Values write test before exposing a production UPDATE action.
+The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm that UPDATE changes only the displayed Recipe Values reference, the cooked output follows it, and one Oops restores the prior Recipe Values.
 
----
+## Known Failed Attempts
 
-## Known Failed Attempts (do not repeat without new evidence)
-
-* v0.2.3.2: single-cell layout with a 28x28 default-textured close `Button` - X looked like a separate inset button, X height did not match the bar, title truncated, transparency stayed hover-dependent, and `window.Text` rendered the title centered in the window.
-* v0.2.3.3: two-column title-bar grid (`title.Columns = 2`) with the close anchored to column 2 and `AlignmentH = "Center"` - the X left the right edge and rendered toward the middle; the title stayed truncated; two unguarded property assignments (`titleButton.Font`, `close.Texture`) risked hard errors during panel creation.
-
-The fix that worked (v0.2.3.4): proven 0.2.3.2 placement (single cell, `AlignmentH = "Right"`, explicit sizes), explicit full-width `TitleButton` sizing, proven `CloseButton` element type, and capability-guarded element-specific properties.
-
----
+- Direct Lua property assignment such as `recipe.Values = preset` is not used for production writes because it has not been shown to join an Undo transaction.
+- Do not permit updates when tracking is unresolved/ambiguous or when the programmer has no unique Preset reference.
 
 ## Important Files
 
-### Current implementation
-
-* `RecipeTracking_Inspector.lua`
-* `recipe_update_diagnostic.xml`
-
-### Supporting research
-
-* `docs/research.md`
-* `docs/api-reference-comparison.md`
-* `docs/pool-window-research.md`
-
-### Project rules/state
-
-* `AGENTS.md`
-* `HANDOFF.md`
-
-Read supporting research only when needed to answer a specific implementation question.
-
----
+- `RecipeTracking_Inspector.lua`
+- `RecipeUpdate_Diagnostic.lua`
+- `recipe_update_diagnostic.xml`
+- `AGENTS.md`
 
 ## Current Branch / Commit
 
-Do not trust an old handoff value.
-
-Run:
-
-`git branch --show-current`
-
-and:
-
-`git log -1 --oneline`
-
-to determine the authoritative current branch and commit.
-
-Preserve any existing uncommitted work.
-
----
+Branch: `qwen`. Version `0.3.0.0` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-The real-world-verified v0.2.3.4 state is committed and pushed to `qwen`.
-
-Next:
-
-1. If the user approves starting Phase 2, begin the Recipe writer research/planning (separate from the read-only inspector).
-2. If further UI feedback arrives, follow the standard workflow: inspect the new observation, produce a relevant source diff, local validation, deploy, SHA256 verification, user real-world test, then commit the coherent confirmed state.
+Import/run v0.3.0.0 in grandMA3 2.3.2.0. Use a test Recipe with a known old Values preset, call a different preset for the selected Attribute, confirm the inspector's target/old/new, press UPDATE, then press Oops once and verify the original Values preset returns. Dump the system monitor if UPDATE is disabled unexpectedly or verification reports failure.

@@ -1,10 +1,10 @@
--- grandMA3 Recipe Tracking Inspector - persistent read-only prototype
+-- grandMA3 Recipe Tracking Inspector and undo-safe Recipe Values updater
 -- Target: grandMA3 2.3.2.0+
 
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.2.4.3"
+local PLUGIN_VERSION = "0.3.0.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -198,6 +198,13 @@ local function readProgrammer(fixtures)
     }
 end
 
+local function commandAddress(object)
+    if object == nil then return nil end
+    local value = safe(function() return object:ToAddr() end)
+    if value == nil or tostring(value) == "" then return nil end
+    return tostring(value)
+end
+
 local function programmerValueText(info)
     if info.preset then
         local text = presetText(info.preset, info.feature)
@@ -309,14 +316,19 @@ local function scanTracking(sequence, currentCue, fixtures, info)
 end
 
 local function render(state)
-    if state then state.currentGroup = nil end
+    if state then
+        state.currentGroup = nil
+        state.currentRecipe = nil
+        state.currentOldPreset = nil
+        state.currentNewPreset = nil
+    end
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
     local lines = {
-        "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION .. "  [SHOW DATA READ-ONLY]",
+        "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION,
         string.format("Selection: %d fixture%s", #fixtures, #fixtures == 1 and "" or "s"),
         "Attribute: " .. tostring(info.feature or "UNRESOLVED"),
         "Current Cue: " .. cueLabel(currentCue)
@@ -330,7 +342,12 @@ local function render(state)
             local recipe = direct[1]
             local group = safe(function() return recipe.Selection end)
             local values = safe(function() return recipe.Values end)
-            if state then state.currentGroup = group end
+            if state then
+                state.currentGroup = group
+                state.currentRecipe = recipe
+                state.currentOldPreset = values
+                state.currentNewPreset = info.preset
+            end
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
             lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
@@ -343,7 +360,12 @@ local function render(state)
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
         if #candidates == 1 then
             local item = candidates[1]
-            if state then state.currentGroup = item.group end
+            if state then
+                state.currentGroup = item.group
+                state.currentRecipe = item.recipe
+                state.currentOldPreset = item.values
+                state.currentNewPreset = info.preset
+            end
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
             lines[#lines + 1] = "Recipe: " .. indexedLabel(item.recipe, "INDEX", "Recipe 1")
@@ -391,6 +413,11 @@ local function render(state)
         if state and state.selectGroup then
             pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
         end
+        if state and state.update then
+            local changed = state.currentRecipe and state.currentNewPreset
+                and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
+            pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
+        end
         return table.concat({
             string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
                 #fixtures, #fixtures == 1 and "" or "s"),
@@ -399,6 +426,11 @@ local function render(state)
     end
     if state and state.selectGroup then
         pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
+    end
+    if state and state.update then
+        local changed = state.currentRecipe and state.currentNewPreset
+            and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
+        pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
     end
     return table.concat(lines, "\n")
 end
@@ -469,6 +501,85 @@ signalTable.SelectRecipeTrackingGroup = function()
     local state = _G[STATE_KEY]
     local command = state and groupCommand(state.currentGroup) or nil
     if command and callable("Cmd") then safe(Cmd, command) end
+end
+
+local function notify(title, message)
+    if callable("MessageBox") then
+        return safe(MessageBox, {
+            title = title,
+            message = message,
+            commands = { { value = 1, name = "OK" } }
+        })
+    end
+    if callable("Printf") then Printf("[RecipeTracking] %s: %s", title, message) end
+    return nil
+end
+
+signalTable.UpdateRecipeTrackingValue = function()
+    local state = _G[STATE_KEY]
+    if not state or state.updating then return end
+
+    -- Resolve again at click time. Never write using a stale target from an
+    -- earlier refresh cycle.
+    render(state)
+    local recipe, oldPreset, newPreset = state.currentRecipe,
+        state.currentOldPreset, state.currentNewPreset
+    local recipeAddress, oldAddress, newAddress = commandAddress(recipe),
+        commandAddress(oldPreset), commandAddress(newPreset)
+    if not recipeAddress or not newAddress or oldAddress == newAddress then
+        notify("Recipe Update", "UPDATE is unavailable. Select a uniquely resolved Recipe and call one new Preset for the selected Attribute.")
+        return
+    end
+    if not callable("CreateUndo") or not callable("CloseUndo") or not callable("Cmd") then
+        notify("Recipe Update", "This grandMA3 session does not expose the required Undo APIs. No update was performed.")
+        return
+    end
+
+    local confirmation = safe(MessageBox, {
+        title = "Confirm Recipe Update",
+        message = table.concat({
+            "Target: " .. recipeAddress,
+            "Old: " .. presetText(oldPreset),
+            "New: " .. presetText(newPreset),
+            "",
+            "This change will be available as one Oops (Undo)."
+        }, "\n"),
+        commands = {
+            { value = 1, name = "UPDATE" },
+            { value = 0, name = "CANCEL" }
+        }
+    })
+    if type(confirmation) ~= "table" or confirmation.success ~= true or confirmation.result ~= 1 then return end
+
+    state.updating = true
+    local undo = safe(CreateUndo, "Update Recipe Values")
+    if undo == nil then
+        state.updating = false
+        notify("Recipe Update", "Could not create an Undo transaction. No update was performed.")
+        return
+    end
+
+    local command = "Assign " .. newAddress .. " At " .. recipeAddress
+    local feedback = safe(Cmd, command, undo)
+    local closed = safe(CloseUndo, undo)
+    local actualPreset = safe(function() return recipe.Values end)
+    local verified = commandAddress(actualPreset) == newAddress
+    state.updating = false
+    state.forceRefresh = true
+
+    if closed == true and verified then
+        notify("Recipe Updated", "Recipe Values updated successfully.\nUse Oops once to undo this update.")
+        return
+    end
+
+    -- If MA accepted the command and the undo group closed, restore the old
+    -- state immediately when post-write verification fails.
+    if closed == true and feedback == "OK" and not verified then safe(Cmd, "Oops") end
+    notify("Recipe Update Failed", table.concat({
+        "The update could not be verified and was not left as a completed update.",
+        "Command feedback: " .. tostring(feedback),
+        "Undo close: " .. tostring(closed)
+    }, "\n"))
 end
 
 local function syncTitleWidth(state)
@@ -564,13 +675,13 @@ local function createPanel(state)
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append footer" end
     footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
-    footer.Columns = 4
+    footer.Columns = 5
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
     if detail == nil then deleteHandle(window) return nil, "could not append detail button" end
     detail.Name = "RecipeTrackingInspectorDetail"
-    detail.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    detail.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     detail.Text = "DETAIL"
     detail.Font = "Medium20"
     detail.PluginComponent = componentHandle
@@ -579,7 +690,7 @@ local function createPanel(state)
     local style = safe(function() return footer:Append("Button") end)
     if style == nil then deleteHandle(window) return nil, "could not append style button" end
     style.Name = "RecipeTrackingInspectorStyle"
-    style.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    style.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
     style.Text = "STYLE 75"
     style.Font = "Medium20"
     style.PluginComponent = componentHandle
@@ -594,10 +705,20 @@ local function createPanel(state)
     selectGroup.PluginComponent = componentHandle
     selectGroup.Clicked = "SelectRecipeTrackingGroup"
 
+    local update = safe(function() return footer:Append("Button") end)
+    if update == nil then deleteHandle(window) return nil, "could not append update button" end
+    update.Name = "RecipeTrackingInspectorUpdate"
+    update.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    update.Text = "UPDATE"
+    update.Font = "Medium20"
+    update.PluginComponent = componentHandle
+    update.Clicked = "UpdateRecipeTrackingValue"
+    update.Enabled = "No"
+
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
+    stop.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
@@ -610,8 +731,8 @@ local function createPanel(state)
         resize.AlignmentV = "Bottom"
     end
 
-    state.window, state.panel, state.detail, state.style, state.selectGroup, state.stop =
-        window, panel, detail, style, selectGroup, stop
+    state.window, state.panel, state.detail, state.style, state.selectGroup, state.update, state.stop =
+        window, panel, detail, style, selectGroup, update, stop
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
@@ -639,7 +760,7 @@ local function main()
         syncTitleWidth(state)
         local ok, text = pcall(render, state)
         if not ok then text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
-            "  [SHOW DATA READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
+            "\n\nStatus: ERROR\n" .. tostring(text) end
         if text ~= previous or state.forceRefresh then
             state.forceRefresh = false
             previous = text
