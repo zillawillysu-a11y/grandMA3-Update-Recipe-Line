@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.3.0.2"
+local PLUGIN_VERSION = "0.3.0.3"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -585,11 +585,12 @@ signalTable.UpdateRecipeTrackingValue = function()
     end
 
     local command = "Assign " .. newAddress .. " At " .. recipeAddress .. " Property \"Values\""
-    local feedback = safe(Cmd, command, undo)
+    local assignFeedback = safe(Cmd, command, undo)
+    local clearFeedback = safe(Cmd, "ClearActive", undo)
     local closed = safe(CloseUndo, undo)
     state.forceRefresh = true
 
-    if feedback == "OK" and closed == true then
+    if assignFeedback == "OK" and clearFeedback == "OK" and closed == true then
         -- Recipe cooking and its object model refresh can finish after Cmd()
         -- returns. Verify from the normal refresh loop instead of reading the
         -- old Recipe handle immediately inside this button callback.
@@ -597,6 +598,7 @@ signalTable.UpdateRecipeTrackingValue = function()
             recipe = recipe,
             recipeAddress = recipeAddress,
             command = command,
+            clearCommand = "ClearActive",
             expectedPreset = newPreset,
             expectedAddress = newAddress,
             checksRemaining = 3
@@ -604,11 +606,15 @@ signalTable.UpdateRecipeTrackingValue = function()
         return
     end
 
+    local rollback = nil
+    if closed == true then rollback = safe(Cmd, "Oops") end
     state.updating = false
     notify("Recipe Update Failed", table.concat({
-        "grandMA3 did not complete the undo-safe command.",
-        "Command feedback: " .. tostring(feedback),
-        "Undo close: " .. tostring(closed)
+        "grandMA3 did not complete both undo-safe commands, so the transaction was rolled back when possible.",
+        "Assign feedback: " .. tostring(assignFeedback),
+        "ClearActive feedback: " .. tostring(clearFeedback),
+        "Undo close: " .. tostring(closed),
+        "Rollback feedback: " .. tostring(rollback)
     }, "\n"))
 end
 
@@ -628,7 +634,7 @@ local function processPendingVerification(state)
     if sameReference(actualPreset, pending.expectedPreset) then
         state.updating = false
         state.forceRefresh = true
-        notify("Recipe Updated", "Recipe Values updated successfully.\nUse Oops once to undo this update.")
+        notify("Recipe Updated", "Recipe Values updated and Programmer values deactivated.\nUse Oops once to undo both changes.")
         return
     end
 
