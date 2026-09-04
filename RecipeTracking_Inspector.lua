@@ -4,15 +4,15 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.0.0"
+local PLUGIN_VERSION = "0.4.1.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
-local PANEL_WIDTH = 700
-local COMPACT_HEIGHT = 260
-local DETAIL_HEIGHT = 520
+local PANEL_WIDTH = 540
+local COMPACT_HEIGHT = 304
+local DETAIL_HEIGHT = 564
 
 local function callable(name)
     return type(_G[name]) == "function"
@@ -504,12 +504,18 @@ local function render(state)
             pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
         end
         if state and state.updateCurrent then
+            local available = state.currentSourceIsCurrent and state.currentRecipe
+                and state.currentNewPreset and state.currentGroup
+                and state.currentSequence and state.currentCue and state.currentPart
+                and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
+                and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
+            pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
+        end
+        if state and state.updateNew then
             local available = state.currentRecipe and state.currentNewPreset and state.currentGroup
                 and state.currentSequence and state.currentCue and state.currentPart
                 and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-                and (not state.currentSourceIsCurrent
-                    or commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset))
-            pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
+            pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
         end
         return table.concat({
             string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
@@ -527,12 +533,18 @@ local function render(state)
         pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
     end
     if state and state.updateCurrent then
+        local available = state.currentSourceIsCurrent and state.currentRecipe
+            and state.currentNewPreset and state.currentGroup
+            and state.currentSequence and state.currentCue and state.currentPart
+            and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
+            and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
+        pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
+    end
+    if state and state.updateNew then
         local available = state.currentRecipe and state.currentNewPreset and state.currentGroup
             and state.currentSequence and state.currentCue and state.currentPart
             and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-            and (not state.currentSourceIsCurrent
-                or commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset))
-        pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
+        pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
     end
     return table.concat(lines, "\n")
 end
@@ -617,7 +629,7 @@ local function notify(title, message)
     return nil
 end
 
-local function updateRecipeTrackingValue(useCurrentCue)
+local function updateRecipeTrackingValue(updateMode)
     local state = _G[STATE_KEY]
     if not state or state.updating then return end
 
@@ -629,8 +641,12 @@ local function updateRecipeTrackingValue(useCurrentCue)
     local assignedAttributes = state.currentAssignedAttributes
     local recipeAddress, oldAddress, newAddress = state.currentRecipeCommand,
         commandAddress(oldPreset), commandAddress(newPreset)
-    local createRecipe, createCommand, groupAssignCommand = false, nil, nil
-    if useCurrentCue and not state.currentSourceIsCurrent then
+    if updateMode == "current" and not state.currentSourceIsCurrent then
+        notify("Recipe Update", "UPDATE CURRENT CUE is only available when the resolved Recipe already belongs to the current Cue. Use UPDATE NEW CONTENT to create a new Recipe here.")
+        return
+    end
+    local createRecipe, createCommand, groupAssignCommand = updateMode == "new", nil, nil
+    if createRecipe then
         local wantedPart = partNumber(state.currentPart)
         local currentPart = wantedPart ~= nil and findCuePart(state.currentCue, wantedPart) or nil
         local recipeIndex = currentPart and nextRecipeIndex(currentPart) or 1
@@ -661,10 +677,10 @@ local function updateRecipeTrackingValue(useCurrentCue)
     local confirmation = safe(MessageBox, {
         title = "Confirm Recipe Update",
         message = table.concat({
-            "Action: " .. (createRecipe and "CREATE NEW RECIPE IN CURRENT CUE"
-                or (useCurrentCue and "UPDATE RECIPE IN CURRENT CUE" or "UPDATE TRACKING SOURCE")),
+            "Action: " .. (createRecipe and "UPDATE NEW CONTENT"
+                or (updateMode == "current" and "UPDATE CURRENT CUE" or "UPDATE ORIGINAL")),
             "Target: " .. recipeAddress,
-            "Old: " .. presetText(oldPreset),
+            "Old: " .. (createRecipe and "NEW RECIPE" or presetText(oldPreset)),
             "New: " .. presetText(newPreset),
             "",
             "Remove from Programmer: " .. table.concat(assignedAttributes, ", "),
@@ -738,11 +754,15 @@ end
 
 
 signalTable.UpdateRecipeTrackingValue = function()
-    updateRecipeTrackingValue(false)
+    updateRecipeTrackingValue("original")
 end
 
 signalTable.UpdateCurrentCueRecipe = function()
-    updateRecipeTrackingValue(true)
+    updateRecipeTrackingValue("current")
+end
+
+signalTable.UpdateNewCueRecipe = function()
+    updateRecipeTrackingValue("new")
 end
 
 local function processPendingVerification(state)
@@ -811,12 +831,14 @@ local function createPanel(state)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
     window.Columns = 1
-    window.Rows = 3
+    window.Rows = 4
     window[1][1].SizePolicy = "Fixed"
     window[1][1].Size = "36"
     window[1][2].SizePolicy = "Stretch"
     window[1][3].SizePolicy = "Fixed"
     window[1][3].Size = "44"
+    window[1][4].SizePolicy = "Fixed"
+    window[1][4].Size = "44"
     window.AutoClose = "No"
     window.CloseOnEscape = "No"
     pcall(function() window.WantsModal = "0" end)
@@ -874,16 +896,22 @@ local function createPanel(state)
     pcall(function() panel.HasHover = "No" end)
     pcall(function() panel.BackColor = styleColor(1) end)
 
+    local actions = safe(function() return window:Append("UILayoutGrid") end)
+    if actions == nil then deleteHandle(window) return nil, "could not append action row" end
+    actions.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
+    actions.Columns = 3
+    actions.Rows = 1
+
     local footer = safe(function() return window:Append("UILayoutGrid") end)
-    if footer == nil then deleteHandle(window) return nil, "could not append footer" end
-    footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
-    footer.Columns = 6
+    if footer == nil then deleteHandle(window) return nil, "could not append utility row" end
+    footer.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
+    footer.Columns = 4
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
     if detail == nil then deleteHandle(window) return nil, "could not append detail button" end
     detail.Name = "RecipeTrackingInspectorDetail"
-    detail.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
+    detail.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
     detail.Text = "DETAIL"
     detail.Font = "Medium20"
     detail.PluginComponent = componentHandle
@@ -892,7 +920,7 @@ local function createPanel(state)
     local style = safe(function() return footer:Append("Button") end)
     if style == nil then deleteHandle(window) return nil, "could not append style button" end
     style.Name = "RecipeTrackingInspectorStyle"
-    style.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
+    style.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     style.Text = "STYLE 75"
     style.Font = "Medium20"
     style.PluginComponent = componentHandle
@@ -907,30 +935,40 @@ local function createPanel(state)
     selectGroup.PluginComponent = componentHandle
     selectGroup.Clicked = "SelectRecipeTrackingGroup"
 
-    local update = safe(function() return footer:Append("Button") end)
+    local update = safe(function() return actions:Append("Button") end)
     if update == nil then deleteHandle(window) return nil, "could not append update button" end
     update.Name = "RecipeTrackingInspectorUpdate"
-    update.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-    update.Text = "UPDATE SOURCE"
+    update.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+    update.Text = "UPDATE ORIGINAL"
     update.Font = "Medium20"
     update.PluginComponent = componentHandle
     update.Clicked = "UpdateRecipeTrackingValue"
     update.Enabled = "No"
 
-    local updateCurrent = safe(function() return footer:Append("Button") end)
+    local updateCurrent = safe(function() return actions:Append("Button") end)
     if updateCurrent == nil then deleteHandle(window) return nil, "could not append current update button" end
     updateCurrent.Name = "RecipeTrackingInspectorUpdateCurrent"
-    updateCurrent.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
-    updateCurrent.Text = "UPDATE CURRENT"
+    updateCurrent.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    updateCurrent.Text = "UPDATE CURRENT CUE"
     updateCurrent.Font = "Medium20"
     updateCurrent.PluginComponent = componentHandle
     updateCurrent.Clicked = "UpdateCurrentCueRecipe"
     updateCurrent.Enabled = "No"
 
+    local updateNew = safe(function() return actions:Append("Button") end)
+    if updateNew == nil then deleteHandle(window) return nil, "could not append new content button" end
+    updateNew.Name = "RecipeTrackingInspectorUpdateNew"
+    updateNew.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    updateNew.Text = "UPDATE NEW CONTENT"
+    updateNew.Font = "Medium20"
+    updateNew.PluginComponent = componentHandle
+    updateNew.Clicked = "UpdateNewCueRecipe"
+    updateNew.Enabled = "No"
+
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 5, right = 5, top = 0, bottom = 0 }
+    stop.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
@@ -938,14 +976,14 @@ local function createPanel(state)
     local resize = safe(function() return window:Append("ResizeCorner") end)
     if resize ~= nil then
         resize.Name = "Resizer"
-        resize.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
+        resize.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
         resize.AlignmentH = "Right"
         resize.AlignmentV = "Bottom"
     end
 
     state.window, state.panel, state.detail, state.style, state.selectGroup,
-        state.update, state.updateCurrent, state.stop =
-        window, panel, detail, style, selectGroup, update, updateCurrent, stop
+        state.update, state.updateCurrent, state.updateNew, state.stop =
+        window, panel, detail, style, selectGroup, update, updateCurrent, updateNew, stop
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
