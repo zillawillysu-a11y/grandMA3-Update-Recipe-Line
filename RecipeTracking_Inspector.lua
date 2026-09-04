@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.3.0.1"
+local PLUGIN_VERSION = "0.3.0.2"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -89,8 +89,20 @@ local function presetText(object, fallbackFeature)
     return table.concat(parts, " | ")
 end
 
+local commandAddress
+
 local function cueNumber(cue)
     return cue and tonumber(property(cue, "No") or property(cue, "NO")) or nil
+end
+
+local function cueRecipeCommandAddress(sequence, cue, part, recipe)
+    local sequenceAddress = commandAddress(sequence)
+    local rawCue = cueNumber(cue)
+    local partNumber = tonumber(property(part, "Part") or property(part, "PART"))
+    local recipeIndex = tonumber(property(recipe, "Index") or property(recipe, "INDEX"))
+    if not sequenceAddress or not rawCue or partNumber == nil or recipeIndex == nil then return nil end
+    return string.format("%s Cue %g Part %g.%g", sequenceAddress, rawCue / 1000,
+        partNumber, recipeIndex)
 end
 
 local function indexedLabel(object, key, fallback)
@@ -198,7 +210,7 @@ local function readProgrammer(fixtures)
     }
 end
 
-local function commandAddress(object)
+commandAddress = function(object)
     if object == nil then return nil end
     local value = safe(function() return object:ToAddr() end)
     if value == nil or tostring(value) == "" then return nil end
@@ -331,6 +343,7 @@ local function render(state)
         state.currentRecipe = nil
         state.currentOldPreset = nil
         state.currentNewPreset = nil
+        state.currentRecipeCommand = nil
     end
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
@@ -357,6 +370,7 @@ local function render(state)
                 state.currentRecipe = recipe
                 state.currentOldPreset = values
                 state.currentNewPreset = info.preset
+                state.currentRecipeCommand = commandAddress(recipe)
             end
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
@@ -375,6 +389,7 @@ local function render(state)
                 state.currentRecipe = item.recipe
                 state.currentOldPreset = item.values
                 state.currentNewPreset = info.preset
+                state.currentRecipeCommand = cueRecipeCommandAddress(sequence, item.cue, item.part, item.recipe)
             end
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
@@ -534,7 +549,7 @@ signalTable.UpdateRecipeTrackingValue = function()
     render(state)
     local recipe, oldPreset, newPreset = state.currentRecipe,
         state.currentOldPreset, state.currentNewPreset
-    local recipeAddress, oldAddress, newAddress = commandAddress(recipe),
+    local recipeAddress, oldAddress, newAddress = state.currentRecipeCommand,
         commandAddress(oldPreset), commandAddress(newPreset)
     if not recipeAddress or not newAddress or oldAddress == newAddress then
         notify("Recipe Update", "UPDATE is unavailable. Select a uniquely resolved Recipe and call one new Preset for the selected Attribute.")
@@ -569,7 +584,7 @@ signalTable.UpdateRecipeTrackingValue = function()
         return
     end
 
-    local command = "Assign " .. newAddress .. " At " .. recipeAddress
+    local command = "Assign " .. newAddress .. " At " .. recipeAddress .. " Property \"Values\""
     local feedback = safe(Cmd, command, undo)
     local closed = safe(CloseUndo, undo)
     state.forceRefresh = true
@@ -581,6 +596,7 @@ signalTable.UpdateRecipeTrackingValue = function()
         state.pendingVerification = {
             recipe = recipe,
             recipeAddress = recipeAddress,
+            command = command,
             expectedPreset = newPreset,
             expectedAddress = newAddress,
             checksRemaining = 3
@@ -625,6 +641,7 @@ local function processPendingVerification(state)
         "The delayed verification still did not match, so the update was rolled back with Oops.",
         "Expected: " .. tostring(pending.expectedAddress),
         "Actual: " .. tostring(commandAddress(actualPreset) or actualPreset or "nil"),
+        "Command: " .. tostring(pending.command),
         "Rollback feedback: " .. tostring(rollback)
     }, "\n"))
 end
