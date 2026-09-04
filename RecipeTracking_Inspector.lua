@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.1.5"
+local PLUGIN_VERSION = "0.5.0.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -250,6 +250,66 @@ local function readProgrammer(fixtures)
         presetCount = #keys,
         rawCount = rawCount
     }
+end
+
+local function readAllProgrammerFeatures(fixtures)
+    local buckets = {}
+    if #fixtures == 0 or not callable("GetUIChannels") then return {} end
+    for _, fixture in ipairs(fixtures) do
+        local channels = safe(GetUIChannels, fixture.handle or fixture.index, true)
+        if type(channels) == "table" then
+            for _, channel in pairs(channels) do
+                local uiIndex = tonumber(property(channel, "INDEX") or property(channel, "Index"))
+                if uiIndex then
+                    local phaser = getProgPhaser(uiIndex - 1)
+                    if type(phaser) == "table" then
+                        local attribute = callable("GetAttributeByUIChannel")
+                            and safe(GetAttributeByUIChannel, uiIndex - 1) or nil
+                        local attributeName = attribute and label(attribute)
+                            or property(channel, "SUBATTRIBUTE")
+                            or property(channel, "SubAttribute") or property(channel, "Name")
+                        local feature = normalizeFeature(attributeName)
+                        local bucket = buckets[feature]
+                        if not bucket then
+                            bucket = { feature = feature, presets = {}, attributeSet = {}, rawCount = 0 }
+                            buckets[feature] = bucket
+                        end
+                        if attributeName and attributeName ~= "" then bucket.attributeSet[attributeName] = true end
+                        if type(phaser.abs_preset) == "userdata" then
+                            local presetAddress = address(phaser.abs_preset)
+                            local pool = string.match(presetAddress, "PresetPools%.([^%.]+)%.")
+                            if pool == feature or pool == "All" then
+                                bucket.presets[presetAddress] = phaser.abs_preset
+                            else
+                                bucket.rawCount = bucket.rawCount + 1
+                            end
+                            if type(phaser[2]) == "table" then bucket.rawCount = bucket.rawCount + 1 end
+                        else
+                            bucket.rawCount = bucket.rawCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local result = {}
+    for _, bucket in pairs(buckets) do
+        local keys, attributes = {}, {}
+        for key in pairs(bucket.presets) do keys[#keys + 1] = key end
+        for name in pairs(bucket.attributeSet) do attributes[#attributes + 1] = name end
+        table.sort(keys)
+        table.sort(attributes)
+        bucket.attributes = attributes
+        bucket.presetCount = #keys
+        bucket.ambiguous = #keys > 1 or bucket.rawCount > 0
+        if #keys == 1 then
+            bucket.presetAddress = keys[1]
+            bucket.preset = bucket.presets[keys[1]]
+        end
+        result[#result + 1] = bucket
+    end
+    table.sort(result, function(left, right) return tostring(left.feature) < tostring(right.feature) end)
+    return result
 end
 
 commandAddress = function(object)
@@ -605,6 +665,8 @@ signalTable.StopRecipeTrackingInspector = function()
     stopState(_G[STATE_KEY])
 end
 
+local notify
+
 signalTable.ToggleRecipeTrackingDetails = function()
     local state = _G[STATE_KEY]
     if not state then return end
@@ -638,6 +700,53 @@ signalTable.CycleRecipeTrackingStyle = function()
     if state.style then state.style.Text = STYLE_LABELS[state.styleIndex] end
 end
 
+signalTable.ShowRecipeTrackingBatchPreview = function()
+    local fixtures = readSelection()
+    if #fixtures == 0 then
+        notify("Batch Preview", "Select one or more fixtures first.")
+        return
+    end
+    local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
+    local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
+    local features = readAllProgrammerFeatures(fixtures)
+    local lines = {
+        "READ-ONLY BATCH PREVIEW",
+        string.format("Selection: %d fixture%s", #fixtures, #fixtures == 1 and "" or "s"),
+        "Current Cue: " .. cueLabel(currentCue),
+        ""
+    }
+    if #features == 0 then
+        lines[#lines + 1] = "No active Programmer attributes found."
+    end
+    for index, info in ipairs(features) do
+        if index > 12 then
+            lines[#lines + 1] = string.format("...and %d more feature%s", #features - 12,
+                (#features - 12) == 1 and "" or "s")
+            break
+        end
+        lines[#lines + 1] = string.format("%d) %s", index, tostring(info.feature))
+        lines[#lines + 1] = "   New: " .. programmerValueText(info)
+        if info.ambiguous or not info.preset then
+            lines[#lines + 1] = "   Status: REVIEW ONLY - raw, Phaser, or ambiguous Programmer data"
+        else
+            local candidates = scanTracking(sequence, currentCue, fixtures, info)
+            if #candidates == 1 then
+                local item = candidates[1]
+                lines[#lines + 1] = string.format("   Source: Cue %s | %s | %s",
+                    cueLabel(item.cue), label(item.group), presetText(item.values, info.feature))
+                lines[#lines + 1] = "   Available: ORIGINAL | " ..
+                    (item.current and "CURRENT CUE | " or "") .. "NEW CONTENT"
+            elseif #candidates == 0 then
+                lines[#lines + 1] = "   Status: NO MATCHING TRACKING RECIPE"
+            else
+                lines[#lines + 1] = string.format("   Status: AMBIGUOUS (%d matching Recipes)", #candidates)
+            end
+        end
+        lines[#lines + 1] = ""
+    end
+    notify("Batch Preview v" .. PLUGIN_VERSION, table.concat(lines, "\n"))
+end
+
 local function groupCommand(group)
     if group == nil then return nil end
     local number = tonumber(property(group, "No") or property(group, "NO"))
@@ -660,7 +769,7 @@ signalTable.SelectRecipeTrackingGroup = function()
     end
 end
 
-local function notify(title, message)
+notify = function(title, message)
     if callable("MessageBox") then
         return safe(MessageBox, {
             title = title,
@@ -987,7 +1096,7 @@ local function createPanel(state)
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append utility row" end
     footer.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
-    footer.Columns = 4
+    footer.Columns = 5
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
@@ -1016,6 +1125,18 @@ local function createPanel(state)
     selectGroup.Font = "Medium20"
     selectGroup.PluginComponent = componentHandle
     selectGroup.Clicked = "SelectRecipeTrackingGroup"
+
+    local batch = safe(function() return footer:Append("Button") end)
+    if batch == nil then deleteHandle(window) return nil, "could not append batch preview button" end
+    batch.Name = "RecipeTrackingInspectorBatch"
+    batch.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
+    batch.Text = "BATCH"
+    batch.Font = "Medium20"
+    batch.PluginComponent = componentHandle
+    batch.Clicked = "ShowRecipeTrackingBatchPreview"
+
+    detail.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    style.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
 
     local update = safe(function() return actions:Append("Button") end)
     if update == nil then deleteHandle(window) return nil, "could not append update button" end
@@ -1050,7 +1171,7 @@ local function createPanel(state)
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
+    stop.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
@@ -1064,9 +1185,9 @@ local function createPanel(state)
     end
 
     state.window, state.panel, state.sourceHighlights, state.currentHighlights, state.presetHighlights,
-        state.detail, state.style, state.selectGroup,
+        state.detail, state.style, state.selectGroup, state.batch,
         state.update, state.updateCurrent, state.updateNew, state.stop =
-        window, panel, sourceHighlights, currentHighlights, presetHighlights, detail, style, selectGroup,
+        window, panel, sourceHighlights, currentHighlights, presetHighlights, detail, style, selectGroup, batch,
         update, updateCurrent, updateNew, stop
     state.titleButton = titleButton
     state.expanded = false

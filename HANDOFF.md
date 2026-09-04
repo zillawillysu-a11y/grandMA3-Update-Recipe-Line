@@ -2,25 +2,17 @@
 
 ## Current Goal
 
-Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector writer. It now supports updating either the tracking source Recipe or the current Cue, with every operation available as one Oops.
+Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector, including safe single-Attribute updates and a multi-Attribute workflow.
 
 ## Current Working State
 
-Version `0.4.1.5` restores the three Update action captions to the readable `Medium20` font while retaining the 640 px default width and two-row control layout.
+Version `0.5.0.0` adds the first read-only multi-Attribute batch preview. `BATCH`, immediately right of `SELECT GROUP`, scans active Programmer data for the selected fixtures, groups it by feature, and reports each new Preset, unique source Cue/Group/old Preset, available update destinations, or a safe review-only reason. Existing single-Attribute update behavior is unchanged.
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
 ## Latest Real-World User Test
 
-Version `0.2.4.3` passed: compact mode displays the actual Source Cue and opens without the prior clipping. The user approved beginning Update work and required every Update to support Oops (Undo).
-
-The user reported the `Regular14` Update captions in v0.4.1.4 were too small. At the new 640 px width each action has enough space, so v0.4.1.5 restores `Medium20` without changing the aligned Cue/Preset layers. Real grandMA3 visual retesting is pending.
-
-The XML and both referenced Lua components were deployed locally for v0.4.1.5, and all three source/deployment SHA-256 hashes matched:
-
-- `recipe_update_diagnostic.xml`: `3BCCCFDED91367B18CAB89148794CF2DA7C08A1B10FA18AC4423C23EDA2FE089`
-- `RecipeTracking_Inspector.lua`: `DD9C8138C27FBD2021BA12F3A05D5BE25422756F55161A03EB788898DA802507`
-- `RecipeUpdate_Diagnostic.lua`: `1A2D7101FC29BEC449F43B7CE092CE2975A0869A14C99E13F7931BE332F7C428`
+The user confirmed v0.4.1.5 passed: the larger Update captions and prior layout/tracking behavior are acceptable. v0.5.0.0 batch preview still requires real grandMA3 validation.
 
 ## Verified Facts
 
@@ -32,7 +24,7 @@ The XML and both referenced Lua components were deployed locally for v0.4.1.5, a
 
 ## Current Problem
 
-The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm that UPDATE changes only the displayed Recipe Values reference, the cooked output follows it, and one Oops restores the prior Recipe Values.
+The batch preview needs a controlled grandMA3 test with at least two simultaneous Programmer features (for example Position and Color), plus raw/Phaser data if available. Batch writing is intentionally not enabled yet.
 
 ## Known Failed Attempts
 
@@ -48,8 +40,8 @@ The new writer needs a controlled real-world test on grandMA3 2.3.2.0. Confirm t
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.4.1.5` is committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
+Branch: `qwen`. Version `0.5.0.0` will be committed and pushed as part of the mandatory delivery workflow; check `git log -1 --oneline` for the authoritative commit ID.
 
 ## Exact Next Action
 
-Import/run v0.4.1.5. Verify all three Update captions are readable at `Medium20` and do not overlap at the 640 px default width.
+Import/run v0.5.0.0, select fixtures with simultaneous Position and Color Programmer changes, press `BATCH`, and verify each feature reports the correct source independently. Confirm raw/Phaser content is shown as review-only rather than writable.
