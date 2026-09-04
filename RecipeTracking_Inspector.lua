@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.5.0.0"
+local PLUGIN_VERSION = "0.6.0.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -878,13 +878,17 @@ local function updateRecipeTrackingValue(updateMode)
         -- returns. Verify from the normal refresh loop instead of reading the
         -- old Recipe handle immediately inside this button callback.
         state.pendingVerification = {
-            recipe = createRecipe and nil or recipe,
-            recipeAddress = recipeAddress,
+            targets = {
+                {
+                    recipe = createRecipe and nil or recipe,
+                    recipeAddress = recipeAddress,
+                    expectedPreset = newPreset,
+                    expectedGroup = createRecipe and state.currentGroup or nil,
+                    expectedAddress = newAddress
+                }
+            },
             command = command,
             clearCommand = clearCommand,
-            expectedPreset = newPreset,
-            expectedGroup = createRecipe and state.currentGroup or nil,
-            expectedAddress = newAddress,
             checksRemaining = 3
         }
         return
@@ -917,6 +921,169 @@ signalTable.UpdateNewCueRecipe = function()
     updateRecipeTrackingValue("new")
 end
 
+local function batchUpdateItems(sequence, currentCue, fixtures)
+    local writable, notes, seenRecipe = {}, {}, {}
+    for _, info in ipairs(readAllProgrammerFeatures(fixtures)) do
+        if info.ambiguous or not info.preset then
+            notes[#notes + 1] = tostring(info.feature) .. ": REVIEW ONLY (raw, Phaser, or ambiguous)"
+        else
+            local candidates = scanTracking(sequence, currentCue, fixtures, info)
+            if #candidates == 1 then
+                local item = candidates[1]
+                if sameReference(item.values, info.preset) then
+                    notes[#notes + 1] = tostring(info.feature) .. ": NO CHANGE (new Preset matches current Values)"
+                elseif seenRecipe[item.recipe] then
+                    notes[#notes + 1] = string.format("%s: SKIPPED (same Recipe already taken by %s)",
+                        tostring(info.feature), seenRecipe[item.recipe])
+                else
+                    seenRecipe[item.recipe] = tostring(info.feature)
+                    writable[#writable + 1] = { info = info, item = item }
+                end
+            elseif #candidates == 0 then
+                notes[#notes + 1] = tostring(info.feature) .. ": NO MATCHING TRACKING RECIPE"
+            else
+                notes[#notes + 1] = string.format("%s: AMBIGUOUS (%d matching Recipes)",
+                    tostring(info.feature), #candidates)
+            end
+        end
+    end
+    return writable, notes
+end
+
+local function updateRecipeTrackingBatch()
+    local state = _G[STATE_KEY]
+    if not state or state.updating then return end
+    local fixtures = readSelection()
+    if #fixtures == 0 then
+        notify("Batch Update", "Select one or more fixtures first.")
+        return
+    end
+    local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
+    local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
+    local writable, notes = batchUpdateItems(sequence, currentCue, fixtures)
+    if #writable == 0 then
+        notify("Batch Update", table.concat({
+            "No writable features found.",
+            table.concat(notes, "\n")
+        }, "\n"))
+        return
+    end
+    if not callable("CreateUndo") or not callable("CloseUndo") or not callable("Cmd") then
+        notify("Batch Update", "This grandMA3 session does not expose the required Undo APIs. No update was performed.")
+        return
+    end
+
+    local removeAttributes, seenAttribute = {}, {}
+    local lines = {
+        "BATCH UPDATE - " .. #writable .. " feature(s) as one Oops (Undo)"
+    }
+    for index, item in ipairs(writable) do
+        local info = item.info
+        local newAddress = commandAddress(info.preset)
+        local recipeAddress = commandAddress(item.item.recipe)
+        if not newAddress or not recipeAddress then
+            notify("Batch Update", tostring(info.feature) .. ": could not resolve command addresses. No update was performed.")
+            return
+        end
+        lines[#lines + 1] = string.format("%d) %s", index, tostring(info.feature))
+        lines[#lines + 1] = "   Target: " .. recipeAddress
+        lines[#lines + 1] = "   Old: " .. presetText(item.item.values, info.feature)
+        lines[#lines + 1] = "   New: " .. presetText(info.preset, info.feature)
+        for _, attributeName in ipairs(info.attributes or {}) do
+            if not seenAttribute[attributeName] then
+                seenAttribute[attributeName] = true
+                removeAttributes[#removeAttributes + 1] = attributeName
+            end
+        end
+    end
+    table.sort(removeAttributes)
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Remove from Programmer: " .. (table.concat(removeAttributes, ", ") or "none")
+    for _, note in ipairs(notes) do
+        lines[#lines + 1] = "Skipped: " .. note
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "All Assigns and Programmer cleanup will be available as one Oops (Undo)."
+
+    local confirmation = safe(MessageBox, {
+        title = "Confirm Batch Update",
+        message = table.concat(lines, "\n"),
+        commands = {
+            { value = 1, name = "UPDATE ALL" },
+            { value = 0, name = "CANCEL" }
+        }
+    })
+    if type(confirmation) ~= "table" or confirmation.success ~= true or confirmation.result ~= 1 then return end
+
+    state.updating = true
+    local undo = safe(CreateUndo, "Update Recipe Values (batch)")
+    if undo == nil then
+        state.updating = false
+        notify("Batch Update Failed", "Could not create an Undo transaction. No update was performed.")
+        return
+    end
+
+    local commands, feedbacks = {}, {}
+    local failed = false
+    for _, item in ipairs(writable) do
+        local command = "Assign " .. commandAddress(item.info.preset)
+            .. " At " .. commandAddress(item.item.recipe) .. " Property \"Values\""
+        commands[#commands + 1] = command
+        local result = safe(Cmd, command, undo)
+        if result ~= "OK" then
+            failed = true
+            feedbacks[#feedbacks + 1] = tostring(item.info.feature) .. ": " .. tostring(result)
+        end
+    end
+    local clearCommands = {}
+    for _, attributeName in ipairs(removeAttributes) do
+        local safeName = string.gsub(tostring(attributeName), "[\"\r\n]", "")
+        local attributeCommand = "Off Attribute \"" .. safeName .. "\""
+        clearCommands[#clearCommands + 1] = attributeCommand
+        local result = safe(Cmd, attributeCommand, undo)
+        if result ~= "OK" then
+            failed = true
+            feedbacks[#feedbacks + 1] = "clear " .. safeName .. ": " .. tostring(result)
+        end
+    end
+    local closed = safe(CloseUndo, undo)
+    state.forceRefresh = true
+
+    if not failed and closed == true then
+        local targets = {}
+        for _, item in ipairs(writable) do
+            targets[#targets + 1] = {
+                recipe = item.item.recipe,
+                recipeAddress = commandAddress(item.item.recipe),
+                expectedPreset = item.info.preset,
+                expectedAddress = commandAddress(item.info.preset),
+                expectedGroup = nil
+            }
+        end
+        state.pendingVerification = {
+            targets = targets,
+            command = table.concat(commands, "; "),
+            clearCommand = table.concat(clearCommands, "; "),
+            checksRemaining = 3
+        }
+        return
+    end
+
+    local rollback = nil
+    if closed == true then rollback = safe(Cmd, "Oops") end
+    state.updating = false
+    notify("Batch Update Failed", table.concat({
+        "grandMA3 did not complete the undo-safe commands, so the transaction was rolled back when possible.",
+        table.concat(feedbacks, "\n"),
+        "Undo close: " .. tostring(closed),
+        "Rollback feedback: " .. tostring(rollback)
+    }, "\n"))
+end
+
+signalTable.UpdateRecipeTrackingBatch = function()
+    updateRecipeTrackingBatch()
+end
+
 local function processPendingVerification(state)
     local pending = state and state.pendingVerification
     if not pending then return end
@@ -924,33 +1091,41 @@ local function processPendingVerification(state)
     if pending.checksRemaining > 0 then return end
 
     state.pendingVerification = nil
-    local freshRecipe = pending.recipe
-    if callable("ObjectList") then
-        local resolved = safe(ObjectList, pending.recipeAddress)
-        if type(resolved) == "table" and resolved[1] ~= nil then freshRecipe = resolved[1] end
+    local failures = {}
+    for _, target in ipairs(pending.targets or {}) do
+        local freshRecipe = target.recipe
+        if callable("ObjectList") then
+            local resolved = safe(ObjectList, target.recipeAddress)
+            if type(resolved) == "table" and resolved[1] ~= nil then freshRecipe = resolved[1] end
+        end
+        local actualPreset = safe(function() return freshRecipe.Values end)
+        local groupVerified = true
+        if target.expectedGroup ~= nil then
+            local actualGroup = safe(function() return freshRecipe.Selection end)
+            groupVerified = sameReference(actualGroup, target.expectedGroup)
+        end
+        if not (sameReference(actualPreset, target.expectedPreset) and groupVerified) then
+            failures[#failures + 1] = string.format("Recipe %s: expected %s, actual %s",
+                tostring(target.recipeAddress),
+                tostring(target.expectedAddress),
+                tostring(commandAddress(actualPreset) or actualPreset or "nil"))
+        end
     end
-    local actualPreset = safe(function() return freshRecipe.Values end)
-    local actualGroup = safe(function() return freshRecipe.Selection end)
-    local groupVerified = pending.expectedGroup == nil or sameReference(actualGroup, pending.expectedGroup)
-    if sameReference(actualPreset, pending.expectedPreset) and groupVerified then
+    if #failures == 0 then
         state.updating = false
         state.forceRefresh = true
-        notify("Recipe Updated", "Recipe Values updated and its assigned Attribute removed from the Programmer.\nUse Oops once to undo both changes.")
+        notify("Recipe Updated", "Recipe Values updated and the assigned Attributes removed from the Programmer.\nUse Oops once to undo all changes.")
         return
     end
 
-    -- The Assign command was accepted and its Undo group closed, so one Oops
-    -- targets this update. Restore it when delayed verification still fails.
+    -- The Assign commands were accepted and their Undo group closed, so one
+    -- Oops targets this update. Restore it when delayed verification fails.
     local rollback = safe(Cmd, "Oops")
     state.updating = false
     state.forceRefresh = true
     notify("Recipe Update Failed", table.concat({
-        "The delayed verification still did not match, so the update was rolled back with Oops.",
-        "Expected: " .. tostring(pending.expectedAddress),
-        "Actual: " .. tostring(commandAddress(actualPreset) or actualPreset or "nil"),
-        "Expected Group: " .. tostring(commandAddress(pending.expectedGroup)
-            or pending.expectedGroup or "unchanged"),
-        "Actual Group: " .. tostring(commandAddress(actualGroup) or actualGroup or "nil"),
+        "The delayed verification did not match, so the update was rolled back with Oops.",
+        table.concat(failures, "\n"),
         "Command: " .. tostring(pending.command),
         "Rollback feedback: " .. tostring(rollback)
     }, "\n"))
@@ -1096,7 +1271,7 @@ local function createPanel(state)
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append utility row" end
     footer.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
-    footer.Columns = 5
+    footer.Columns = 6
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
@@ -1135,8 +1310,17 @@ local function createPanel(state)
     batch.PluginComponent = componentHandle
     batch.Clicked = "ShowRecipeTrackingBatchPreview"
 
-    detail.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
-    style.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
+    local batchUpdate = safe(function() return footer:Append("Button") end)
+    if batchUpdate == nil then deleteHandle(window) return nil, "could not append batch update button" end
+    batchUpdate.Name = "RecipeTrackingInspectorBatchUpdate"
+    batchUpdate.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    batchUpdate.Text = "BATCH UPDATE"
+    batchUpdate.Font = "Medium20"
+    batchUpdate.PluginComponent = componentHandle
+    batchUpdate.Clicked = "UpdateRecipeTrackingBatch"
+
+    detail.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
+    style.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
 
     local update = safe(function() return actions:Append("Button") end)
     if update == nil then deleteHandle(window) return nil, "could not append update button" end
@@ -1171,7 +1355,7 @@ local function createPanel(state)
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
+    stop.Anchors = { left = 5, right = 5, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
@@ -1185,10 +1369,10 @@ local function createPanel(state)
     end
 
     state.window, state.panel, state.sourceHighlights, state.currentHighlights, state.presetHighlights,
-        state.detail, state.style, state.selectGroup, state.batch,
+        state.detail, state.style, state.selectGroup, state.batch, state.batchUpdate,
         state.update, state.updateCurrent, state.updateNew, state.stop =
         window, panel, sourceHighlights, currentHighlights, presetHighlights, detail, style, selectGroup, batch,
-        update, updateCurrent, updateNew, stop
+        batchUpdate, update, updateCurrent, updateNew, stop
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1

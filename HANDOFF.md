@@ -6,7 +6,7 @@ Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector, 
 
 ## Current Working State
 
-Version `0.5.0.0` adds the first read-only multi-Attribute batch preview. `BATCH`, immediately right of `SELECT GROUP`, scans active Programmer data for the selected fixtures, groups it by feature, and reports each new Preset, unique source Cue/Group/old Preset, available update destinations, or a safe review-only reason. Existing single-Attribute update behavior is unchanged.
+Version `0.6.0.0` adds multi-Attribute batch writing. `BATCH UPDATE`, right of `BATCH`, re-resolves every active Programmer feature at click time, writes each writable feature's Preset into its uniquely resolved Recipe `Values`, removes the union of contributing Programmer attributes, and wraps all Assigns and cleanups in one `CreateUndo`/`CloseUndo` transaction with combined delayed verification (any mismatch rolls back the whole batch with one Oops). Features that are raw/Phaser/ambiguous, NO CHANGE, ambiguous tracking, or whose Recipe is already taken by another feature are skipped with explicit reasons. Read-only `BATCH` preview and single-Attribute updates are unchanged (shared delayed verification now targets a list).
 
 The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
 
@@ -24,7 +24,7 @@ v0.4.1.5 passed earlier (larger Update captions, layout/tracking). v0.5.0.0 batc
 
 ## Current Problem
 
-Batch preview is validated. Next milestone: multi-Attribute batch UPDATE (writing) is intentionally not enabled yet and needs user go-ahead, since it writes multiple Attributes in one Undo transaction.
+v0.6.0.0 batch writing is implemented and deployed but not yet real-world tested.
 
 ## Known Failed Attempts
 
@@ -40,8 +40,8 @@ Batch preview is validated. Next milestone: multi-Attribute batch UPDATE (writin
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.5.0.0` committed and pushed (`dd0db78`); this handoff update is the next commit.
+Branch: `qwen`. Version `0.5.0.0` validated (`dd0db78`); v0.6.0.0 batch writing lands in the next commit.
 
 ## Exact Next Action
 
-Await user go-ahead for batch writing, then implement multi-Attribute batch UPDATE: resolve all writable features, show combined target/old/new confirmation, apply all `Assign` operations inside one `CreateUndo`/`CloseUndo` transaction, verify every `recipe.Values` afterward, and remove only the contributing Programmer attributes.
+Import/run v0.6.0.0, repeat the 36-fixture test scenario, press `BATCH UPDATE`, and verify: the confirmation lists each writable feature's target/old/new plus skipped reasons, one Oops reverts all written Recipes and Programmer removals, and delayed verification passes (or rolls back with a clear failure list).
