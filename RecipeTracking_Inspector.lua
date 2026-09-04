@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.2.3.5"
+local PLUGIN_VERSION = "0.2.4.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -29,6 +29,9 @@ end
 local function property(object, name)
     if object == nil then return nil end
     local ok, value = pcall(function() return object[name] end)
+    if not ok or value == nil then
+        ok, value = pcall(function() return object:Get(name) end)
+    end
     if not ok or value == nil then return nil end
     local text = tostring(value)
     if string.match(text, "^function:") then return nil end
@@ -249,17 +252,30 @@ local function scanTracking(sequence, currentCue, fixtures, info)
             end
         end
     end
-    return candidates
+    -- Older matching Recipes have been superseded. Only the closest matching
+    -- Cue at or before the current Cue can be the active tracking source.
+    local latestNumber = nil
+    for _, item in ipairs(candidates) do
+        local number = cueNumber(item.cue)
+        if number ~= nil and (latestNumber == nil or number > latestNumber) then latestNumber = number end
+    end
+    if latestNumber == nil then return {} end
+    local latest = {}
+    for _, item in ipairs(candidates) do
+        if cueNumber(item.cue) == latestNumber then latest[#latest + 1] = item end
+    end
+    return latest
 end
 
 local function render(state)
+    if state then state.currentGroup = nil end
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
     local lines = {
-        "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION .. "  [READ-ONLY]",
+        "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION .. "  [SHOW DATA READ-ONLY]",
         string.format("Selection: %d fixture%s", #fixtures, #fixtures == 1 and "" or "s"),
         "Attribute: " .. tostring(info.feature or "UNRESOLVED"),
         "Current Cue: " .. cueLabel(currentCue)
@@ -273,6 +289,7 @@ local function render(state)
             local recipe = direct[1]
             local group = safe(function() return recipe.Selection end)
             local values = safe(function() return recipe.Values end)
+            if state then state.currentGroup = group end
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
             lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
@@ -285,6 +302,7 @@ local function render(state)
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
         if #candidates == 1 then
             local item = candidates[1]
+            if state then state.currentGroup = item.group end
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
             lines[#lines + 1] = "Recipe: " .. indexedLabel(item.recipe, "INDEX", "Recipe 1")
@@ -327,11 +345,17 @@ local function render(state)
             "Old Preset: " .. oldValue,
             "New Preset: " .. newValue
         } or { status or (lines[#lines] or "") }
+        if state and state.selectGroup then
+            pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
+        end
         return table.concat({
             string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
                 #fixtures, #fixtures == 1 and "" or "s"),
             table.concat(details, "\n")
         }, "\n")
+    end
+    if state and state.selectGroup then
+        pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
     end
     return table.concat(lines, "\n")
 end
@@ -383,6 +407,37 @@ signalTable.CycleRecipeTrackingStyle = function()
     if state.window then pcall(function() state.window.BackColor = color end) end
     pcall(function() state.panel.BackColor = color end)
     if state.style then state.style.Text = STYLE_LABELS[state.styleIndex] end
+end
+
+local function groupCommand(group)
+    if group == nil then return nil end
+    local number = tonumber(property(group, "No") or property(group, "NO"))
+    if number ~= nil then return "Group " .. string.format("%g", number) end
+    local parsed = string.match(tostring(group), "^%s*(%d+)")
+    if parsed then return "Group " .. parsed end
+    local shortAddress = safe(function() return group:ToAddr() end)
+    if shortAddress and string.find(string.lower(tostring(shortAddress)), "group", 1, true) then
+        return tostring(shortAddress)
+    end
+    return nil
+end
+
+signalTable.SelectRecipeTrackingGroup = function()
+    local state = _G[STATE_KEY]
+    local command = state and groupCommand(state.currentGroup) or nil
+    if command and callable("Cmd") then safe(Cmd, command) end
+end
+
+local function syncTitleWidth(state)
+    if not state or not state.window or not state.titleButton then return end
+    local rawWidth = safe(function() return state.window.W end)
+    local width = tonumber(rawWidth) or tonumber(string.match(tostring(rawWidth or ""), "[%d%.]+"))
+    if not width or width < 100 or width == state.lastWindowWidth then return end
+    state.lastWindowWidth = width
+    local titleWidth = tostring(math.max(64, math.floor(width - 36)))
+    pcall(function() state.titleButton.W = titleWidth end)
+    pcall(function() state.titleButton.MinSize = titleWidth .. ",36" end)
+    pcall(function() state.titleButton.MaxSize = titleWidth .. ",36" end)
 end
 
 local function createPanel(state)
@@ -466,7 +521,7 @@ local function createPanel(state)
     local footer = safe(function() return window:Append("UILayoutGrid") end)
     if footer == nil then deleteHandle(window) return nil, "could not append footer" end
     footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
-    footer.Columns = 3
+    footer.Columns = 4
     footer.Rows = 1
 
     local detail = safe(function() return footer:Append("Button") end)
@@ -487,10 +542,19 @@ local function createPanel(state)
     style.PluginComponent = componentHandle
     style.Clicked = "CycleRecipeTrackingStyle"
 
+    local selectGroup = safe(function() return footer:Append("Button") end)
+    if selectGroup == nil then deleteHandle(window) return nil, "could not append select Group button" end
+    selectGroup.Name = "RecipeTrackingInspectorSelectGroup"
+    selectGroup.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    selectGroup.Text = "SELECT GROUP"
+    selectGroup.Font = "Medium20"
+    selectGroup.PluginComponent = componentHandle
+    selectGroup.Clicked = "SelectRecipeTrackingGroup"
+
     local stop = safe(function() return footer:Append("Button") end)
     if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
     stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
+    stop.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
     stop.Text = "STOP"
     stop.Font = "Medium20"
     stop.PluginComponent = componentHandle
@@ -503,7 +567,9 @@ local function createPanel(state)
         resize.AlignmentV = "Bottom"
     end
 
-    state.window, state.panel, state.detail, state.style, state.stop = window, panel, detail, style, stop
+    state.window, state.panel, state.detail, state.style, state.selectGroup, state.stop =
+        window, panel, detail, style, selectGroup, stop
+    state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
     return panel
@@ -527,9 +593,10 @@ local function main()
 
     local previous = nil
     while state.running do
+        syncTitleWidth(state)
         local ok, text = pcall(render, state)
         if not ok then text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
-            "  [READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
+            "  [SHOW DATA READ-ONLY]\n\nStatus: ERROR\n" .. tostring(text) end
         if text ~= previous or state.forceRefresh then
             state.forceRefresh = false
             previous = text
