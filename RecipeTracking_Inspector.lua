@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.3.0.3"
+local PLUGIN_VERSION = "0.3.0.4"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -146,7 +146,8 @@ local function normalizeFeature(name)
     local text = tostring(name or "UNRESOLVED")
     local compact = string.lower(string.gsub(text, "[%s_/%-]", ""))
     if compact == "pantilt" or compact == "pan" or compact == "tilt" then return "Position" end
-    if compact == "rgb" or compact == "colorrgb" or compact == "colourrgb" then return "Color" end
+    if compact == "rgb" or compact == "colorrgb" or compact == "colourrgb"
+        or string.find(compact, "color", 1, true) or string.find(compact, "colour", 1, true) then return "Color" end
     if compact == "r" or compact == "g" or compact == "b" or compact == "red"
         or compact == "green" or compact == "blue" then return "Color" end
     if compact == "dim" or compact == "dimmer" then return "Dimmer" end
@@ -160,7 +161,7 @@ local function getProgPhaser(index)
 end
 
 local function readProgrammer(fixtures)
-    local presets, rawCount = {}, 0
+    local presets, assignedAttributes, rawCount = {}, {}, 0
     local selectedFeature = normalizeFeature(selectedFeatureLabel())
     if #fixtures == 0 or not callable("GetUIChannels") then
         return { feature = selectedFeature }
@@ -173,13 +174,18 @@ local function readProgrammer(fixtures)
                 if uiIndex then
                     local phaser = getProgPhaser(uiIndex - 1)
                     if type(phaser) == "table" then
-                        local channelFeature = normalizeFeature(property(channel, "SUBATTRIBUTE")
-                            or property(channel, "SubAttribute") or property(channel, "Name"))
+                        local attribute = callable("GetAttributeByUIChannel")
+                            and safe(GetAttributeByUIChannel, uiIndex - 1) or nil
+                        local attributeName = attribute and label(attribute)
+                            or property(channel, "SUBATTRIBUTE")
+                            or property(channel, "SubAttribute") or property(channel, "Name")
+                        local channelFeature = normalizeFeature(attributeName)
                         if type(phaser.abs_preset) == "userdata" then
                             local presetAddress = address(phaser.abs_preset)
                             local pool = string.match(presetAddress, "PresetPools%.([^%.]+)%.")
-                            if pool == selectedFeature or pool == "All" then
+                            if channelFeature == selectedFeature and (pool == selectedFeature or pool == "All") then
                                 presets[presetAddress] = phaser.abs_preset
+                                if attributeName and attributeName ~= "" then assignedAttributes[attributeName] = true end
                                 if type(phaser[2]) == "table" then rawCount = rawCount + 1 end
                             end
                         elseif channelFeature == selectedFeature then
@@ -193,12 +199,16 @@ local function readProgrammer(fixtures)
     local keys = {}
     for key in pairs(presets) do keys[#keys + 1] = key end
     table.sort(keys)
+    local attributes = {}
+    for name in pairs(assignedAttributes) do attributes[#attributes + 1] = name end
+    table.sort(attributes)
     if #keys == 1 then
         local preset = presets[keys[1]]
         return {
             preset = preset,
             presetAddress = keys[1],
             feature = selectedFeature,
+            attributes = attributes,
             rawCount = rawCount
         }
     end
@@ -344,6 +354,7 @@ local function render(state)
         state.currentOldPreset = nil
         state.currentNewPreset = nil
         state.currentRecipeCommand = nil
+        state.currentAssignedAttributes = nil
     end
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
@@ -371,6 +382,7 @@ local function render(state)
                 state.currentOldPreset = values
                 state.currentNewPreset = info.preset
                 state.currentRecipeCommand = commandAddress(recipe)
+                state.currentAssignedAttributes = info.attributes
             end
             lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
@@ -390,6 +402,7 @@ local function render(state)
                 state.currentOldPreset = item.values
                 state.currentNewPreset = info.preset
                 state.currentRecipeCommand = cueRecipeCommandAddress(sequence, item.cue, item.part, item.recipe)
+                state.currentAssignedAttributes = info.attributes
             end
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
@@ -440,6 +453,7 @@ local function render(state)
         end
         if state and state.update then
             local changed = state.currentRecipe and state.currentNewPreset
+                and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
                 and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
             pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
         end
@@ -454,6 +468,7 @@ local function render(state)
     end
     if state and state.update then
         local changed = state.currentRecipe and state.currentNewPreset
+            and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
             and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
         pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
     end
@@ -549,9 +564,11 @@ signalTable.UpdateRecipeTrackingValue = function()
     render(state)
     local recipe, oldPreset, newPreset = state.currentRecipe,
         state.currentOldPreset, state.currentNewPreset
+    local assignedAttributes = state.currentAssignedAttributes
     local recipeAddress, oldAddress, newAddress = state.currentRecipeCommand,
         commandAddress(oldPreset), commandAddress(newPreset)
-    if not recipeAddress or not newAddress or oldAddress == newAddress then
+    if not recipeAddress or not newAddress or oldAddress == newAddress
+        or type(assignedAttributes) ~= "table" or #assignedAttributes == 0 then
         notify("Recipe Update", "UPDATE is unavailable. Select a uniquely resolved Recipe and call one new Preset for the selected Attribute.")
         return
     end
@@ -567,7 +584,9 @@ signalTable.UpdateRecipeTrackingValue = function()
             "Old: " .. presetText(oldPreset),
             "New: " .. presetText(newPreset),
             "",
-            "This change will be available as one Oops (Undo)."
+            "Remove from Programmer: " .. table.concat(assignedAttributes, ", "),
+            "",
+            "Both changes will be available as one Oops (Undo)."
         }, "\n"),
         commands = {
             { value = 1, name = "UPDATE" },
@@ -586,7 +605,14 @@ signalTable.UpdateRecipeTrackingValue = function()
 
     local command = "Assign " .. newAddress .. " At " .. recipeAddress .. " Property \"Values\""
     local assignFeedback = safe(Cmd, command, undo)
-    local clearFeedback = safe(Cmd, "ClearActive", undo)
+    local clearFeedback, clearCommand = "OK", nil
+    for _, attributeName in ipairs(assignedAttributes) do
+        local safeName = string.gsub(tostring(attributeName), "[\"\r\n]", "")
+        local attributeCommand = "Off Attribute \"" .. safeName .. "\""
+        local result = safe(Cmd, attributeCommand, undo)
+        clearCommand = clearCommand and (clearCommand .. "; " .. attributeCommand) or attributeCommand
+        if result ~= "OK" then clearFeedback = result end
+    end
     local closed = safe(CloseUndo, undo)
     state.forceRefresh = true
 
@@ -598,7 +624,7 @@ signalTable.UpdateRecipeTrackingValue = function()
             recipe = recipe,
             recipeAddress = recipeAddress,
             command = command,
-            clearCommand = "ClearActive",
+            clearCommand = clearCommand,
             expectedPreset = newPreset,
             expectedAddress = newAddress,
             checksRemaining = 3
@@ -612,7 +638,7 @@ signalTable.UpdateRecipeTrackingValue = function()
     notify("Recipe Update Failed", table.concat({
         "grandMA3 did not complete both undo-safe commands, so the transaction was rolled back when possible.",
         "Assign feedback: " .. tostring(assignFeedback),
-        "ClearActive feedback: " .. tostring(clearFeedback),
+        "Programmer cleanup feedback: " .. tostring(clearFeedback),
         "Undo close: " .. tostring(closed),
         "Rollback feedback: " .. tostring(rollback)
     }, "\n"))
@@ -634,7 +660,7 @@ local function processPendingVerification(state)
     if sameReference(actualPreset, pending.expectedPreset) then
         state.updating = false
         state.forceRefresh = true
-        notify("Recipe Updated", "Recipe Values updated and Programmer values deactivated.\nUse Oops once to undo both changes.")
+        notify("Recipe Updated", "Recipe Values updated and its assigned Attribute removed from the Programmer.\nUse Oops once to undo both changes.")
         return
     end
 
