@@ -4,13 +4,13 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.1.2"
+local PLUGIN_VERSION = "0.4.1.3"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
-local PANEL_WIDTH = 540
+local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 304
 local DETAIL_HEIGHT = 564
 
@@ -938,7 +938,7 @@ local function createPanel(state)
     sourceHighlights.TextalignmentH = "Left"
     sourceHighlights.TextalignmentV = "Top"
     sourceHighlights.TextAutoAdjust = "No"
-    sourceHighlights.Padding = { left = 112, right = 12, top = 8, bottom = 8 }
+    sourceHighlights.Padding = { left = 140, right = 12, top = 8, bottom = 8 }
     pcall(function() sourceHighlights.HasHover = "No" end)
     pcall(function() sourceHighlights.BackColor = "Global.Transparent" end)
     pcall(function() sourceHighlights.TextColor = "Global.SuccessText" end)
@@ -1000,7 +1000,7 @@ local function createPanel(state)
     update.Name = "RecipeTrackingInspectorUpdate"
     update.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
     update.Text = "UPDATE ORIGINAL"
-    update.Font = "Medium20"
+    update.Font = "Regular14"
     update.PluginComponent = componentHandle
     update.Clicked = "UpdateRecipeTrackingValue"
     update.Enabled = "No"
@@ -1010,7 +1010,7 @@ local function createPanel(state)
     updateCurrent.Name = "RecipeTrackingInspectorUpdateCurrent"
     updateCurrent.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
     updateCurrent.Text = "UPDATE CURRENT CUE"
-    updateCurrent.Font = "Medium20"
+    updateCurrent.Font = "Regular14"
     updateCurrent.PluginComponent = componentHandle
     updateCurrent.Clicked = "UpdateCurrentCueRecipe"
     updateCurrent.Enabled = "No"
@@ -1020,7 +1020,7 @@ local function createPanel(state)
     updateNew.Name = "RecipeTrackingInspectorUpdateNew"
     updateNew.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
     updateNew.Text = "UPDATE NEW CONTENT"
-    updateNew.Font = "Medium20"
+    updateNew.Font = "Regular14"
     updateNew.PluginComponent = componentHandle
     updateNew.Clicked = "UpdateNewCueRecipe"
     updateNew.Enabled = "No"
