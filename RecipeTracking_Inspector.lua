@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.4.1.0"
+local PLUGIN_VERSION = "0.4.1.1"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
@@ -379,6 +379,31 @@ local function scanTracking(sequence, currentCue, fixtures, info)
     return latest
 end
 
+local function coloredTextLayers(text)
+    local baseLines, greenLines = {}, {}
+    for line in (tostring(text or "") .. "\n"):gmatch("(.-)\n") do
+        local first, last
+        local _, sourcePrefixEnd = string.find(line, "^%s*Source Cue:%s*")
+        if sourcePrefixEnd then
+            first = sourcePrefixEnd + 1
+            local separator = string.find(line, " | Current Cue:", first, true)
+            last = separator and (separator - 1) or #line
+        else
+            first = string.find(line, "Preset%s+[%d%.]+")
+            if first then last = #line end
+        end
+        if first and last and last >= first then
+            baseLines[#baseLines + 1] = line:sub(1, first - 1)
+                .. string.rep(" ", last - first + 1) .. line:sub(last + 1)
+            greenLines[#greenLines + 1] = string.rep(" ", first - 1) .. line:sub(first, last)
+        else
+            baseLines[#baseLines + 1] = line
+            greenLines[#greenLines + 1] = ""
+        end
+    end
+    return table.concat(baseLines, "\n"), table.concat(greenLines, "\n")
+end
+
 local function render(state)
     if state then
         state.currentGroup = nil
@@ -517,11 +542,11 @@ local function render(state)
                 and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
             pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
         end
-        return table.concat({
+        return coloredTextLayers(table.concat({
             string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
                 #fixtures, #fixtures == 1 and "" or "s"),
             table.concat(details, "\n")
-        }, "\n")
+        }, "\n"))
     end
     if state and state.selectGroup then
         pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
@@ -546,7 +571,7 @@ local function render(state)
             and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
         pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
     end
-    return table.concat(lines, "\n")
+    return coloredTextLayers(table.concat(lines, "\n"))
 end
 
 local function deleteHandle(handle)
@@ -896,6 +921,19 @@ local function createPanel(state)
     pcall(function() panel.HasHover = "No" end)
     pcall(function() panel.BackColor = styleColor(1) end)
 
+    local highlights = safe(function() return window:Append("UIObject") end)
+    if highlights == nil then deleteHandle(window) return nil, "could not append highlight layer" end
+    highlights.Name = "RecipeTrackingInspectorHighlights"
+    highlights.Anchors = { left = 0, right = 0, top = 1, bottom = 1 }
+    highlights.Font = "Medium20"
+    highlights.TextalignmentH = "Left"
+    highlights.TextalignmentV = "Top"
+    highlights.TextAutoAdjust = "No"
+    highlights.Padding = { left = 12, right = 12, top = 8, bottom = 8 }
+    pcall(function() highlights.HasHover = "No" end)
+    pcall(function() highlights.BackColor = "00000000" end)
+    pcall(function() highlights.TextColor = "Global.SuccessText" end)
+
     local actions = safe(function() return window:Append("UILayoutGrid") end)
     if actions == nil then deleteHandle(window) return nil, "could not append action row" end
     actions.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
@@ -981,9 +1019,9 @@ local function createPanel(state)
         resize.AlignmentV = "Bottom"
     end
 
-    state.window, state.panel, state.detail, state.style, state.selectGroup,
+    state.window, state.panel, state.highlights, state.detail, state.style, state.selectGroup,
         state.update, state.updateCurrent, state.updateNew, state.stop =
-        window, panel, detail, style, selectGroup, update, updateCurrent, updateNew, stop
+        window, panel, highlights, detail, style, selectGroup, update, updateCurrent, updateNew, stop
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
@@ -1006,17 +1044,22 @@ local function main()
         return
     end
 
-    local previous = nil
+    local previous, previousHighlights = nil, nil
     while state.running do
         syncTitleWidth(state)
         processPendingVerification(state)
-        local ok, text = pcall(render, state)
-        if not ok then text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
-            "\n\nStatus: ERROR\n" .. tostring(text) end
-        if text ~= previous or state.forceRefresh then
+        local ok, text, highlightText = pcall(render, state)
+        if not ok then
+            text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
+                "\n\nStatus: ERROR\n" .. tostring(text)
+            highlightText = ""
+        end
+        if text ~= previous or highlightText ~= previousHighlights or state.forceRefresh then
             state.forceRefresh = false
             previous = text
+            previousHighlights = highlightText
             pcall(function() panel.Text = text end)
+            pcall(function() state.highlights.Text = highlightText or "" end)
         end
         coroutine.yield(REFRESH_SECONDS)
     end
