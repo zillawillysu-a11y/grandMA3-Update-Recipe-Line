@@ -550,6 +550,12 @@ local largeDiagnostic = boundedScan.diagnostics.parts[1]
 check(largeDiagnostic and largeDiagnostic.channels == 1000 and largeDiagnostic.numericChannels == 1000
         and largeDiagnostic.advances == 32,
     "Large Part diagnostics must report its exact channel count and bounded advance count")
+check(largeDiagnostic and largeDiagnostic.movingLayers == 1000 and largeDiagnostic.directRefs == 1000
+        and largeDiagnostic.emptyRefs == 0 and largeDiagnostic.unresolvedRefs == 0
+        and largeDiagnostic.firstRefAdvance == 1
+        and boundedScan.diagnostics.firstRefAdvance == 1
+        and (largeDiagnostic.elapsedMs == nil or type(largeDiagnostic.elapsedMs) == "number"),
+    "Large Part diagnostics must report reference classification and bounded timing evidence")
 SelectedSequence = function() return largeSequence end
 GetCurrentCue = function() return largeCue end
 local cachedState = {}

@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.10"
+local PLUGIN_VERSION = "0.7.0.11"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
@@ -944,10 +944,48 @@ local function cueEffectLayer(phaser, prefix, valueKey)
     return touched, moving and not released, refs
 end
 
+-- Diagnostic helpers.  Reference address lookups are memoized once per
+-- unique object per scan, so reference classification adds at most one
+-- ToAddr per Pool reference instead of one per occurrence.  Elapsed time
+-- uses the standard Lua clock only when the host exposes it.
+local UNRESOLVED_ADDRESS = {}
+
+local function memoReferenceAddress(scan, ref)
+    if ref == nil then return nil end
+    local memo = scan.addrMemo
+    local cached = memo[ref]
+    if cached == nil then
+        cached = commandAddress(ref) or UNRESOLVED_ADDRESS
+        memo[ref] = cached
+    end
+    return cached == UNRESOLVED_ADDRESS and nil or cached
+end
+
+local function clockSeconds()
+    if type(os) == "table" and type(os.clock) == "function" then
+        local ok, value = pcall(os.clock)
+        if ok then return value end
+    end
+    return nil
+end
+
+local function elapsedMs(started)
+    local now = clockSeconds()
+    if started == nil or now == nil then return nil end
+    local elapsed = (now - started) * 1000
+    return elapsed >= 0 and elapsed or 0
+end
+
+local function formatElapsed(value)
+    return value ~= nil and string.format("%.1f", value) or "n/a"
+end
+
 local function newCueEffectScan(sequence, currentCue)
     local scan = {
         tracked = {}, parts = {}, index = 1, work = 0, advanceCalls = 0,
-        diagnostics = {cue = cueLabel(currentCue), parts = {}, fastRefs = 0}
+        addrMemo = {},
+        diagnostics = {cue = cueLabel(currentCue), parts = {}, fastRefs = 0,
+            startedClock = clockSeconds()}
     }
     if not sequence or not cueNumber(currentCue) or not callable("GetPresetData") then
         scan.done, scan.result = true, {}
@@ -978,12 +1016,13 @@ local function scanCheckpoint(scan)
     if scan.work > 131072 then error("Cue effect scan limit exceeded") end
 end
 
--- Keep performance evidence on the scan object.  The fields are deliberately
--- counters only: diagnostics must not add native calls or another full pass
--- over a large GetPresetData result.
+-- Keep performance evidence on the scan object.  The fields are counters
+-- and memoized lookups only: diagnostics never add a full pass over a
+-- large GetPresetData result, and each unique reference costs one ToAddr.
 local function newPartScanDiagnostic(part, advance)
     return {
         part = partNumber(part), label = label(part), startedAdvance = advance,
+        startedClock = clockSeconds(), elapsedMs = nil,
         channels = 0, numericChannels = 0, movingLayers = 0, emptyRefs = 0,
         unresolvedRefs = 0, uiMissing = 0, rtMissing = 0, attributeMissing = 0,
         recipeFeatureMiss = 0, recipeMembershipMiss = 0, recoveredRefs = 0,
@@ -995,13 +1034,23 @@ local function effectScanLog(message)
     if callable("Printf") then safe(Printf, "[RecipeTracking][EffectScan] " .. message) end
 end
 
+local function logAbandonedScan(scan)
+    if scan and not scan.done then
+        effectScanLog(string.format("cancelled cue=%s advances=%d parts_done=%d",
+            tostring(scan.diagnostics.cue), scan.advanceCalls or 0,
+            #(scan.diagnostics.parts or {})))
+    end
+end
+
 local function finishPartScanDiagnostic(scan, part, diagnostic)
     diagnostic.advances = scan.advanceCalls - diagnostic.startedAdvance + 1
+    diagnostic.elapsedMs = elapsedMs(diagnostic.startedClock)
     scan.diagnostics.parts[#scan.diagnostics.parts + 1] = diagnostic
     effectScanLog(string.format(
-        "cue=%s part=%s channels=%d numeric=%d advances=%d first_ref_advance=%s moving=%d direct_refs=%d recovered_refs=%d empty_refs=%d unresolved_refs=%d ui_missing=%d rt_missing=%d attribute_missing=%d feature_miss=%d membership_miss=%d",
+        "cue=%s part=%s channels=%d numeric=%d advances=%d first_ref_advance=%s elapsed_ms=%s moving=%d direct_refs=%d recovered_refs=%d empty_refs=%d unresolved_refs=%d ui_missing=%d rt_missing=%d attribute_missing=%d feature_miss=%d membership_miss=%d",
         tostring(scan.diagnostics.cue), tostring(diagnostic.part), diagnostic.channels,
-        diagnostic.numericChannels, diagnostic.advances, tostring(diagnostic.firstRefAdvance or "none"), diagnostic.movingLayers,
+        diagnostic.numericChannels, diagnostic.advances, tostring(diagnostic.firstRefAdvance or "none"),
+        formatElapsed(diagnostic.elapsedMs), diagnostic.movingLayers,
         diagnostic.directRefs, diagnostic.recoveredRefs, diagnostic.emptyRefs,
         diagnostic.unresolvedRefs, diagnostic.uiMissing, diagnostic.rtMissing,
         diagnostic.attributeMissing, diagnostic.recipeFeatureMiss, diagnostic.recipeMembershipMiss))
@@ -1009,11 +1058,17 @@ end
 
 local function scanCueEffectPart(scan, part)
     local pending = scan.pendingPart
-    local data = pending and pending.data or safe(GetPresetData, part, false, false)
-    if type(data) ~= "table" then error("Cue effect data unavailable") end
-    local recipes = pending and pending.recipes or {}
     if not pending then
-    local diagnostic = newPartScanDiagnostic(part, scan.advanceCalls)
+        -- Create the diagnostic before the native read so its elapsed time
+        -- includes the potentially expensive GetPresetData call.
+        pending = {diagnostic = newPartScanDiagnostic(part, scan.advanceCalls)}
+        scan.pendingPart = pending
+    end
+    local data = pending.data or safe(GetPresetData, part, false, false)
+    if type(data) ~= "table" then error("Cue effect data unavailable") end
+    pending.data = data
+    local recipes = pending.recipes or {}
+    if pending.recipes == nil then
     for ordinal, recipe in ipairs(children(part)) do
         scanCheckpoint(scan)
         if isStandardRecipe(recipe) and recipeEnabled(recipe) then
@@ -1036,8 +1091,7 @@ local function scanCueEffectPart(scan, part)
         end
     end
     table.sort(recipes, function(a, b) return a.index > b.index end)
-    pending = {data = data, recipes = recipes, diagnostic = diagnostic}
-    scan.pendingPart = pending
+    pending.recipes = recipes
     end
     for batch = 1, 32 do
         local index, phaser = next(data, pending.key)
@@ -1086,7 +1140,7 @@ local function scanCueEffectPart(scan, part)
                                 -- The matching StandardRecipe is the Pool object
                                 -- the user called. Cooked Phaser data may expose
                                 -- only its Shape or integrated step Presets.
-                                local key = commandAddress(recipe.ref)
+                                local key = memoReferenceAddress(scan, recipe.ref)
                                 if key and not recoveredSeen[key] then
                                     recoveredSeen[key], recovered[#recovered + 1] = true, recipe.ref
                                 end
@@ -1110,7 +1164,7 @@ local function scanCueEffectPart(scan, part)
                     if moving and #refs == 0 then pending.diagnostic.emptyRefs = pending.diagnostic.emptyRefs + 1 end
                     if moving and not recoveredPoolRef then
                         for _, ref in ipairs(refs) do
-                            if commandAddress(ref) then
+                            if memoReferenceAddress(scan, ref) then
                                 pending.diagnostic.directRefs = pending.diagnostic.directRefs + 1
                             else
                                 pending.diagnostic.unresolvedRefs = pending.diagnostic.unresolvedRefs + 1
@@ -1119,7 +1173,7 @@ local function scanCueEffectPart(scan, part)
                     end
                     if moving then
                         for _, ref in ipairs(refs) do
-                            if commandAddress(ref) then
+                            if memoReferenceAddress(scan, ref) then
                                 pending.diagnostic.firstRefAdvance = pending.diagnostic.firstRefAdvance or scan.advanceCalls
                                 scan.diagnostics.firstRefAdvance = scan.diagnostics.firstRefAdvance or scan.advanceCalls
                                 break
@@ -1139,7 +1193,7 @@ local function finishCueEffectScan(scan)
         scanCheckpoint(scan)
         for _, item in pairs(layers) do
             for _, ref in ipairs(item.refs) do
-                local key = commandAddress(ref)
+                local key = memoReferenceAddress(scan, ref)
                 if key then
                     local entry = result[key] or {object = ref, fixtures = {}, count = 0}
                     result[key] = entry
@@ -1214,6 +1268,7 @@ local function refreshCueEffects(state, allowScan)
         end
         local cached = state.effectCache[cueKey]
         state.activeEffects = addCurrentCueRecipeEffects(cached and cached.result or {}, state.currentCueEffects)
+        logAbandonedScan(state.effectScanner)
         state.effectScanner = nil
         state.effectScanPending, state.effectWait = cached == nil, 1
         state.poolMarkersDirty = true
@@ -1221,6 +1276,7 @@ local function refreshCueEffects(state, allowScan)
     -- A selected Sequence can expose a valid Current Cue while its executor is
     -- stopped or being edited. Pool usage follows that Cue, not playback state.
     if state.poolBlink == false or not sequence or not cue then
+        logAbandonedScan(state.effectScanner)
         state.activeEffects, state.currentCueEffects, state.effectScanner = {}, {}, nil
         state.effectScanPending, state.effectWait = false, 0
         return
@@ -1241,13 +1297,15 @@ local function refreshCueEffects(state, allowScan)
             state.activeEffects = addCurrentCueRecipeEffects(ok and result or {}, state.currentCueEffects)
             local errorText = not ok and tostring(result) or nil
             if not ok then
-                effectScanLog(string.format("abort cue=%s advances=%d error=%s", cueLabel(cue),
-                    state.effectScanner.advanceCalls or 0, errorText))
+                effectScanLog(string.format("abort cue=%s advances=%d elapsed_ms=%s error=%s", cueLabel(cue),
+                    state.effectScanner.advanceCalls or 0,
+                    formatElapsed(elapsedMs(state.effectScanner.diagnostics.startedClock)), errorText))
             else
                 local diagnostic = state.effectScanner.diagnostics or {}
-                effectScanLog(string.format("finish cue=%s advances=%d first_ref_advance=%s parts=%d refs=%d fast_refs=%d",
+                effectScanLog(string.format("finish cue=%s advances=%d first_ref_advance=%s elapsed_ms=%s parts=%d refs=%d fast_refs=%d",
                     cueLabel(cue), state.effectScanner.advanceCalls or 0,
-                    tostring(diagnostic.firstRefAdvance or "none"), #(diagnostic.parts or {}),
+                    tostring(diagnostic.firstRefAdvance or "none"),
+                    formatElapsed(elapsedMs(diagnostic.startedClock)), #(diagnostic.parts or {}),
                     (function() local n = 0 for _ in pairs(result or {}) do n = n + 1 end return n end)(),
                     diagnostic.fastRefs or 0))
             end
