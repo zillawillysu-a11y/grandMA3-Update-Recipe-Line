@@ -39,6 +39,18 @@ local oldPreset = object("Preset", "Preset 1.1 Dimmer", {Name = "Old"})
 local newPreset = object("Preset", "Preset 1.2 Dimmer", {Name = "New"})
 local first = object("Recipe", "Sequence 1 Cue 1 Part 0.1", {Index = 1, Selection = group, Values = oldPreset})
 local last = object("Recipe", "Sequence 1 Cue 1 Part 0.5", {Index = 5, Selection = group, Values = oldPreset})
+local directPhaserRecipe = object("PhaserRecipe", "Programmer Phaser Recipe", {
+    Values = object("Shape", "Shape 8", {Name = "Sine 1/2"})
+})
+local directStandard = object("StandardRecipe", "Programmer Standard Recipe", {
+    Index = 1, Selection = group, Values = oldPreset
+})
+ProgrammerPart = function()
+    return object("Part", "Programmer Part", {}, {directPhaserRecipe, directStandard})
+end
+local directRows = functions.directRecipes()
+check(#directRows == 1 and directRows[1] == directStandard,
+    "Programmer PhaserRecipe must not be treated as an updateable StandardRecipe")
 local rows = {last, first} -- Deliberately unsorted: priority must use row index.
 local part = object("Part", "Part 0", {Part = 0}, rows)
 local cue = object("Cue", "Cue 1", {No = 1000, Name = "One"}, {part})
@@ -190,21 +202,33 @@ check(#latestPart == 1 and latestPart[1].recipe == partOneRecipe,
 local generator = object("Generator", "Generator 1", {Name = "Random"})
 local allPreset = object("Preset", "Preset 21.1", {Name = "All"})
 rows[3].Generator, rows[3].Values = generator, allPreset
-local buttons, pools = {}, {}
+local buttons, titles, pools = {}, {}, {}
 for index, target in ipairs({otherGroup, allPreset, generator}) do
-    local button = object("PoolButton", "Button " .. index, {ObjectIndex = 1, W = 80, H = 80})
+    local button = object("PoolButton", "Button " .. index, {
+        ObjectIndex = 1, W = 80, H = 80,
+        Anchors = {left = index - 1, right = index - 1, top = 0, bottom = 0}
+    })
     button.Append = function()
         local overlay = {}
         overlay.CommandDelete = function() overlay.deleted = true end
         return overlay
     end
     buttons[index] = button
+    local title = object("PoolTitleButton", "Pool Title " .. index, {ObjectIndex = 1})
+    titles[index] = title
     local pool = object("PoolLayoutGrid", "Pool " .. index, {
         PoolObject = {Ptr = function() return target end}
-    }, {button})
+    }, {title, button})
+    pool.Append = function()
+        local overlay = {}
+        overlay.CommandDelete = function() overlay.deleted = true end
+        return overlay
+    end
     pools[index] = pool
 end
+local displayLookupCount = 0
 GetDisplayByIndex = function(index)
+    displayLookupCount = displayLookupCount + 1
     if index == 1 then return object("Display", "Display", {}, pools) end
 end
 state.running, state.poolBlinkTicks = true, 0
@@ -213,9 +237,14 @@ functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
 check(state.poolMarkers[buttons[1]] and state.poolMarkers[buttons[2]] and state.poolMarkers[buttons[3]],
     "Group, All Preset and Generator must receive markers")
+check(state.poolMarkers[titles[1]] == nil,
+    "PoolTitleButton must never be treated as an object tile")
 local marker = state.poolMarkers[buttons[1]].overlay
 check(marker.Interactive == "No" and marker.HasHover == "No" and marker.Texture == "frame0",
     "Markers must use the thick frame without handling input")
+check(marker.Anchors and marker.Anchors.left == buttons[1].Anchors.left
+        and marker.Anchors.right == buttons[1].Anchors.right,
+    "Pool marker must be anchored to the PoolLayoutGrid cell so it renders above the button")
 check(#commands == commandCount, "Markers must never issue Show commands")
 local firstPulseColor = marker.BackColor
 functions.refreshPoolMarkers(state)
@@ -224,6 +253,8 @@ check(marker.Visible == "Yes" and marker.BackColor ~= firstPulseColor,
 functions.refreshPoolMarkers(state)
 check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
     "Markers must remain visible through the pulse cycle")
+check(displayLookupCount == 7,
+    "Cached Pool grids must avoid repeating the full display-tree traversal")
 state.currentRecipe, state.currentGroup, state.matchingCandidates = nil, nil, {}
 functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
@@ -303,6 +334,26 @@ check(#namedCandidates == 1 and namedCandidates[1].recipe == namedLatest
         and functions.cueRecipeCommandAddress(namedSequence, namedCue, namedPart, namedLatest, 2)
             == "Sequence named Cue 11 Part 0.2",
     "Part child order and default Part 0 must resolve the latest Recipe row")
+local phaserValueSource = object("PhaserRecipeValueSource", "Phaser Value Source", {Attributes = "A: Dimmer"})
+local phaserStep = object("PhaserRecipeStep", "Phaser Step", {}, {phaserValueSource})
+local phaserSteps = object("PhaserRecipeSteps", "Phaser Steps", {}, {phaserStep})
+local phaserRecipe = object("PhaserRecipe", "Phaser Recipe", {}, {phaserSteps})
+local phaserPreset = object("Preset", "Preset 25.303", {Name = "Dimmer Speed#3"}, {phaserRecipe})
+check(functions.valuesMatchFeature(phaserPreset, "Dimmer")
+        and not functions.valuesMatchFeature(phaserPreset, "Position"),
+    "Phaser Recipe Preset must resolve its feature from Value Source Attributes")
+local oldAll = object("Preset", "ShowData.DataPools.Default.PresetPools.All.Spot", {Name = "Spot"})
+local oldAllRow = object("Recipe", "Old All Recipe", {Index = 1, Selection = group, Values = oldAll})
+local currentPhaserRow = object("StandardRecipe", "Current Phaser Recipe", {Index = 1, Selection = group, Values = phaserPreset})
+currentPhaserRow.Active = "No"
+local oldAllPart = object("Part", "Old All Part", {Part = 0}, {oldAllRow})
+local currentPhaserPart = object("Part", "Current Phaser Part", {Part = 0}, {currentPhaserRow})
+local oldAllCue = object("Cue", "Cue 5", {No = 5000}, {oldAllPart})
+local currentPhaserCue = object("Cue", "Cue 16", {No = 16000}, {currentPhaserPart})
+local phaserTrackingSequence = object("Sequence", "Phaser Tracking Sequence", {}, {oldAllCue, currentPhaserCue})
+local phaserCandidate = functions.scanTracking(phaserTrackingSequence, currentPhaserCue, fixtures, namedInfo)
+check(#phaserCandidate == 1 and phaserCandidate[1].recipe == currentPhaserRow,
+    "Enabled StandardRecipe with Active=No must override an older matching All Preset")
 local disabled = object("Recipe", "Disabled Open", {
     Name = "[8 'S FL'/1195 'Open']", Selection = group, Values = object("Preset", "Preset 5.1 Beam", {Name = "Open"}),
     Enabled = "No"
@@ -321,17 +372,17 @@ check(#beamCandidates == 1 and beamCandidates[1].recipe == enabled,
 check(functions.recipeEnabled(disabled) == false
         and functions.recipeEnabled(object("Recipe", "Disabled boolean", {Enabled = false})) == false,
     "String and boolean disabled states must both be excluded")
-local inactiveOpen = object("Recipe", "Inactive Open", {
+local activeNoOpen = object("Recipe", "Active No Open", {
     Name = "[8 'S FL'/1 'Open']", Selection = group,
     Values = object("Preset", "Preset 5.1 Beam", {Name = "Open"}),
     Enabled = "Yes", Active = "No"
 })
-local inactivePart = object("Part", "Part without number", {}, {inactiveOpen, enabled})
-local inactiveCue = object("Cue", "Cue 11", {No = 11000, Name = "Chorus"}, {inactivePart})
-local inactiveSequence = object("Sequence", "Sequence inactive", {}, {inactiveCue})
-local inactiveCandidates = functions.scanTracking(inactiveSequence, inactiveCue, fixtures, beamInfo)
-check(#inactiveCandidates == 1 and inactiveCandidates[1].recipe == enabled,
-    "Active=No rows must be excluded even when Enabled=Yes")
+local activeNoPart = object("Part", "Part without number", {}, {enabled, activeNoOpen})
+local activeNoCue = object("Cue", "Cue 11", {No = 11000, Name = "Chorus"}, {activeNoPart})
+local activeNoSequence = object("Sequence", "Sequence Active No", {}, {activeNoCue})
+local activeNoCandidates = functions.scanTracking(activeNoSequence, activeNoCue, fixtures, beamInfo)
+check(#activeNoCandidates == 1 and activeNoCandidates[1].recipe == activeNoOpen,
+    "Active=No must remain eligible when the Recipe editor Enabled column is Yes")
 local fitState = {window = {H = 0}, expanded = false}
 functions.fitCompactWindowToText(fitState, "short")
 local shortHeight = fitState.window.H
@@ -339,4 +390,143 @@ functions.fitCompactWindowToText(fitState, table.concat({
     "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"
 }, "\n"))
 check(fitState.window.H > shortHeight, "Compact window height must grow with visible line count")
+-- Cue-wide effects do not depend on selection or Programmer content.
+local fxA = object("Preset", "Preset 25.1206", {Name = "S2 VER"})
+local fxB = object("Preset", "Preset 25.1192", {Name = "Old Ramp"})
+local fixtureA = object("Fixture", "Fixture 1", {SubfixtureIndex = 1})
+local fixtureB = object("Fixture", "Fixture 2", {SubfixtureIndex = 2})
+GetUIChannel = function(index) return {rt_index = index} end
+local function mockGetRTChannel(index)
+    local fixture = index == 3 and fixtureB or fixtureA
+    return {fixture = fixture, subfixture = fixture}
+end
+GetRTChannel = mockGetRTChannel
+GetAttributeByUIChannel = function() return object("Attribute", "Attribute Dimmer", {Name = "Dimmer"}) end
+local function moving(ref)
+    return {abs_preset = ref, [1] = {absolute = 0}, [2] = {absolute = 100}}
+end
+local dataByPart = {}
+GetPresetData = function(target) return dataByPart[target] or {} end
+local fxPart0 = object("Part", "FX Part 0", {Part = 0})
+local fxPart1 = object("Part", "FX Part 1", {Part = 1})
+local fxOldPart = object("Part", "FX Old Part", {Part = 0})
+local fxOldCue = object("Cue", "FX Cue 9", {No = 9000}, {fxOldPart})
+local fxCue = object("Cue", "FX Cue 11", {No = 11000}, {fxPart1, fxPart0})
+local futurePart = object("Part", "Future Part", {Part = 0})
+local futureCue = object("Cue", "FX Cue 12", {No = 12000}, {futurePart})
+local fxSequence = object("Sequence", "FX Sequence", {}, {futureCue, fxCue, fxOldCue})
+local function scanCueEffects(sequence, currentCue)
+    local scan = functions.newCueEffectScan(sequence, currentCue)
+    while not scan.done do functions.advanceCueEffectScan(scan) end
+    return scan.result
+end
+local underlyingDimmer = object("Preset", "Preset 1.5", {Name = "Underlying Dimmer"})
+local exportedSongEfx = object("Preset",
+    "ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3", {Name = "Dimmer Speed#3"},
+    {object("PhaserRecipe", "Preset 25.303 PhaserRecipe")})
+local phaserCueRow = object("StandardRecipe", "Phaser Cue Row", {
+    Index = 1, Selection = group, Values = exportedSongEfx, Active = "No", Enabled = "Yes"
+})
+local phaserCuePart = object("Part", "Phaser Cue Part", {Part = 0}, {phaserCueRow})
+local phaserCueOnly = object("Cue", "Phaser Cue 16", {No = 16000}, {phaserCuePart})
+local phaserCueSequence = object("Sequence", "Phaser Cue Sequence", {}, {phaserCueOnly})
+phaserCueSequence.IsRunningPlayback = function() return true end
+dataByPart[phaserCuePart] = {[1] = moving(underlyingDimmer)}
+GetRTChannel = function() return {fixture = fixtureA} end
+local phaserCueEffects = scanCueEffects(phaserCueSequence, phaserCueOnly)
+check(phaserCueEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"]
+        and not phaserCueEffects["Preset 1.5"],
+    "Cue scan must recover a custom-pool StandardRecipe with only an RT fixture handle")
+GetRTChannel = function() return {} end
+phaserCueEffects = scanCueEffects(phaserCueSequence, phaserCueOnly)
+check(phaserCueEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
+    "Cue scan must recover a Phaser Recipe without RT fixture identity when counts are hidden")
+GetRTChannel = mockGetRTChannel
+dataByPart[fxOldPart] = {[1] = moving(fxB), [2] = moving(fxB), [3] = moving(fxB)}
+dataByPart[fxPart0] = {[1] = { [1] = {absolute = 100} }}
+dataByPart[fxPart1] = {[1] = moving(fxA), [2] = moving(fxA)}
+dataByPart[futurePart] = {[3] = { [1] = {absolute = 100} }}
+local effects = scanCueEffects(fxSequence, fxCue)
+check(effects["Preset 25.1206"].count == 1,
+    "One fixture with two moving Attributes must count once")
+check(effects["Preset 25.1192"].count == 1,
+    "Older effect must survive only on fixtures not overwritten; future Cue excluded")
+dataByPart[fxPart1][3] = { [1] = {abs_release = true} }
+check(scanCueEffects(fxSequence, fxCue)["Preset 25.1192"] == nil,
+    "Release must remove tracked effect")
+dataByPart[fxPart1][1] = { [1] = {absolute = 100} }
+dataByPart[fxPart1][2] = { [1] = {absolute = 50} }
+check(next(scanCueEffects(fxSequence, fxCue)) == nil,
+    "Static current Cue data must stop previous multistep effects")
+dataByPart[fxOldPart][1] = {rel_preset = fxB, [1] = {relative = -10}, [2] = {relative = 10}}
+effects = scanCueEffects(fxSequence, fxCue)
+check(effects["Preset 25.1192"].count == 1,
+    "Static Absolute must not erase tracked Relative Phaser")
+dataByPart[fxPart1][1].rel_preset = fxA
+dataByPart[fxPart1][1][1].rel_release = true
+check(next(scanCueEffects(fxSequence, fxCue)) == nil,
+    "Released layer must not retain its Preset reference")
+local genRecipe = object("Recipe", "Generator Recipe", {Selection = group, Generator = random, Values = "S2 Verse"})
+fxPart1.Children = function() return {genRecipe} end
+dataByPart[fxPart1][1] = moving(nil)
+effects = scanCueEffects(fxSequence, fxCue)
+check(effects["Random 103"] and effects["Random 103"].count == 1,
+    "Cooked multistep channel must recover Generator from its enabled Recipe")
+genRecipe.Enabled = "No"
+check(scanCueEffects(fxSequence, fxCue)["Random 103"] == nil,
+    "Disabled Recipe must not recover a Generator reference")
+dataByPart[fxPart1][1] = {abs_generator = random, [1] = {absolute = 50}}
+check(scanCueEffects(fxSequence, fxCue)["Random 103"].count == 1,
+    "Direct Generator reference must work without multi-step data or a Recipe")
+fxSequence.IsRunningPlayback = function() return false end
+fxSequence.HasActivePlayback = function() error("Deprecated playback API must not be called on 2.5") end
+check(scanCueEffects(fxSequence, fxCue)["Random 103"] ~= nil,
+    "Current Cue effect markers must remain available while playback is stopped")
+fxSequence.IsRunningPlayback = function() return true end
+check(scanCueEffects(fxSequence, fxCue)["Random 103"] ~= nil,
+    "Current Cue effect markers must remain available while playback is running")
+local workerState = {}
+SelectedSequence = function() return fxSequence end
+GetCurrentCue = function() return fxCue end
+local originalGetPresetData, workerDataCalls = GetPresetData, 0
+GetPresetData = function(...)
+    workerDataCalls = workerDataCalls + 1
+    return originalGetPresetData(...)
+end
+for _ = 1, 8 do functions.refreshCueEffects(workerState) end
+check(workerState.activeEffects["Random 103"] ~= nil, "Incremental scan must publish finished effects")
+local completedDataCalls = workerDataCalls
+for _ = 1, 20 do functions.refreshCueEffects(workerState) end
+check(workerDataCalls == completedDataCalls,
+    "An unchanged Cue must not restart the expensive cooked-data scan")
+SelectedSequence = function() return phaserCueSequence end
+GetCurrentCue = function() return phaserCueOnly end
+local directCueState = {}
+functions.refreshCueEffects(directCueState)
+check(directCueState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
+    "Current Cue Phaser Recipe must publish immediately without waiting for cooked-data scanning")
+GetCurrentCue = function() return nil end
+functions.refreshCueEffects(directCueState)
+check(next(directCueState.activeEffects) == nil, "Leaving Cue must discard old scan and effects")
+local purpleState = {running = true, activeEffects = {["Preset 21.1"] = {object = allPreset, count = 8}}}
+functions.refreshPoolMarkers(purpleState)
+functions.refreshPoolMarkers(purpleState)
+local purple = purpleState.poolMarkers[buttons[2]].overlay
+check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Text == "",
+    "Active effects must have a purple frame without fixture-count text")
+functions.refreshPoolMarkers(purpleState)
+check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Visible == "Yes",
+    "Active-only frame must stay purple throughout pulse ticks")
+purpleState.currentGroup = allPreset
+functions.refreshPoolMarkers(purpleState)
+check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Text == "",
+    "Active effect purple must take priority over the Recipe selection pulse")
+purpleState.currentGroup = nil
+functions.refreshPoolMarkers(purpleState)
+functions.refreshPoolMarkers(purpleState)
+check(purple.BackColor == "GroupedProgLayerActive.Phaser", "Deselecting must restore persistent purple")
+purpleState.activeEffects = {}
+functions.refreshPoolMarkers(purpleState)
+functions.refreshPoolMarkers(purpleState)
+check(purple.deleted, "Inactive effects must lose their Pool frame")
 print("PASS: " .. count .. " workflow assertions")

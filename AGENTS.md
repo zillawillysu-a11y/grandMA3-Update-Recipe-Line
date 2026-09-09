@@ -339,6 +339,19 @@ Only stop for the user when the next unknown genuinely requires user-side grandM
 
 ---
 
+## 15. Checkpoint and Push Safety
+
+Meaningful work must not exist only in one local working tree.
+
+* Commit and push coherent, meaningful work to the working branch (`origin/qwen` in this project). A local commit without a push is not a safe checkpoint.
+* Before switching agents, when quota or context is nearly exhausted, or before a session ends, create a checkpoint commit and push it.
+* Pending grandMA3 real-world validation never blocks a checkpoint commit.
+* A checkpoint is NOT real-world validation. Mark such state explicitly as `REAL-WORLD VALIDATION PENDING` in `HANDOFF.md`.
+* Never merge into `main` automatically. Merging requires an explicit user decision.
+* `HANDOFF.md` must not hard-code a HEAD SHA. Reference the branch and commit subject, and verify against Git when needed.
+
+---
+
 ## Primary Principle
 
 DO THE WORK.

@@ -4,8 +4,9 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.6.13.0"
+local PLUGIN_VERSION = "0.7.0.8"
 local STATE_KEY = "RecipeTrackingInspectorState"
+local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
@@ -166,9 +167,14 @@ local function enabledFlag(object, key)
 end
 
 local function recipeEnabled(recipe)
-    -- In exported sequences, the Recipe editor's disabled state may appear as
-    -- Active="No" while Enabled remains "Yes". Neither state may track.
-    return enabledFlag(recipe, "Enabled") and enabledFlag(recipe, "Active")
+    -- StandardRecipe.Active is not the editor's Enabled column. grandMA3 2.5
+    -- exports valid, cooked Recipe rows as Active="No", Enabled="Yes".
+    return enabledFlag(recipe, "Enabled")
+end
+
+local function isStandardRecipe(recipe)
+    local kind = string.lower(class(recipe))
+    return kind == "recipe" or kind == "standardrecipe"
 end
 
 children = function(object)
@@ -419,6 +425,41 @@ local function presetDataHasFeature(values, feature)
     return false
 end
 
+local function isPhaserRecipePreset(values)
+    if not isObjectReference(values) then return false end
+    if string.find(string.lower(address(values)), "presetpools.phaser", 1, true) then return true end
+    for _, child in ipairs(children(values)) do
+        if string.lower(class(child)) == "phaserrecipe" then return true end
+    end
+    return false
+end
+
+local function phaserRecipeHasFeature(values, feature)
+    if not isPhaserRecipePreset(values) then return false end
+    local wanted = string.lower(tostring(normalizeFeature(feature)))
+    local foundAttribute, matched, visited = false, false, 0
+    local function visit(node, depth)
+        if not node or depth > 6 or visited >= 256 or matched then return end
+        visited = visited + 1
+        local kind = string.lower(class(node))
+        if string.find(kind, "phaserecipevaluesource", 1, true) then
+            for _, key in ipairs({"Attributes", "Attribute", "Feature"}) do
+                local value = property(node, key)
+                if value and value ~= "" and string.lower(value) ~= "none" then
+                    foundAttribute = true
+                    if string.find(string.lower(value), wanted, 1, true) then matched = true; return end
+                end
+            end
+        end
+        for _, child in ipairs(children(node)) do visit(child, depth + 1) end
+    end
+    visit(values, 0)
+    if foundAttribute then return matched end
+    -- Some user Phaser presets expose no readable Value Source Attributes. A
+    -- feature word in that Phaser Preset's own name is the bounded fallback.
+    return string.find(string.lower(label(values)), wanted, 1, true) ~= nil
+end
+
 generatorHasFeature = function(values, feature)
     local channels = safe(function() return values.RandomChannels end)
     -- Native 2.3 Random objects contain GeneratorConfigurations and RandomChannels.
@@ -478,8 +519,8 @@ phaserReferences = function(phaser, uiIndex)
 end
 
 local function valuesMatchFeature(values, feature)
-    -- Generator names and GetPresetData cannot establish their affected Attributes.
     if isRandomGenerator(values) then return generatorHasFeature(values, feature) end
+    if isPhaserRecipePreset(values) then return phaserRecipeHasFeature(values, feature) end
     local identity = string.lower(tostring(values or "") .. " " .. address(values))
     if string.find(identity, string.lower(feature), 1, true) then return true end
     if presetDataHasFeature(values, feature) then return true end
@@ -509,7 +550,7 @@ local function directRecipes()
     if not callable("ProgrammerPart") then return {} end
     local result = {}
     for _, child in ipairs(children(safe(ProgrammerPart))) do
-        if string.find(string.lower(class(child)), "recipe", 1, true) and recipeEnabled(child) then
+        if isStandardRecipe(child) and recipeEnabled(child) then
             result[#result + 1] = child
         end
     end
@@ -534,7 +575,7 @@ local function scanTracking(sequence, currentCue, fixtures, info)
                 if string.lower(class(part)) == "part" then
                     for ordinal, recipe in ipairs(children(part)) do
                         if recipeCount >= MAX_RECIPES then break end
-                        if string.find(string.lower(class(recipe)), "recipe", 1, true) and recipeEnabled(recipe) then
+                        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
                             recipeCount = recipeCount + 1
                             local selection = safe(function() return recipe.Selection end)
                             -- Standard Generator recipe lines store the usable
@@ -694,6 +735,10 @@ local function render(state)
             lines[#lines + 1] = string.format("Status: AMBIGUOUS (%d direct Recipes)", #direct)
         end
     else
+        -- Rescan every refresh: Recipe rows can be added or removed in the
+        -- Cue editor while the inspector is open. Caching candidates by
+        -- (sequence, Cue, feature, selection) kept deleted rows visible as
+        -- the source and blocked NEW CONTENT.
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
         if state then state.matchingCandidates = candidates end
         local chosen = #candidates == 1 and candidates[1] or nil
@@ -866,6 +911,249 @@ local function clearPoolMarkers(state)
     state.poolMarkers = {}
 end
 
+-- Read stored/cooked Cue data, never Programmer data or commands. Resolve each
+-- channel layer independently so a static absolute value keeps a relative FX.
+local function cueEffectLayer(phaser, prefix, valueKey)
+    local touched, released, steps = phaser[prefix .. "_preset"] ~= nil, false, 0
+    local refs, seen = {}, {}
+    local function add(ref)
+        if isObjectReference(ref) and not seen[ref] then
+            seen[ref], refs[#refs + 1] = true, ref
+        end
+    end
+    add(phaser[prefix .. "_preset"])
+    add(phaser[prefix .. "_generator"])
+    if prefix == "abs" then add(phaser.generator) end
+    if #refs > 0 then touched = true end
+    for index, step in pairs(phaser) do
+        if type(index) == "number" and type(step) == "table" then
+            if step[valueKey] ~= nil or step[prefix .. "_release"] or step[prefix .. "_remove"] then
+                touched = true
+                steps = steps + 1
+            end
+            if step[prefix .. "_release"] or step[prefix .. "_remove"] then released = true end
+            add(step[prefix .. "_preset"])
+            if prefix == "abs" and isObjectReference(step.integrated) then
+                touched = true
+                add(step.integrated)
+            end
+        end
+    end
+    local moving = steps > 1
+    for _, ref in ipairs(refs) do if isRandomGenerator(ref) then moving = true end end
+    return touched, moving and not released, refs
+end
+
+local function newCueEffectScan(sequence, currentCue)
+    local scan = {tracked = {}, parts = {}, index = 1, work = 0}
+    if not sequence or not cueNumber(currentCue) or not callable("GetPresetData") then
+        scan.done, scan.result = true, {}
+        return scan
+    end
+    local cues = {}
+    for _, cue in ipairs(children(sequence)) do
+        local number = cueNumber(cue)
+        if string.lower(class(cue)) == "cue" and number and number <= cueNumber(currentCue) then
+            cues[#cues + 1] = cue
+        end
+    end
+    if #cues > MAX_CUES then error("Cue effect scan exceeds 512 Cues") end
+    table.sort(cues, function(a, b) return cueNumber(a) < cueNumber(b) end)
+    for _, cue in ipairs(cues) do
+        local parts = {}
+        for _, part in ipairs(children(cue)) do
+            if string.lower(class(part)) == "part" then parts[#parts + 1] = part end
+        end
+        table.sort(parts, function(a, b) return partNumber(a) < partNumber(b) end)
+        for _, part in ipairs(parts) do scan.parts[#scan.parts + 1] = part end
+    end
+    return scan
+end
+
+local function scanCheckpoint(scan)
+    scan.work = scan.work + 1
+    if scan.work > 131072 then error("Cue effect scan limit exceeded") end
+end
+
+local function scanCueEffectPart(scan, part)
+    local data = safe(GetPresetData, part, false, false)
+    if type(data) ~= "table" then error("Cue effect data unavailable") end
+    local recipes = {}
+    for ordinal, recipe in ipairs(children(part)) do
+        scanCheckpoint(scan)
+        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+            local group = safe(function() return recipe.Selection end)
+            local members = safe(function() return group.Selection end)
+            local ref = safe(function() return recipe.Generator end)
+            if not isObjectReference(ref) then ref = safe(function() return recipe.Values end) end
+            if type(members) == "table" and isObjectReference(ref) then
+                local selection = {}
+                for _, member in pairs(members) do
+                    scanCheckpoint(scan)
+                    if type(member) == "table" and tonumber(member.sf_index) then
+                        selection[tonumber(member.sf_index)] = true
+                    end
+                end
+                recipes[#recipes + 1] = {
+                    ref = ref, members = selection, index = recipeNumber(recipe, ordinal)
+                }
+            end
+        end
+    end
+    table.sort(recipes, function(a, b) return a.index > b.index end)
+    for index, phaser in pairs(data) do
+        scanCheckpoint(scan)
+        if type(index) == "number" and type(phaser) == "table" then
+            local ui = callable("GetUIChannel") and safe(GetUIChannel, index)
+            local rt = ui and callable("GetRTChannel") and safe(GetRTChannel, ui.rt_index)
+            local fixture = rt and (rt.fixture or rt.subfixture)
+            local sf = rt and (rt.subfixture or rt.fixture)
+            local sfIndex = tonumber(property(sf, "SubfixtureIndex"))
+            local attribute = callable("GetAttributeByUIChannel") and safe(GetAttributeByUIChannel, index)
+            local layers = scan.tracked[index] or {}
+            scan.tracked[index] = layers
+            for _, layer in ipairs({{"abs", "absolute"}, {"rel", "relative"}}) do
+                local touched, moving, refs = cueEffectLayer(phaser, layer[1], layer[2])
+                if touched then
+                    -- Cooked Phaser Recipe/Generator channels may expose only
+                    -- underlying value links. Recover the applied Pool object
+                    -- from an enabled row in this same Part and channel feature.
+                    if moving and attribute then
+                        local recovered, recoveredSeen = {}, {}
+                        for _, recipe in ipairs(recipes) do
+                            scanCheckpoint(scan)
+                            if (sfIndex == nil or recipe.members[sfIndex])
+                                and valuesMatchFeature(recipe.ref, normalizeFeature(label(attribute))) then
+                                -- The matching StandardRecipe is the Pool object
+                                -- the user called. Cooked Phaser data may expose
+                                -- only its Shape or integrated step Presets.
+                                local key = commandAddress(recipe.ref)
+                                if key and not recoveredSeen[key] then
+                                    recoveredSeen[key], recovered[#recovered + 1] = true, recipe.ref
+                                end
+                                -- With a subfixture identity, the latest matching
+                                -- Recipe row is the exact source for this channel.
+                                if sfIndex ~= nil then break end
+                            end
+                        end
+                        if #recovered > 0 then refs = recovered end
+                    end
+                    layers[layer[1]] = moving and {refs = refs, fixture = fixture} or nil
+                end
+            end
+        end
+    end
+end
+
+local function finishCueEffectScan(scan)
+    local result = {}
+    for _, layers in pairs(scan.tracked) do
+        scanCheckpoint(scan)
+        for _, item in pairs(layers) do
+            for _, ref in ipairs(item.refs) do
+                local key = commandAddress(ref)
+                if key then
+                    local entry = result[key] or {object = ref, fixtures = {}, count = 0}
+                    result[key] = entry
+                    if item.fixture then
+                        local fixtureKey = address(item.fixture)
+                        if not entry.fixtures[fixtureKey] then
+                            entry.fixtures[fixtureKey], entry.count = true, entry.count + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    scan.done, scan.result = true, result
+    return result
+end
+
+local function advanceCueEffectScan(scan)
+    if scan.done then return scan.result end
+    local part = scan.parts[scan.index]
+    if part then
+        scanCueEffectPart(scan, part)
+        scan.index = scan.index + 1
+    end
+    if scan.index > #scan.parts then return finishCueEffectScan(scan) end
+    return nil
+end
+
+-- A Phaser Recipe or Generator stored directly in the current Cue is already
+-- authoritative for its Pool object. Publish it immediately instead of making
+-- the UI wait for (or depend entirely on) the cooked tracking-data scan.
+local function currentCueRecipeEffects(cue)
+    local result = {}
+    if not cue then return result end
+    for _, part in ipairs(children(cue)) do
+        if string.lower(class(part)) == "part" then
+            for _, recipe in ipairs(children(part)) do
+                if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                    local ref = safe(function() return recipe.Generator end)
+                    if not isObjectReference(ref) then ref = safe(function() return recipe.Values end) end
+                    if isObjectReference(ref) and (isPhaserRecipePreset(ref) or isRandomGenerator(ref)) then
+                        local key = commandAddress(ref)
+                        if key then result[key] = {object = ref, fixtures = {}, count = 0} end
+                    end
+                end
+            end
+        end
+    end
+    return result
+end
+
+local function addCurrentCueRecipeEffects(result, direct)
+    result = type(result) == "table" and result or {}
+    for key, entry in pairs(direct or {}) do
+        if result[key] == nil then result[key] = entry end
+    end
+    return result
+end
+
+local function refreshCueEffects(state, allowScan)
+    local sequence = callable("SelectedSequence") and safe(SelectedSequence)
+    local cue = sequence and callable("GetCurrentCue") and safe(GetCurrentCue)
+    local sequenceKey = commandAddress(sequence) or address(sequence)
+    local cueKey = commandAddress(cue) or (sequenceKey .. ":" .. tostring(cueNumber(cue) or ""))
+    local changed = state.effectSequenceKey ~= sequenceKey or state.effectCueKey ~= cueKey
+    if changed then
+        state.effectSequenceKey, state.effectCueKey = sequenceKey, cueKey
+        state.effectSequence, state.effectCue = sequence, cue
+        state.currentCueEffects = currentCueRecipeEffects(cue)
+        state.activeEffects, state.effectScanner = state.currentCueEffects, nil
+        state.effectScanPending, state.effectWait = true, 1
+    end
+    -- A selected Sequence can expose a valid Current Cue while its executor is
+    -- stopped or being edited. Pool usage follows that Cue, not playback state.
+    if state.poolBlink == false or not sequence or not cue then
+        state.activeEffects, state.currentCueEffects, state.effectScanner = {}, {}, nil
+        state.effectScanPending, state.effectWait = false, 0
+        return
+    end
+    if allowScan == false then return end
+    state.effectWait = (state.effectWait or 0) - 1
+    if state.effectScanPending and not state.effectScanner and state.effectWait <= 0 then
+        state.effectScanner = newCueEffectScan(sequence, cue)
+    end
+    if state.effectScanner then
+        -- One potentially expensive GetPresetData Part per host tick prevents
+        -- large Showfiles from blocking selection and panel refresh for seconds.
+        local ok, result = pcall(advanceCueEffectScan, state.effectScanner)
+        if not ok or state.effectScanner.done then
+            state.activeEffects = addCurrentCueRecipeEffects(ok and result or {}, state.currentCueEffects)
+            local errorText = not ok and tostring(result) or nil
+            if errorText and state.effectError ~= errorText and callable("ErrEcho") then
+                safe(ErrEcho, "[RecipeTracking] " .. errorText)
+            end
+            state.effectError = errorText
+            -- Do not continuously rescan an unchanged Cue. The previous 2-second
+            -- restart loop dominated plugin time in large Showfiles.
+            state.effectScanner, state.effectScanPending, state.effectWait = nil, false, 0
+        end
+    end
+end
+
 local function refreshPoolMarkers(state)
     if state.poolBlink == false or not state.running then clearPoolMarkers(state); return end
     state.poolBlinkTicks = (state.poolBlinkTicks or 0) + 1
@@ -876,73 +1164,106 @@ local function refreshPoolMarkers(state)
     for _, entry in pairs(state.poolMarkers or {}) do
         pcall(function()
             entry.overlay.Visible = "Yes"
-            entry.overlay.BackColor = pulseColor
+            entry.overlay.BackColor = entry.activeEffect and PHASER_MARKER_COLOR or pulseColor
         end)
     end
     if state.poolBlinkTicks % 2 ~= 0 then return end
     local references = recipePoolReferences(state)
+    local effects = state.activeEffects or {}
     local markers, found = state.poolMarkers or {}, {}
     state.poolMarkers = markers
-    local visited, budget = {}, 6000
     local function uiChildren(object)
         local result = safe(function() return object:UIChildren() end)
         return type(result) == "table" and result or children(object)
     end
-    local function visit(node, depth)
-        if not node or visited[node] or depth > 20 or budget <= 0 then return end
-        visited[node], budget = true, budget - 1
-        if node == state.window then return end
-        local kind = class(node)
-        if string.find(kind, "PoolLayoutGrid", 1, true) then
-            local pool = safe(function() return node.PoolObject end)
-            for _, button in ipairs(uiChildren(node)) do
-                local index = tonumber(property(button, "ObjectIndex"))
-                local object = index and safe(function() return pool:Ptr(index) end) or nil
-                local key = commandAddress(object)
-                if key and references[key] then
-                    found[button] = true
-                    local entry = markers[button]
-                    if entry and callable("IsObjectValid") and not safe(IsObjectValid, entry.overlay) then
-                        markers[button], entry = nil, nil
-                    end
-                    if not entry then
-                        local overlay = safe(function() return button:Append("UIObject") end)
-                        if overlay then
-                            local ok = pcall(function()
-                                overlay.Name = "RecipeTrackingPoolMarker"
-                                overlay.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-                                overlay.Texture = "frame0"
-                                overlay.BackColor = pulseColor
-                                overlay.HasHover = "No"
-                                overlay.Interactive = "No"
-                            end)
-                            if ok then
-                                entry = { overlay = overlay }
-                                markers[button] = entry
-                            else
-                                deleteHandle(overlay)
-                            end
+    local function isPoolItemButton(object)
+        local kind = string.lower(class(object))
+        return string.find(kind, "poolbutton", 1, true) ~= nil
+            and string.find(kind, "pooltitlebutton", 1, true) == nil
+    end
+    local function valid(object)
+        if object == nil then return false end
+        if not callable("IsObjectValid") then return true end
+        local status = safe(IsObjectValid, object)
+        return status ~= nil and status ~= false
+    end
+    local grids = {}
+    for _, grid in ipairs(state.poolGrids or {}) do
+        if valid(grid) then grids[#grids + 1] = grid end
+    end
+    if #grids == 0 then
+        -- Discover the expensive display tree only on startup or after every
+        -- cached Pool grid becomes invalid. Visible buttons still update at 2 Hz.
+        grids = {}
+        local visited, budget = {}, 6000
+        local function visit(node, depth)
+            if not node or visited[node] or depth > 20 or budget <= 0 then return end
+            visited[node], budget = true, budget - 1
+            if node == state.window then return end
+            if string.find(class(node), "PoolLayoutGrid", 1, true) then
+                grids[#grids + 1] = node
+                return
+            end
+            for _, child in ipairs(uiChildren(node)) do visit(child, depth + 1) end
+        end
+        if callable("GetDisplayByIndex") then
+            for index = 1, 7 do visit(safe(GetDisplayByIndex, index), 0) end
+        elseif callable("GetFocusDisplay") then
+            visit(safe(GetFocusDisplay), 0)
+        end
+        state.poolGrids = grids
+    else
+        state.poolGrids = grids
+    end
+    local function scanGrid(node)
+        local pool = safe(function() return node.PoolObject end)
+        for _, button in ipairs(uiChildren(node)) do
+            local index = isPoolItemButton(button)
+                and tonumber(property(button, "ObjectIndex")) or nil
+            local object = index and safe(function() return pool:Ptr(index) end) or nil
+            local key = commandAddress(object)
+            if key and (references[key] or effects[key]) then
+                found[button] = true
+                local entry = markers[button]
+                if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end
+                if not entry then
+                    -- Put the frame on the grid after its buttons so the Pool item
+                    -- cannot paint over it. Preserve the button's cell anchors.
+                    local overlay = safe(function() return node:Append("UIObject") end)
+                    local onGrid = overlay ~= nil
+                    if not overlay then overlay = safe(function() return button:Append("UIObject") end) end
+                    if overlay then
+                        local ok = pcall(function()
+                            overlay.Name = "RecipeTrackingPoolMarker"
+                            overlay.Anchors = onGrid and button.Anchors
+                                or { left = 0, right = 0, top = 0, bottom = 0 }
+                            overlay.Texture = "frame0"
+                            overlay.BackColor = pulseColor
+                            overlay.HasHover = "No"
+                            overlay.Interactive = "No"
+                        end)
+                        if ok then
+                            entry = { overlay = overlay }
+                            markers[button] = entry
+                        else
+                            deleteHandle(overlay)
                         end
                     end
-                    if entry then
-                        pcall(function()
-                            entry.overlay.W = button.W
-                            entry.overlay.H = button.H
-                            entry.overlay.Visible = "Yes"
-                            entry.overlay.BackColor = pulseColor
-                        end)
-                    end
+                end
+                if entry then
+                    entry.activeEffect = effects[key] ~= nil
+                    pcall(function()
+                        entry.overlay.W = button.W
+                        entry.overlay.H = button.H
+                        entry.overlay.Visible = "Yes"
+                        entry.overlay.BackColor = entry.activeEffect and PHASER_MARKER_COLOR or pulseColor
+                        entry.overlay.Text = ""
+                    end)
                 end
             end
-            return
         end
-        for _, child in ipairs(uiChildren(node)) do visit(child, depth + 1) end
     end
-    if callable("GetDisplayByIndex") then
-        for index = 1, 7 do visit(safe(GetDisplayByIndex, index), 0) end
-    elseif callable("GetFocusDisplay") then
-        visit(safe(GetFocusDisplay), 0)
-    end
+    for _, grid in ipairs(grids) do scanGrid(grid) end
     for button, entry in pairs(markers) do
         if not found[button] then deleteHandle(entry.overlay); markers[button] = nil end
     end
@@ -1537,7 +1858,6 @@ local function createPanel(state)
     local window = safe(function() return overlay:Append("BaseInput") end)
     if window == nil then return nil, "could not append BaseInput" end
     window.Name = "RecipeTrackingInspectorWindow"
-    pcall(function() window.Title = "Cue Recipe Update Tool v" .. PLUGIN_VERSION end)
     pcall(function() window.HasHover = "No" end)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
@@ -1707,6 +2027,8 @@ local function main()
     while state.running do
         syncTitleWidth(state)
         processPendingVerification(state)
+        local forceRefresh = state.forceRefresh
+        if forceRefresh then state.effectSequenceKey = nil end
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
@@ -1716,7 +2038,7 @@ local function main()
         fitCompactWindowToText(state, text)
         if text ~= previous or sourceHighlightText ~= previousSourceHighlights
             or currentHighlightText ~= previousCurrentHighlights
-            or presetHighlightText ~= previousPresetHighlights or state.forceRefresh then
+            or presetHighlightText ~= previousPresetHighlights or forceRefresh then
             state.forceRefresh = false
             previous = text
             previousSourceHighlights = sourceHighlightText
@@ -1727,8 +2049,15 @@ local function main()
             pcall(function() state.currentHighlights.Text = currentHighlightText or "" end)
             pcall(function() state.presetHighlights.Text = presetHighlightText or "" end)
         end
+        -- Publish direct Cue effects and all regular UI changes before the
+        -- potentially expensive single-Part background scan.
+        local effectsOK = pcall(refreshCueEffects, state, false)
+        if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
         local markersOK = pcall(refreshPoolMarkers, state)
         if not markersOK then clearPoolMarkers(state) end
+        coroutine.yield(0.01)
+        effectsOK = pcall(refreshCueEffects, state, true)
+        if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
         coroutine.yield(REFRESH_SECONDS)
     end
 
