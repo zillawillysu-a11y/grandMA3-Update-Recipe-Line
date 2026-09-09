@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.9"
+local PLUGIN_VERSION = "0.7.0.10"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
@@ -945,7 +945,10 @@ local function cueEffectLayer(phaser, prefix, valueKey)
 end
 
 local function newCueEffectScan(sequence, currentCue)
-    local scan = {tracked = {}, parts = {}, index = 1, work = 0}
+    local scan = {
+        tracked = {}, parts = {}, index = 1, work = 0, advanceCalls = 0,
+        diagnostics = {cue = cueLabel(currentCue), parts = {}, fastRefs = 0}
+    }
     if not sequence or not cueNumber(currentCue) or not callable("GetPresetData") then
         scan.done, scan.result = true, {}
         return scan
@@ -975,12 +978,42 @@ local function scanCheckpoint(scan)
     if scan.work > 131072 then error("Cue effect scan limit exceeded") end
 end
 
+-- Keep performance evidence on the scan object.  The fields are deliberately
+-- counters only: diagnostics must not add native calls or another full pass
+-- over a large GetPresetData result.
+local function newPartScanDiagnostic(part, advance)
+    return {
+        part = partNumber(part), label = label(part), startedAdvance = advance,
+        channels = 0, numericChannels = 0, movingLayers = 0, emptyRefs = 0,
+        unresolvedRefs = 0, uiMissing = 0, rtMissing = 0, attributeMissing = 0,
+        recipeFeatureMiss = 0, recipeMembershipMiss = 0, recoveredRefs = 0,
+        directRefs = 0, firstRefAdvance = nil
+    }
+end
+
+local function effectScanLog(message)
+    if callable("Printf") then safe(Printf, "[RecipeTracking][EffectScan] " .. message) end
+end
+
+local function finishPartScanDiagnostic(scan, part, diagnostic)
+    diagnostic.advances = scan.advanceCalls - diagnostic.startedAdvance + 1
+    scan.diagnostics.parts[#scan.diagnostics.parts + 1] = diagnostic
+    effectScanLog(string.format(
+        "cue=%s part=%s channels=%d numeric=%d advances=%d first_ref_advance=%s moving=%d direct_refs=%d recovered_refs=%d empty_refs=%d unresolved_refs=%d ui_missing=%d rt_missing=%d attribute_missing=%d feature_miss=%d membership_miss=%d",
+        tostring(scan.diagnostics.cue), tostring(diagnostic.part), diagnostic.channels,
+        diagnostic.numericChannels, diagnostic.advances, tostring(diagnostic.firstRefAdvance or "none"), diagnostic.movingLayers,
+        diagnostic.directRefs, diagnostic.recoveredRefs, diagnostic.emptyRefs,
+        diagnostic.unresolvedRefs, diagnostic.uiMissing, diagnostic.rtMissing,
+        diagnostic.attributeMissing, diagnostic.recipeFeatureMiss, diagnostic.recipeMembershipMiss))
+end
+
 local function scanCueEffectPart(scan, part)
     local pending = scan.pendingPart
     local data = pending and pending.data or safe(GetPresetData, part, false, false)
     if type(data) ~= "table" then error("Cue effect data unavailable") end
     local recipes = pending and pending.recipes or {}
     if not pending then
+    local diagnostic = newPartScanDiagnostic(part, scan.advanceCalls)
     for ordinal, recipe in ipairs(children(part)) do
         scanCheckpoint(scan)
         if isStandardRecipe(recipe) and recipeEnabled(recipe) then
@@ -1003,21 +1036,30 @@ local function scanCueEffectPart(scan, part)
         end
     end
     table.sort(recipes, function(a, b) return a.index > b.index end)
-    pending = {data = data, recipes = recipes}
+    pending = {data = data, recipes = recipes, diagnostic = diagnostic}
     scan.pendingPart = pending
     end
     for batch = 1, 32 do
         local index, phaser = next(data, pending.key)
-        if index == nil then scan.pendingPart = nil; return true end
+        if index == nil then
+            finishPartScanDiagnostic(scan, part, pending.diagnostic)
+            scan.pendingPart = nil
+            return true
+        end
         pending.key = index
         scanCheckpoint(scan)
+        pending.diagnostic.channels = pending.diagnostic.channels + 1
         if type(index) == "number" and type(phaser) == "table" then
+            pending.diagnostic.numericChannels = pending.diagnostic.numericChannels + 1
             local ui = callable("GetUIChannel") and safe(GetUIChannel, index)
             local rt = ui and callable("GetRTChannel") and safe(GetRTChannel, ui.rt_index)
+            if not ui then pending.diagnostic.uiMissing = pending.diagnostic.uiMissing + 1 end
+            if ui and not rt then pending.diagnostic.rtMissing = pending.diagnostic.rtMissing + 1 end
             local fixture = rt and (rt.fixture or rt.subfixture)
             local sf = rt and (rt.subfixture or rt.fixture)
             local sfIndex = tonumber(property(sf, "SubfixtureIndex"))
             local attribute = callable("GetAttributeByUIChannel") and safe(GetAttributeByUIChannel, index)
+            if not attribute then pending.diagnostic.attributeMissing = pending.diagnostic.attributeMissing + 1 end
             local layers = scan.tracked[index] or {}
             scan.tracked[index] = layers
             for _, layer in ipairs({{"abs", "absolute"}, {"rel", "relative"}}) do
@@ -1026,16 +1068,21 @@ local function scanCueEffectPart(scan, part)
                     -- Cooked Phaser Recipe/Generator channels may expose only
                     -- underlying value links. Recover the applied Pool object
                     -- from an enabled row in this same Part and channel feature.
+                    if moving then pending.diagnostic.movingLayers = pending.diagnostic.movingLayers + 1 end
+                    local recoveredPoolRef = false
                     if moving and attribute then
                         local recovered, recoveredSeen = {}, {}
+                        local featureMatched, membershipMatched = false, false
                         for _, recipe in ipairs(recipes) do
                             scanCheckpoint(scan)
                             local feature = normalizeFeature(label(attribute))
                             if recipe.featureMatches[feature] == nil then
                                 recipe.featureMatches[feature] = valuesMatchFeature(recipe.ref, feature)
                             end
-                            if (sfIndex == nil or recipe.members[sfIndex])
-                                and recipe.featureMatches[feature] then
+                            if recipe.featureMatches[feature] then
+                                featureMatched = true
+                                if sfIndex == nil or recipe.members[sfIndex] then
+                                    membershipMatched = true
                                 -- The matching StandardRecipe is the Pool object
                                 -- the user called. Cooked Phaser data may expose
                                 -- only its Shape or integrated step Presets.
@@ -1046,9 +1093,38 @@ local function scanCueEffectPart(scan, part)
                                 -- With a subfixture identity, the latest matching
                                 -- Recipe row is the exact source for this channel.
                                 if sfIndex ~= nil then break end
+                                end
                             end
                         end
-                        if #recovered > 0 then refs = recovered end
+                        if featureMatched and not membershipMatched then
+                            pending.diagnostic.recipeMembershipMiss = pending.diagnostic.recipeMembershipMiss + 1
+                        elseif #recipes > 0 and not featureMatched then
+                            pending.diagnostic.recipeFeatureMiss = pending.diagnostic.recipeFeatureMiss + 1
+                        end
+                        recoveredPoolRef = #recovered > 0
+                        if recoveredPoolRef then
+                            refs = recovered
+                            pending.diagnostic.recoveredRefs = pending.diagnostic.recoveredRefs + #recovered
+                        end
+                    end
+                    if moving and #refs == 0 then pending.diagnostic.emptyRefs = pending.diagnostic.emptyRefs + 1 end
+                    if moving and not recoveredPoolRef then
+                        for _, ref in ipairs(refs) do
+                            if commandAddress(ref) then
+                                pending.diagnostic.directRefs = pending.diagnostic.directRefs + 1
+                            else
+                                pending.diagnostic.unresolvedRefs = pending.diagnostic.unresolvedRefs + 1
+                            end
+                        end
+                    end
+                    if moving then
+                        for _, ref in ipairs(refs) do
+                            if commandAddress(ref) then
+                                pending.diagnostic.firstRefAdvance = pending.diagnostic.firstRefAdvance or scan.advanceCalls
+                                scan.diagnostics.firstRefAdvance = scan.diagnostics.firstRefAdvance or scan.advanceCalls
+                                break
+                            end
+                        end
                     end
                     layers[layer[1]] = moving and {refs = refs, fixture = fixture} or nil
                 end
@@ -1083,6 +1159,7 @@ end
 
 local function advanceCueEffectScan(scan)
     if scan.done then return scan.result end
+    scan.advanceCalls = scan.advanceCalls + 1
     local part = scan.parts[scan.index]
     if part then
         if scanCueEffectPart(scan, part) then scan.index = scan.index + 1 end
@@ -1152,6 +1229,9 @@ local function refreshCueEffects(state, allowScan)
     state.effectWait = (state.effectWait or 0) - 1
     if state.effectScanPending and not state.effectScanner and state.effectWait <= 0 then
         state.effectScanner = newCueEffectScan(sequence, cue)
+        for _ in pairs(state.currentCueEffects or {}) do state.effectScanner.diagnostics.fastRefs = state.effectScanner.diagnostics.fastRefs + 1 end
+        effectScanLog(string.format("start cue=%s parts=%d fast_refs=%d", cueLabel(cue),
+            #state.effectScanner.parts, state.effectScanner.diagnostics.fastRefs))
     end
     if state.effectScanner then
         -- One potentially expensive GetPresetData Part per host tick prevents
@@ -1160,6 +1240,17 @@ local function refreshCueEffects(state, allowScan)
         if not ok or state.effectScanner.done then
             state.activeEffects = addCurrentCueRecipeEffects(ok and result or {}, state.currentCueEffects)
             local errorText = not ok and tostring(result) or nil
+            if not ok then
+                effectScanLog(string.format("abort cue=%s advances=%d error=%s", cueLabel(cue),
+                    state.effectScanner.advanceCalls or 0, errorText))
+            else
+                local diagnostic = state.effectScanner.diagnostics or {}
+                effectScanLog(string.format("finish cue=%s advances=%d first_ref_advance=%s parts=%d refs=%d fast_refs=%d",
+                    cueLabel(cue), state.effectScanner.advanceCalls or 0,
+                    tostring(diagnostic.firstRefAdvance or "none"), #(diagnostic.parts or {}),
+                    (function() local n = 0 for _ in pairs(result or {}) do n = n + 1 end return n end)(),
+                    diagnostic.fastRefs or 0))
+            end
             if errorText and state.effectError ~= errorText and callable("ErrEcho") then
                 safe(ErrEcho, "[RecipeTracking] " .. errorText)
             end

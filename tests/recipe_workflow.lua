@@ -546,6 +546,10 @@ check(not boundedScan.done and boundedScan.pendingPart ~= nil,
 while not boundedScan.done do functions.advanceCueEffectScan(boundedScan) end
 check(largeReads == 1 and boundedScan.result["Preset 25.1206"] ~= nil,
     "Resuming batches must reuse one native Part read and retain effects")
+local largeDiagnostic = boundedScan.diagnostics.parts[1]
+check(largeDiagnostic and largeDiagnostic.channels == 1000 and largeDiagnostic.numericChannels == 1000
+        and largeDiagnostic.advances == 32,
+    "Large Part diagnostics must report its exact channel count and bounded advance count")
 SelectedSequence = function() return largeSequence end
 GetCurrentCue = function() return largeCue end
 local cachedState = {}

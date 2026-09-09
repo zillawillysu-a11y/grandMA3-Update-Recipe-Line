@@ -40,6 +40,8 @@ The user's grandMA3 2.5.0.3 `FAG.xml` export confirms Cue 16 has an enabled Stan
 
 ## Performance checkpoint
 
-v0.7.0.9 uses 0.1-second loop waits, immediate marker lookup on Cue changes, batches of 32 cooked records, one native read per Part, and memoized Recipe feature matching. Up to 32 completed Cue snapshots are reused within a Sequence. Plugin force-refresh invalidates snapshots. Restart after external edits or Show replacement at identical addresses.
+v0.7.0.10 keeps the v0.7.0.9 0.1-second loop waits, immediate current-Cue Recipe lookup, batches of 32 cooked records, one native read per Part, and memoized Recipe feature matching. Up to 32 completed Cue snapshots are reused within a Sequence. Plugin force-refresh invalidates snapshots. Restart after external edits or Show replacement at identical addresses.
+
+For native diagnosis, every uncached scan writes `[RecipeTracking][EffectScan]` records to Command Line History: one `start`, one line per completed Part, and `finish` or `abort`. A Part line reports its exact returned record count (`channels`), numeric channel count, bounded `advances`, `first_ref_advance`, moving layers, direct and Recipe-recovered references, empty/unresolvable references, missing UI/RT/Attribute mapping, and failed Recipe feature or membership recovery. `abort` includes the caught error and advance count. These counters reuse the existing traversal and make no additional native calls.
 
 The 0.3-second target is NOT native-validated. Cold inherited effects still await historical scanning; GetPresetData is synchronous and cannot be preempted. Render source tracking remains synchronous. New Pool windows require restart while cached grids remain valid.
