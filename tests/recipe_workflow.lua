@@ -529,4 +529,32 @@ purpleState.activeEffects = {}
 functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
 check(purple.deleted, "Inactive effects must lose their Pool frame")
+-- Large Part processing must yield without rereading native cooked data.
+local largePart = object("Part", "Large Part", {Part = 0})
+local largeCue = object("Cue", "Large Cue", {No = 1000}, {largePart})
+local largeSequence = object("Sequence", "Large Sequence", {}, {largeCue})
+local largeData, largeReads = {}, 0
+for i = 1, 1000 do largeData[i] = moving(fxA) end
+GetPresetData = function(target)
+    largeReads = largeReads + 1
+    return largeData
+end
+local boundedScan = functions.newCueEffectScan(largeSequence, largeCue)
+functions.advanceCueEffectScan(boundedScan)
+check(not boundedScan.done and boundedScan.pendingPart ~= nil,
+    "A 1000-channel Part must yield after a bounded channel batch")
+while not boundedScan.done do functions.advanceCueEffectScan(boundedScan) end
+check(largeReads == 1 and boundedScan.result["Preset 25.1206"] ~= nil,
+    "Resuming batches must reuse one native Part read and retain effects")
+SelectedSequence = function() return largeSequence end
+GetCurrentCue = function() return largeCue end
+local cachedState = {}
+for i = 1, 40 do functions.refreshCueEffects(cachedState) end
+local warmReads = largeReads
+GetCurrentCue = function() return nil end
+functions.refreshCueEffects(cachedState)
+GetCurrentCue = function() return largeCue end
+functions.refreshCueEffects(cachedState, false)
+check(cachedState.activeEffects["Preset 25.1206"] ~= nil and largeReads == warmReads,
+    "Revisiting a scanned Cue must publish cached effects before any native data read")
 print("PASS: " .. count .. " workflow assertions")

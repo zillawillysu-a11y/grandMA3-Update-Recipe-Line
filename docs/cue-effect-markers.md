@@ -1,6 +1,6 @@
 # Cue Effect Pool Markers
 
-v0.7.0.8 adds selected-Sequence Cue usage markers independent of fixture selection.
+v0.7.0.9 adds selected-Sequence Cue usage markers independent of fixture selection.
 
 - Purple `GroupedProgLayerActive.Phaser` frame for referenced moving Presets and Generators. This is a valid ColorGroups entry and resolves to RGBA `A34CB4FF` in the grandMA3 2.5 default themes.
 - Fixture-count text is currently hidden so the marker only changes the Pool item's frame.
@@ -37,3 +37,9 @@ Installed vendor files under gma3_2.3.2/shared/resource:
 The official [GetRTChannel documentation](https://help.malighting.com/grandMA3/2.3/HTML/lua_objectfree_getrtchannel.html) describes fixture/subfixture handles in RT-channel metadata.
 
 The user's grandMA3 2.5.0.3 `FAG.xml` export confirms Cue 16 has an enabled StandardRecipe for Group `H1 Top V` with Values `Song EFX.Dimmer Speed#3` (pool 25, slot 303), while its cooked Dimmer channels have two integrated steps (`Dimmer.100` and `Dimmer.20`). The Preset dependency contains a `PhaserRecipe` whose Shape is `Sine 1/2`. This is why reading the nested PhaserRecipe directly produced the incorrect Shape 8 result, while the StandardRecipe is the correct Pool source.
+
+## Performance checkpoint
+
+v0.7.0.9 uses 0.1-second loop waits, immediate marker lookup on Cue changes, batches of 32 cooked records, one native read per Part, and memoized Recipe feature matching. Up to 32 completed Cue snapshots are reused within a Sequence. Plugin force-refresh invalidates snapshots. Restart after external edits or Show replacement at identical addresses.
+
+The 0.3-second target is NOT native-validated. Cold inherited effects still await historical scanning; GetPresetData is synchronous and cannot be preempted. Render source tracking remains synchronous. New Pool windows require restart while cached grids remain valid.

@@ -357,3 +357,7 @@ Meaningful work must not exist only in one local working tree.
 DO THE WORK.
 
 Planning, summaries, Git commits, old results, and deployment verification are not substitutes for implementation.
+
+## 16. Interactive performance acceptance
+
+Cue-to-purple target is <= 0.3 seconds in the large native Show. Offline tests cannot prove native latency or crash freedom. Measure cold visits separately from cached revisits. Keep channel work bounded, never run native APIs in nested coroutines, and document cache invalidation. Preserve Recipe deletion / NEW CONTENT behavior.

@@ -4,13 +4,13 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.8"
+local PLUGIN_VERSION = "0.7.0.9"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
-local REFRESH_SECONDS = 0.25
+local REFRESH_SECONDS = 0.1
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -976,9 +976,11 @@ local function scanCheckpoint(scan)
 end
 
 local function scanCueEffectPart(scan, part)
-    local data = safe(GetPresetData, part, false, false)
+    local pending = scan.pendingPart
+    local data = pending and pending.data or safe(GetPresetData, part, false, false)
     if type(data) ~= "table" then error("Cue effect data unavailable") end
-    local recipes = {}
+    local recipes = pending and pending.recipes or {}
+    if not pending then
     for ordinal, recipe in ipairs(children(part)) do
         scanCheckpoint(scan)
         if isStandardRecipe(recipe) and recipeEnabled(recipe) then
@@ -995,13 +997,19 @@ local function scanCueEffectPart(scan, part)
                     end
                 end
                 recipes[#recipes + 1] = {
-                    ref = ref, members = selection, index = recipeNumber(recipe, ordinal)
+                    ref = ref, members = selection, featureMatches = {}, index = recipeNumber(recipe, ordinal)
                 }
             end
         end
     end
     table.sort(recipes, function(a, b) return a.index > b.index end)
-    for index, phaser in pairs(data) do
+    pending = {data = data, recipes = recipes}
+    scan.pendingPart = pending
+    end
+    for batch = 1, 32 do
+        local index, phaser = next(data, pending.key)
+        if index == nil then scan.pendingPart = nil; return true end
+        pending.key = index
         scanCheckpoint(scan)
         if type(index) == "number" and type(phaser) == "table" then
             local ui = callable("GetUIChannel") and safe(GetUIChannel, index)
@@ -1022,8 +1030,12 @@ local function scanCueEffectPart(scan, part)
                         local recovered, recoveredSeen = {}, {}
                         for _, recipe in ipairs(recipes) do
                             scanCheckpoint(scan)
+                            local feature = normalizeFeature(label(attribute))
+                            if recipe.featureMatches[feature] == nil then
+                                recipe.featureMatches[feature] = valuesMatchFeature(recipe.ref, feature)
+                            end
                             if (sfIndex == nil or recipe.members[sfIndex])
-                                and valuesMatchFeature(recipe.ref, normalizeFeature(label(attribute))) then
+                                and recipe.featureMatches[feature] then
                                 -- The matching StandardRecipe is the Pool object
                                 -- the user called. Cooked Phaser data may expose
                                 -- only its Shape or integrated step Presets.
@@ -1073,8 +1085,7 @@ local function advanceCueEffectScan(scan)
     if scan.done then return scan.result end
     local part = scan.parts[scan.index]
     if part then
-        scanCueEffectPart(scan, part)
-        scan.index = scan.index + 1
+        if scanCueEffectPart(scan, part) then scan.index = scan.index + 1 end
     end
     if scan.index > #scan.parts then return finishCueEffectScan(scan) end
     return nil
@@ -1121,8 +1132,14 @@ local function refreshCueEffects(state, allowScan)
         state.effectSequenceKey, state.effectCueKey = sequenceKey, cueKey
         state.effectSequence, state.effectCue = sequence, cue
         state.currentCueEffects = currentCueRecipeEffects(cue)
-        state.activeEffects, state.effectScanner = state.currentCueEffects, nil
-        state.effectScanPending, state.effectWait = true, 1
+        if state.effectCacheSequence ~= sequenceKey then
+            state.effectCacheSequence, state.effectCache, state.effectCacheOrder = sequenceKey, {}, {}
+        end
+        local cached = state.effectCache[cueKey]
+        state.activeEffects = addCurrentCueRecipeEffects(cached and cached.result or {}, state.currentCueEffects)
+        state.effectScanner = nil
+        state.effectScanPending, state.effectWait = cached == nil, 1
+        state.poolMarkersDirty = true
     end
     -- A selected Sequence can expose a valid Current Cue while its executor is
     -- stopped or being edited. Pool usage follows that Cue, not playback state.
@@ -1147,6 +1164,14 @@ local function refreshCueEffects(state, allowScan)
                 safe(ErrEcho, "[RecipeTracking] " .. errorText)
             end
             state.effectError = errorText
+            if ok then
+                state.effectCache[cueKey] = {result = state.activeEffects}
+                state.effectCacheOrder[#state.effectCacheOrder + 1] = cueKey
+                if #state.effectCacheOrder > 32 then
+                    state.effectCache[table.remove(state.effectCacheOrder, 1)] = nil
+                end
+                state.poolMarkersDirty = true
+            end
             -- Do not continuously rescan an unchanged Cue. The previous 2-second
             -- restart loop dominated plugin time in large Showfiles.
             state.effectScanner, state.effectScanPending, state.effectWait = nil, false, 0
@@ -1167,7 +1192,8 @@ local function refreshPoolMarkers(state)
             entry.overlay.BackColor = entry.activeEffect and PHASER_MARKER_COLOR or pulseColor
         end)
     end
-    if state.poolBlinkTicks % 2 ~= 0 then return end
+    if state.poolBlinkTicks % 2 ~= 0 and not state.poolMarkersDirty then return end
+    state.poolMarkersDirty = false
     local references = recipePoolReferences(state)
     local effects = state.activeEffects or {}
     local markers, found = state.poolMarkers or {}, {}
@@ -2028,7 +2054,7 @@ local function main()
         syncTitleWidth(state)
         processPendingVerification(state)
         local forceRefresh = state.forceRefresh
-        if forceRefresh then state.effectSequenceKey = nil end
+        if forceRefresh then state.effectSequenceKey, state.effectCacheSequence = nil, nil end
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
