@@ -2,46 +2,43 @@
 
 ## Current Goal
 
-Develop and real-world validate the grandMA3 2.3.2.0 Recipe Tracking Inspector, including safe single-Attribute updates and a multi-Attribute workflow.
+Keep Recipe source tracking correct while making Pool reference markers clear, responsive, and stable.
 
 ## Current Working State
 
-Version `0.6.0.0` adds multi-Attribute batch writing. `BATCH UPDATE`, right of `BATCH`, re-resolves every active Programmer feature at click time, writes each writable feature's Preset into its uniquely resolved Recipe `Values`, removes the union of contributing Programmer attributes, and wraps all Assigns and cleanups in one `CreateUndo`/`CloseUndo` transaction with combined delayed verification (any mismatch rolls back the whole batch with one Oops). Features that are raw/Phaser/ambiguous, NO CHANGE, ambiguous tracking, or whose Recipe is already taken by another feature are skipped with explicit reasons. Read-only `BATCH` preview and single-Attribute updates are unchanged (shared delayed verification now targets a list).
-
-The button is enabled only when the current selection/Attribute resolves to exactly one Recipe, the programmer supplies exactly one Preset reference, and the new Preset differs from the Recipe's current Values. Clicking UPDATE resolves the context again, shows target/old/new confirmation, explicitly assigns the Preset to the Sequence/Cue/Part/Recipe `Values` property, removes only the contributing Programmer attributes, and verifies `recipe.Values` afterward. All commands share one `CreateUndo`/`CloseUndo` transaction. Unsupported or ambiguous states do not write.
+v0.6.13.0 is implemented and deployed. Tracking resolves one latest source across overlapping Groups by Cue, Part, then actual Recipe row order. Compact window height follows estimated visible line count. Pool markers use the thick native `frame0`, remain visible, and pulse between two theme colors every 0.25 seconds; Pool tree traversal remains every 0.5 seconds. Generator-backed Recipes are recognized and recipes disabled through either `Enabled` or `Active` are excluded.
 
 ## Latest Real-World User Test
 
-v0.4.1.5 passed earlier (larger Update captions, layout/tracking). v0.5.0.0 batch preview passed: 36 fixtures, 7 features reported independently with correct per-feature sources — Color new Preset 4.6 "D GOLD" sourced from Cue 0.5 original Preset (Available: ORIGINAL | NEW CONTENT, no CURRENT CUE), Dimmer sourced from Song EFX Preset in current Cue 5.3, Position sourced from current Cue 5.3 (both include CURRENT CUE). Focus1/PT Speed/Shutter1/Zoom (Programmer Phaser / multi-step) correctly shown as REVIEW ONLY.
+User confirmed v0.6.12.0 fixed the stale Cue 9 source and the thick Pool frame looks good. User requested a faster pulse that never fully disappears and asked whether a dashed frame is possible without risking performance or crashes.
 
 ## Verified Facts
 
-- Persistent non-modal UI, native title dragging, resize behavior, compact/detail, styles, tracking resolution, All preset/Phaser inspection, and SELECT GROUP have passed prior real-world tests.
-- Installed grandMA3 2.3.2 system tests use `Assign <Preset:ToAddr()> At <Recipe:ToAddr()>` to replace Recipe Values and verify the operation with Undo (`shared/resource/lib_plugins/systemtests/db/system_test_prog_cook.lua`).
-- The official Lua API supports grouping `Cmd` operations into one Oops entry with `CreateUndo` and `CloseUndo`.
-- Raw programmer values or a raw Phaser without one unambiguous Preset reference are deliberately not writable in this first version.
-- Deployment destination: `C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\Update Plugin`.
+- 51 offline Lua workflow assertions passed, including Generator handling, source precedence, automatic text height, and always-visible 0.25-second Pool color pulsing.
+- Both Lua runtime files parse; XML parses and all referenced components exist.
+- `git diff --check` passed.
+- XML and both referenced Lua components were copied to the local grandMA3 plugin directory; repository and deployed SHA256 hashes match.
 
 ## Current Problem
 
-v0.6.0.0 batch writing is implemented and deployed but not yet real-world tested.
+Native grandMA3 must confirm the faster always-visible Pool pulse is comfortable and stable.
 
 ## Known Failed Attempts
 
-- Direct Lua property assignment such as `recipe.Values = preset` is not used for production writes because it has not been shown to join an Undo transaction.
-- Do not permit updates when tracking is unresolved/ambiguous or when the programmer has no unique Preset reference.
+The installed texture set has dotted fill textures but no native dashed frame. Emulating dashes with many temporary UIObjects would increase object count per visible Pool reference, so v0.6.13.0 keeps the proven single-frame implementation.
 
 ## Important Files
 
-- `RecipeTracking_Inspector.lua`
-- `RecipeUpdate_Diagnostic.lua`
-- `recipe_update_diagnostic.xml`
-- `AGENTS.md`
+- RecipeTracking_Inspector.lua
+- recipe_update_diagnostic.xml
+- RecipeUpdate_Diagnostic.lua
+- tests/recipe_workflow.lua
+- AGENTS.md
 
 ## Current Branch / Commit
 
-Branch: `qwen`. Version `0.5.0.0` validated (`dd0db78`); v0.6.0.0 batch writing lands in the next commit.
+qwen at f6328ef. v0.6.1 through v0.6.13 are uncommitted pending coherent real-world confirmation.
 
 ## Exact Next Action
 
-Import/run v0.6.0.0, repeat the 36-fixture test scenario, press `BATCH UPDATE`, and verify: the confirmation lists each writable feature's target/old/new plus skipped reasons, one Oops reverts all written Recipes and Programmer removals, and delayed verification passes (or rolls back with a clear failure list).
+Run v0.6.13.0 in grandMA3. Observe the Pool marker for several minutes and confirm it changes color faster without disappearing or affecting console responsiveness.

@@ -4,15 +4,15 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.6.0.0"
+local PLUGIN_VERSION = "0.6.13.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.25
 local PANEL_WIDTH = 640
-local COMPACT_HEIGHT = 304
-local DETAIL_HEIGHT = 564
+local COMPACT_HEIGHT = 260
+local DETAIL_HEIGHT = 520
 
 local function callable(name)
     return type(_G[name]) == "function"
@@ -77,9 +77,16 @@ local function cueLabel(cue)
     return string.format("%s - %s", number and string.format("%g", number) or "?", label(cue))
 end
 
+local function isRandomGenerator(object)
+    local kind = string.lower(class(object))
+    return kind == "random" or kind == "generator" or kind == "generatorrandom"
+        or safe(function() return object.RandomChannels end) ~= nil
+end
+
 local function presetText(object, fallbackFeature)
-    if object == nil then return "No Programmer value" end
-    local pool = string.match(address(object), "PresetPools%.([^%.]+)") or fallbackFeature
+    if object == nil then return "No Preset" end
+    local pool = isRandomGenerator(object) and "Generator"
+        or string.match(address(object), "PresetPools%.([^%.]+)") or fallbackFeature
     local reference = tostring(object)
     local name = property(object, "Name") or property(object, "NAME")
     local parts = {}
@@ -91,23 +98,30 @@ end
 
 local commandAddress
 local children
+local recipeNumber
 
 local function cueNumber(cue)
     return cue and tonumber(property(cue, "No") or property(cue, "NO")) or nil
 end
 
-local function cueRecipeCommandAddress(sequence, cue, part, recipe)
+local function cueRecipeCommandAddress(sequence, cue, part, recipe, fallbackRecipeIndex)
     local sequenceAddress = commandAddress(sequence)
     local rawCue = cueNumber(cue)
-    local partNumber = tonumber(property(part, "Part") or property(part, "PART"))
-    local recipeIndex = tonumber(property(recipe, "Index") or property(recipe, "INDEX"))
+    local partNumber = tonumber(property(part, "Part") or property(part, "PART")) or 0
+    local recipeIndex = recipeNumber(recipe, fallbackRecipeIndex)
     if not sequenceAddress or not rawCue or partNumber == nil or recipeIndex == nil then return nil end
     return string.format("%s Cue %g Part %g.%g", sequenceAddress, rawCue / 1000,
         partNumber, recipeIndex)
 end
 
 local function partNumber(part)
-    return tonumber(property(part, "Part") or property(part, "PART"))
+    return tonumber(property(part, "Part") or property(part, "PART")) or 0
+end
+
+recipeNumber = function(recipe, fallback)
+    local value = tonumber(property(recipe, "Index") or property(recipe, "INDEX")
+        or property(recipe, "No") or property(recipe, "NO"))
+    return value or fallback
 end
 
 local function findCuePart(cue, wantedPart)
@@ -118,16 +132,14 @@ local function findCuePart(cue, wantedPart)
 end
 
 local function nextRecipeIndex(part)
-    local used = {}
-    for _, recipe in ipairs(children(part)) do
+    local highest = 0
+    for ordinal, recipe in ipairs(children(part)) do
         if string.find(string.lower(class(recipe)), "recipe", 1, true) then
-            local index = tonumber(property(recipe, "Index") or property(recipe, "INDEX"))
-            if index then used[index] = true end
+            local index = recipeNumber(recipe, ordinal)
+            if index then highest = math.max(highest, index) end
         end
     end
-    local index = 1
-    while used[index] do index = index + 1 end
-    return index
+    return highest + 1
 end
 
 local function newCueRecipeCommandAddress(sequence, cue, wantedPart, recipeIndex)
@@ -139,6 +151,24 @@ end
 
 local function indexedLabel(object, key, fallback)
     return property(object, key) or property(object, string.upper(key)) or fallback
+end
+
+local function recipeLabel(recipe, fallback, fallbackRecipeIndex)
+    return tostring(recipeNumber(recipe, fallbackRecipeIndex) or indexedLabel(recipe, "INDEX", fallback))
+end
+
+local function enabledFlag(object, key)
+    local value = safe(function() return object[key] end)
+    if value == nil then value = property(object, key) end
+    if value == false then return false end
+    local normalized = string.lower(tostring(value or "yes"))
+    return normalized ~= "no" and normalized ~= "false" and normalized ~= "0" and normalized ~= "off"
+end
+
+local function recipeEnabled(recipe)
+    -- In exported sequences, the Recipe editor's disabled state may appear as
+    -- Active="No" while Enabled remains "Yes". Neither state may track.
+    return enabledFlag(recipe, "Enabled") and enabledFlag(recipe, "Active")
 end
 
 children = function(object)
@@ -192,6 +222,28 @@ local function getProgPhaser(index)
     return safe(GetProgPhaser, index, false) or safe(GetProgPhaser, index)
 end
 
+local function getProgPhaserValue(index, step)
+    if not callable("GetProgPhaserValue") then return nil end
+    return safe(GetProgPhaserValue, index, step)
+end
+
+local generatorHasFeature
+local phaserReferences
+
+local function programmerReferenceMatchesFeature(reference, feature)
+    if reference == nil then return false end
+    if isRandomGenerator(reference) then return generatorHasFeature(reference, feature) end
+    local referenceAddress = address(reference)
+    local pool = string.match(referenceAddress, "PresetPools%.([^%.]+)%.")
+    return pool == feature or pool == "All"
+end
+
+local function isObjectReference(value)
+    if type(value) == "userdata" then return true end
+    if type(value) ~= "table" then return false end
+    return type(value.GetClass) == "function" or type(value.ToAddr) == "function"
+end
+
 local function readProgrammer(fixtures)
     local presets, assignedAttributes, rawCount = {}, {}, 0
     local selectedFeature = normalizeFeature(selectedFeatureLabel())
@@ -205,18 +257,25 @@ local function readProgrammer(fixtures)
                 local uiIndex = tonumber(property(channel, "INDEX") or property(channel, "Index"))
                 if uiIndex then
                     local phaser = getProgPhaser(uiIndex - 1)
-                    if type(phaser) == "table" then
+                    local references = phaserReferences(phaser, uiIndex - 1)
+                    if type(phaser) == "table" or #references > 0 then
                         local attribute = callable("GetAttributeByUIChannel")
                             and safe(GetAttributeByUIChannel, uiIndex - 1) or nil
                         local attributeName = attribute and label(attribute)
                             or property(channel, "SUBATTRIBUTE")
                             or property(channel, "SubAttribute") or property(channel, "Name")
                         local channelFeature = normalizeFeature(attributeName)
-                        if type(phaser.abs_preset) == "userdata" then
-                            local presetAddress = address(phaser.abs_preset)
-                            local pool = string.match(presetAddress, "PresetPools%.([^%.]+)%.")
-                            if channelFeature == selectedFeature and (pool == selectedFeature or pool == "All") then
-                                presets[presetAddress] = phaser.abs_preset
+                        local reference = nil
+                        for _, candidate in ipairs(references) do
+                            if programmerReferenceMatchesFeature(candidate, channelFeature) then
+                                reference = candidate
+                                break
+                            end
+                        end
+                        if reference ~= nil then
+                            local referenceAddress = address(reference)
+                            if channelFeature == selectedFeature then
+                                presets[referenceAddress] = reference
                                 if attributeName and attributeName ~= "" then assignedAttributes[attributeName] = true end
                                 if type(phaser[2]) == "table" then rawCount = rawCount + 1 end
                             end
@@ -262,7 +321,8 @@ local function readAllProgrammerFeatures(fixtures)
                 local uiIndex = tonumber(property(channel, "INDEX") or property(channel, "Index"))
                 if uiIndex then
                     local phaser = getProgPhaser(uiIndex - 1)
-                    if type(phaser) == "table" then
+                    local references = phaserReferences(phaser, uiIndex - 1)
+                    if type(phaser) == "table" or #references > 0 then
                         local attribute = callable("GetAttributeByUIChannel")
                             and safe(GetAttributeByUIChannel, uiIndex - 1) or nil
                         local attributeName = attribute and label(attribute)
@@ -275,11 +335,17 @@ local function readAllProgrammerFeatures(fixtures)
                             buckets[feature] = bucket
                         end
                         if attributeName and attributeName ~= "" then bucket.attributeSet[attributeName] = true end
-                        if type(phaser.abs_preset) == "userdata" then
-                            local presetAddress = address(phaser.abs_preset)
-                            local pool = string.match(presetAddress, "PresetPools%.([^%.]+)%.")
-                            if pool == feature or pool == "All" then
-                                bucket.presets[presetAddress] = phaser.abs_preset
+                        local reference = nil
+                        for _, candidate in ipairs(references) do
+                            if programmerReferenceMatchesFeature(candidate, feature) then
+                                reference = candidate
+                                break
+                            end
+                        end
+                        if reference ~= nil then
+                            local referenceAddress = address(reference)
+                            if referenceAddress ~= "" then
+                                bucket.presets[referenceAddress] = reference
                             else
                                 bucket.rawCount = bucket.rawCount + 1
                             end
@@ -336,7 +402,7 @@ local function programmerValueText(info)
         return text
     end
     if (info.rawCount or 0) > 0 then return "Programmer Phaser / multi-step" end
-    return "No Programmer value"
+    return "Apply a Preset in Programmer"
 end
 
 local function presetDataHasFeature(values, feature)
@@ -353,7 +419,67 @@ local function presetDataHasFeature(values, feature)
     return false
 end
 
+generatorHasFeature = function(values, feature)
+    local channels = safe(function() return values.RandomChannels end)
+    -- Native 2.3 Random objects contain GeneratorConfigurations and RandomChannels.
+    if channels == nil then
+        for _, child in ipairs(children(values)) do
+            local kind = string.lower(class(child))
+            if kind == "randomchannels" or kind == "generatorchannels" then channels = child; break end
+        end
+    end
+    for _, channel in ipairs(children(channels)) do
+        local attribute = safe(function() return channel.Attribute end)
+        local name
+        if type(attribute) == "userdata" or type(attribute) == "table" then
+            name = label(attribute)
+        else
+            name = property(channel, "Attribute") or property(channel, "ATTRIBUTE")
+        end
+        -- An unassigned Random Channel applies to all Attributes (MA 2.0+).
+        local normalized = string.lower(tostring(name or "")):match("^%s*(.-)%s*$")
+        if normalized == "" or normalized == "none" or normalized == "all" then return true end
+        if normalizeFeature(name) == feature then return true end
+    end
+    return false
+end
+
+phaserReferences = function(phaser, uiIndex)
+    local result, seen = {}, {}
+    local function add(value)
+        if isObjectReference(value) and not seen[value] then
+            seen[value] = true
+            result[#result + 1] = value
+        end
+    end
+    if type(phaser) == "table" then
+        -- Normal preset calls use abs_preset; Generator calls may expose a
+        -- generator/integrated reference in the top-level or step table.
+        for _, key in ipairs({ "abs_preset", "abs_generator", "generator", "integrated", "value" }) do
+            add(phaser[key])
+        end
+        for _, step in pairs(phaser) do
+            if type(step) == "table" then
+                for _, key in ipairs({ "abs_preset", "abs_generator", "generator", "integrated", "value" }) do
+                    add(step[key])
+                end
+            end
+        end
+    end
+    for _, stepIndex in ipairs({ 0, 1 }) do
+        local step = getProgPhaserValue(uiIndex, stepIndex)
+        if type(step) == "table" then
+            for _, key in ipairs({ "abs_preset", "abs_generator", "generator", "integrated", "value" }) do
+                add(step[key])
+            end
+        end
+    end
+    return result
+end
+
 local function valuesMatchFeature(values, feature)
+    -- Generator names and GetPresetData cannot establish their affected Attributes.
+    if isRandomGenerator(values) then return generatorHasFeature(values, feature) end
     local identity = string.lower(tostring(values or "") .. " " .. address(values))
     if string.find(identity, string.lower(feature), 1, true) then return true end
     if presetDataHasFeature(values, feature) then return true end
@@ -383,7 +509,9 @@ local function directRecipes()
     if not callable("ProgrammerPart") then return {} end
     local result = {}
     for _, child in ipairs(children(safe(ProgrammerPart))) do
-        if string.find(string.lower(class(child)), "recipe", 1, true) then result[#result + 1] = child end
+        if string.find(string.lower(class(child)), "recipe", 1, true) and recipeEnabled(child) then
+            result[#result + 1] = child
+        end
     end
     return result
 end
@@ -404,18 +532,22 @@ local function scanTracking(sequence, currentCue, fixtures, info)
             cueCount = cueCount + 1
             for _, part in ipairs(children(cue)) do
                 if string.lower(class(part)) == "part" then
-                    for _, recipe in ipairs(children(part)) do
+                    for ordinal, recipe in ipairs(children(part)) do
                         if recipeCount >= MAX_RECIPES then break end
-                        if string.find(string.lower(class(recipe)), "recipe", 1, true) then
+                        if string.find(string.lower(class(recipe)), "recipe", 1, true) and recipeEnabled(recipe) then
                             recipeCount = recipeCount + 1
                             local selection = safe(function() return recipe.Selection end)
-                            local values = safe(function() return recipe.Values end)
+                            -- Standard Generator recipe lines store the usable
+                            -- handle in Generator; Values is only the display name.
+                            local generator = safe(function() return recipe.Generator end)
+                            local values = generator or safe(function() return recipe.Values end)
                             local subset, exact, selectedCount, groupCount = selectionRelation(selection, fixtures)
                             if subset and valuesMatchFeature(values, info.feature) then
                                 candidates[#candidates + 1] = {
                                     cue = cue, part = part, recipe = recipe, group = selection,
                                     values = values, exact = exact, selectedCount = selectedCount,
-                                    groupCount = groupCount, current = cue == currentCue
+                                    groupCount = groupCount, current = cue == currentCue,
+                                    recipeIndex = recipeNumber(recipe, ordinal)
                                 }
                             end
                         end
@@ -424,19 +556,39 @@ local function scanTracking(sequence, currentCue, fixtures, info)
             end
         end
     end
-    -- Older matching Recipes have been superseded. Only the closest matching
-    -- Cue at or before the current Cue can be the active tracking source.
-    local latestNumber = nil
+    -- Every candidate contains every selected fixture. Therefore a later
+    -- Cue/Part/row overrides an earlier candidate even when its Group differs.
+    -- This mirrors the tracked value visible on the selected fixture instead
+    -- of presenting stale sources from overlapping Groups.
+    local latest = nil
     for _, item in ipairs(candidates) do
-        local number = cueNumber(item.cue)
-        if number ~= nil and (latestNumber == nil or number > latestNumber) then latestNumber = number end
+        if latest == nil
+            or cueNumber(item.cue) > cueNumber(latest.cue)
+            or (cueNumber(item.cue) == cueNumber(latest.cue)
+                and (partNumber(item.part) > partNumber(latest.part)
+                    or (partNumber(item.part) == partNumber(latest.part)
+                        and item.recipeIndex > latest.recipeIndex))) then
+            latest = item
+        end
     end
-    if latestNumber == nil then return {} end
-    local latest = {}
-    for _, item in ipairs(candidates) do
-        if cueNumber(item.cue) == latestNumber then latest[#latest + 1] = item end
+    return latest and { latest } or {}
+end
+
+local function exactSelectionGroups(fixtures)
+    local pool = callable("DataPool") and safe(DataPool) or nil
+    local groups = safe(function() return pool.Groups end)
+    local matches = {}
+    for _, group in ipairs(children(groups)) do
+        local _, exact = selectionRelation(group, fixtures)
+        if exact then matches[#matches + 1] = group end
     end
-    return latest
+    return matches
+end
+
+local function canCreateRecipe(state)
+    return state.currentNewPreset and state.currentSequence and state.currentCue
+        and (state.currentGroup or #(state.newGroupCandidates or {}) > 0)
+        and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
 end
 
 local function coloredTextLayers(text)
@@ -491,12 +643,18 @@ local function render(state)
         state.currentSourceCue = nil
         state.currentSourceIsCurrent = false
         state.currentPart = nil
+        state.newGroupCandidates = {}
+        state.matchingCandidates = {}
     end
     local fixtures = readSelection()
     local info = readProgrammer(fixtures)
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
+    if state then
+        local context = tostring(commandAddress(sequence)) .. ":" .. tostring(cueNumber(currentCue)) .. ":" .. tostring(info.feature)
+        if state.targetContext ~= context then state.targetGroup = nil; state.targetContext = context end
+    end
     if state then
         state.currentSequence = sequence
         state.currentCue = currentCue
@@ -515,7 +673,8 @@ local function render(state)
         if #direct == 1 then
             local recipe = direct[1]
             local group = safe(function() return recipe.Selection end)
-            local values = safe(function() return recipe.Values end)
+            local values = safe(function() return recipe.Generator end)
+                or safe(function() return recipe.Values end)
             if state then
                 state.currentGroup = group
                 state.currentRecipe = recipe
@@ -526,7 +685,7 @@ local function render(state)
                 state.currentSourceCue = currentCue
                 state.currentSourceIsCurrent = true
             end
-            lines[#lines + 1] = "Recipe: " .. indexedLabel(recipe, "INDEX", "Recipe 1")
+            lines[#lines + 1] = "Recipe: " .. recipeLabel(recipe, "Recipe 1")
             lines[#lines + 1] = "Group: " .. label(group)
             lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
@@ -536,14 +695,25 @@ local function render(state)
         end
     else
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
-        if #candidates == 1 then
-            local item = candidates[1]
+        if state then state.matchingCandidates = candidates end
+        local chosen = #candidates == 1 and candidates[1] or nil
+        if state and #candidates > 1 then
+            for _, candidate in ipairs(candidates) do
+                if sameReference(candidate.group, state.targetGroup) then
+                    if chosen then chosen = nil; break end
+                    chosen = candidate
+                end
+            end
+        end
+        if chosen then
+            local item = chosen
             if state then
                 state.currentGroup = item.group
                 state.currentRecipe = item.recipe
                 state.currentOldPreset = item.values
                 state.currentNewPreset = info.preset
-                state.currentRecipeCommand = cueRecipeCommandAddress(sequence, item.cue, item.part, item.recipe)
+                state.currentRecipeCommand = cueRecipeCommandAddress(sequence, item.cue, item.part, item.recipe,
+                    item.recipeIndex)
                 state.currentAssignedAttributes = info.attributes
                 state.currentSourceCue = item.cue
                 state.currentSourceIsCurrent = item.current
@@ -551,31 +721,63 @@ local function render(state)
             end
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
-            lines[#lines + 1] = "Recipe: " .. indexedLabel(item.recipe, "INDEX", "Recipe 1")
+            lines[#lines + 1] = "Recipe: " .. recipeLabel(item.recipe, "Recipe 1", item.recipeIndex)
             lines[#lines + 1] = "Group: " .. label(item.group)
             lines[#lines + 1] = string.format("Coverage: %d selected / %d in Group", item.selectedCount, item.groupCount)
             lines[#lines + 1] = "Old Values: " .. presetText(item.values, info.feature)
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
             lines[#lines + 1] = "Confidence: INFERRED HIGH"
         elseif #candidates == 0 then
-            lines[#lines + 1] = "\nStatus: No matching tracking Recipe"
-            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
-        else
-            lines[#lines + 1] = string.format("\nStatus: AMBIGUOUS (%d matching Recipes)", #candidates)
-            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
-            for index, item in ipairs(candidates) do
-                if index > 3 then
-                    lines[#lines + 1] = string.format("...and %d more", #candidates - 3)
-                    break
-                end
-                lines[#lines + 1] = string.format("%d) Cue %s / %s / %s%s", index,
-                    cueLabel(item.cue), indexedLabel(item.part, "PART", "Part 0"),
-                    indexedLabel(item.recipe, "INDEX", "Recipe 1"),
-                    item.current and " [CURRENT]" or "")
-                lines[#lines + 1] = string.format("   %s | %s | %d/%d", label(item.group),
-                    tostring(item.values or "UNRESOLVED"), item.selectedCount, item.groupCount)
+            local groups = exactSelectionGroups(fixtures)
+            local group = #groups == 1 and groups[1] or nil
+            for _, candidate in ipairs(groups) do
+                if state and sameReference(candidate, state.creationGroupOverride) then group = candidate end
             end
+            if state then
+                state.newGroupCandidates = groups
+                state.currentGroup = group
+                state.currentNewPreset = not info.ambiguous and info.preset or nil
+                state.currentAssignedAttributes = info.attributes
+                state.currentPart = findCuePart(currentCue, 0)
+            end
+            lines[#lines + 1] = "Source Cue: NONE"
+            lines[#lines + 1] = "Group: " .. (group and label(group) or
+                (#groups > 1 and "Choose Group in UPDATE" or "Select a complete stored Group"))
+            lines[#lines + 1] = "Old Values: No source Recipe"
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
+            lines[#lines + 1] = "Status: " .. (#groups > 0 and "NEW CONTENT available with one Preset" or
+                "No exact Group matches the selection")
+        else
+            lines[#lines + 1] = "Status: Multiple Groups - choose SELECT GROUP"
+            lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
         end
+    end
+    if state and #state.matchingCandidates > 1 then
+        local overview = {
+            string.format("%s | %d fixtures | %d matching Groups", tostring(info.feature), #fixtures, #state.matchingCandidates),
+            "Current Cue: " .. cueLabel(currentCue),
+            "Target: " .. (state.currentGroup and label(state.currentGroup) or "Choose SELECT GROUP"),
+            "New Preset: " .. programmerValueText(info),
+            ""
+        }
+        for index, item in ipairs(state.matchingCandidates) do
+            overview[#overview + 1] = (sameReference(item.group, state.currentGroup) and "> " or "  ") ..
+                tostring(index) .. ". " .. label(item.group) .. " | Cue " .. cueLabel(item.cue)
+            overview[#overview + 1] = "     Part " .. tostring(partNumber(item.part)) .. " / Recipe " ..
+                tostring(item.recipeIndex or recipeNumber(item.recipe) or "?") .. " | " .. presetText(item.values, info.feature)
+        end
+        if state.selectGroup then state.selectGroup.Enabled = "Yes" end
+        if state.update then
+            local changed = state.currentRecipe and state.currentNewPreset
+                and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
+                and not sameReference(state.currentOldPreset, state.currentNewPreset)
+            state.update.Enabled = not state.updating and (changed or canCreateRecipe(state)) and "Yes" or "No"
+        end
+        state.overviewCount = #state.matchingCandidates
+        return table.concat(overview, "\n"), "", "", ""
+    elseif state and state.overviewCount then
+        state.overviewCount = nil
+        if state.window then state.window.H = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT end
     end
     if not state or not state.expanded then
         local oldValue, newValue, status, sourceCue
@@ -601,21 +803,8 @@ local function render(state)
             local changed = state.currentRecipe and state.currentNewPreset
                 and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
                 and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
-            pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
-        end
-        if state and state.updateCurrent then
-            local available = state.currentSourceIsCurrent and state.currentRecipe
-                and state.currentNewPreset and state.currentGroup
-                and state.currentSequence and state.currentCue and state.currentPart
-                and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-                and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
-            pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
-        end
-        if state and state.updateNew then
-            local available = state.currentRecipe and state.currentNewPreset and state.currentGroup
-                and state.currentSequence and state.currentCue and state.currentPart
-                and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-            pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
+            local canCreate = canCreateRecipe(state)
+            pcall(function() state.update.Enabled = (not state.updating and (changed or canCreate)) and "Yes" or "No" end)
         end
         return coloredTextLayers(table.concat({
             string.format("%s | %d fixture%s", tostring(info.feature or "UNRESOLVED"),
@@ -630,21 +819,8 @@ local function render(state)
         local changed = state.currentRecipe and state.currentNewPreset
             and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
             and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
-        pcall(function() state.update.Enabled = changed and "Yes" or "No" end)
-    end
-    if state and state.updateCurrent then
-        local available = state.currentSourceIsCurrent and state.currentRecipe
-            and state.currentNewPreset and state.currentGroup
-            and state.currentSequence and state.currentCue and state.currentPart
-            and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-            and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset)
-        pcall(function() state.updateCurrent.Enabled = available and "Yes" or "No" end)
-    end
-    if state and state.updateNew then
-        local available = state.currentRecipe and state.currentNewPreset and state.currentGroup
-            and state.currentSequence and state.currentCue and state.currentPart
-            and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
-        pcall(function() state.updateNew.Enabled = available and "Yes" or "No" end)
+        local canCreate = canCreateRecipe(state)
+        pcall(function() state.update.Enabled = (not state.updating and (changed or canCreate)) and "Yes" or "No" end)
     end
     return coloredTextLayers(table.concat(lines, "\n"))
 end
@@ -658,7 +834,118 @@ local function deleteHandle(handle)
 end
 
 local function stopState(state)
-    if state then state.running = false end
+    if state then
+        state.running = false
+        for _, entry in pairs(state.poolMarkers or {}) do deleteHandle(entry.overlay) end
+        state.poolMarkers = {}
+    end
+end
+
+local function recipePoolReferences(state)
+    local references = {}
+    local function add(object)
+        local key = commandAddress(object)
+        if key then references[key] = object end
+    end
+    local function addRecipe(recipe)
+        for _, name in ipairs({ "Selection", "Values", "MAtricks", "Filter", "World", "Generator" }) do
+            add(safe(function() return recipe[name] end))
+        end
+    end
+    if state.currentRecipe then
+        addRecipe(state.currentRecipe)
+    else
+        for _, item in ipairs(state.matchingCandidates or {}) do addRecipe(item.recipe) end
+    end
+    add(state.currentGroup)
+    return references
+end
+
+local function clearPoolMarkers(state)
+    for _, entry in pairs(state.poolMarkers or {}) do deleteHandle(entry.overlay) end
+    state.poolMarkers = {}
+end
+
+local function refreshPoolMarkers(state)
+    if state.poolBlink == false or not state.running then clearPoolMarkers(state); return end
+    state.poolBlinkTicks = (state.poolBlinkTicks or 0) + 1
+    -- Pulse existing frames at 4 Hz without rescanning the UI tree. Pool lookup
+    -- remains at 2 Hz, so the faster animation does not double traversal cost.
+    state.poolBlinkOn = not state.poolBlinkOn
+    local pulseColor = state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
+    for _, entry in pairs(state.poolMarkers or {}) do
+        pcall(function()
+            entry.overlay.Visible = "Yes"
+            entry.overlay.BackColor = pulseColor
+        end)
+    end
+    if state.poolBlinkTicks % 2 ~= 0 then return end
+    local references = recipePoolReferences(state)
+    local markers, found = state.poolMarkers or {}, {}
+    state.poolMarkers = markers
+    local visited, budget = {}, 6000
+    local function uiChildren(object)
+        local result = safe(function() return object:UIChildren() end)
+        return type(result) == "table" and result or children(object)
+    end
+    local function visit(node, depth)
+        if not node or visited[node] or depth > 20 or budget <= 0 then return end
+        visited[node], budget = true, budget - 1
+        if node == state.window then return end
+        local kind = class(node)
+        if string.find(kind, "PoolLayoutGrid", 1, true) then
+            local pool = safe(function() return node.PoolObject end)
+            for _, button in ipairs(uiChildren(node)) do
+                local index = tonumber(property(button, "ObjectIndex"))
+                local object = index and safe(function() return pool:Ptr(index) end) or nil
+                local key = commandAddress(object)
+                if key and references[key] then
+                    found[button] = true
+                    local entry = markers[button]
+                    if entry and callable("IsObjectValid") and not safe(IsObjectValid, entry.overlay) then
+                        markers[button], entry = nil, nil
+                    end
+                    if not entry then
+                        local overlay = safe(function() return button:Append("UIObject") end)
+                        if overlay then
+                            local ok = pcall(function()
+                                overlay.Name = "RecipeTrackingPoolMarker"
+                                overlay.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
+                                overlay.Texture = "frame0"
+                                overlay.BackColor = pulseColor
+                                overlay.HasHover = "No"
+                                overlay.Interactive = "No"
+                            end)
+                            if ok then
+                                entry = { overlay = overlay }
+                                markers[button] = entry
+                            else
+                                deleteHandle(overlay)
+                            end
+                        end
+                    end
+                    if entry then
+                        pcall(function()
+                            entry.overlay.W = button.W
+                            entry.overlay.H = button.H
+                            entry.overlay.Visible = "Yes"
+                            entry.overlay.BackColor = pulseColor
+                        end)
+                    end
+                end
+            end
+            return
+        end
+        for _, child in ipairs(uiChildren(node)) do visit(child, depth + 1) end
+    end
+    if callable("GetDisplayByIndex") then
+        for index = 1, 7 do visit(safe(GetDisplayByIndex, index), 0) end
+    elseif callable("GetFocusDisplay") then
+        visit(safe(GetFocusDisplay), 0)
+    end
+    for button, entry in pairs(markers) do
+        if not found[button] then deleteHandle(entry.overlay); markers[button] = nil end
+    end
 end
 
 signalTable.StopRecipeTrackingInspector = function()
@@ -671,9 +958,22 @@ signalTable.ToggleRecipeTrackingDetails = function()
     local state = _G[STATE_KEY]
     if not state then return end
     state.expanded = not state.expanded
+    state.autoFitLines = nil
     if state.detail then state.detail.Text = state.expanded and "COMPACT" or "DETAIL" end
     if state.window then state.window.H = state.expanded and DETAIL_HEIGHT or COMPACT_HEIGHT end
     state.forceRefresh = true
+end
+
+local function fitCompactWindowToText(state, text)
+    if not state or not state.window or state.expanded then return end
+    local visualLines = 0
+    for line in (tostring(text or "") .. "\n"):gmatch("(.-)\n") do
+        visualLines = visualLines + math.max(1, math.ceil(#line / 58))
+    end
+    if state.autoFitLines ~= visualLines then
+        state.window.H = math.min(720, math.max(COMPACT_HEIGHT, 92 + visualLines * 20))
+        state.autoFitLines = visualLines
+    end
 end
 
 local STYLE_KEYS = { "Transparent75", "Transparent50", "Background" }
@@ -762,10 +1062,35 @@ end
 
 signalTable.SelectRecipeTrackingGroup = function()
     local state = _G[STATE_KEY]
-    local command = state and groupCommand(state.currentGroup) or nil
+    if not state or state.updating then return end
+    render(state)
+    local candidates = state.matchingCandidates or {}
+    local group = state.currentGroup
+    if #candidates > 1 then
+        local commands = { { value = 0, name = "CANCEL" } }
+        for index, item in ipairs(candidates) do
+            commands[#commands + 1] = {
+                value = index,
+                name = (groupCommand(item.group) or "Group") .. " " .. label(item.group)
+            }
+        end
+        local result = safe(MessageBox, {
+            title = "Select Group",
+            message = "Choose the Group to select and use for ORIGINAL CONTENT / NEW CONTENT.",
+            commands = commands
+        })
+        if type(result) ~= "table" or result.success ~= true or not candidates[result.result] then return end
+        group = candidates[result.result].group
+    end
+    local command = groupCommand(group)
     if command and callable("Cmd") then
         safe(Cmd, "ClearSelection")
-        safe(Cmd, "SelectFixtures " .. command)
+        local result = safe(Cmd, "SelectFixtures " .. command)
+        if result == "OK" then
+            state.targetGroup = group
+            state.creationGroupOverride = group
+            state.forceRefresh = true
+        end
     end
 end
 
@@ -799,7 +1124,7 @@ local function updateRecipeTrackingValue(updateMode)
     end
     local createRecipe, createCommand, groupAssignCommand = updateMode == "new", nil, nil
     if createRecipe then
-        local wantedPart = partNumber(state.currentPart)
+        local wantedPart = partNumber(state.currentPart) or 0
         local currentPart = wantedPart ~= nil and findCuePart(state.currentCue, wantedPart) or nil
         local recipeIndex = currentPart and nextRecipeIndex(currentPart) or 1
         recipeAddress = newCueRecipeCommandAddress(state.currentSequence, state.currentCue,
@@ -826,26 +1151,6 @@ local function updateRecipeTrackingValue(updateMode)
         return
     end
 
-    local confirmation = safe(MessageBox, {
-        title = "Confirm Recipe Update",
-        message = table.concat({
-            "Action: " .. (createRecipe and "UPDATE NEW CONTENT"
-                or (updateMode == "current" and "UPDATE CURRENT CUE" or "UPDATE ORIGINAL")),
-            "Target: " .. recipeAddress,
-            "Old: " .. (createRecipe and "NEW RECIPE" or presetText(oldPreset)),
-            "New: " .. presetText(newPreset),
-            "",
-            "Remove from Programmer: " .. table.concat(assignedAttributes, ", "),
-            "",
-            "Both changes will be available as one Oops (Undo)."
-        }, "\n"),
-        commands = {
-            { value = 1, name = "UPDATE" },
-            { value = 0, name = "CANCEL" }
-        }
-    })
-    if type(confirmation) ~= "table" or confirmation.success ~= true or confirmation.result ~= 1 then return end
-
     state.updating = true
     local undo = safe(CreateUndo, "Update Recipe Values")
     if undo == nil then
@@ -860,9 +1165,10 @@ local function updateRecipeTrackingValue(updateMode)
         if createFeedback == "OK" then groupFeedback = safe(Cmd, groupAssignCommand, undo) end
     end
     local command = "Assign " .. newAddress .. " At " .. recipeAddress .. " Property \"Values\""
-    local assignFeedback = safe(Cmd, command, undo)
+    local assignFeedback = (createFeedback == "OK" and groupFeedback == "OK")
+        and safe(Cmd, command, undo) or "SKIPPED"
     local clearFeedback, clearCommand = "OK", nil
-    for _, attributeName in ipairs(assignedAttributes) do
+    for _, attributeName in ipairs(assignFeedback == "OK" and assignedAttributes or {}) do
         local safeName = string.gsub(tostring(attributeName), "[\"\r\n]", "")
         local attributeCommand = "Off Attribute \"" .. safeName .. "\""
         local result = safe(Cmd, attributeCommand, undo)
@@ -921,6 +1227,74 @@ signalTable.UpdateNewCueRecipe = function()
     updateRecipeTrackingValue("new")
 end
 
+signalTable.ShowRecipeTrackingUpdateMenu = function()
+    local state = _G[STATE_KEY]
+    if not state or state.updating then return end
+    render(state)
+    if not state.currentGroup and #(state.newGroupCandidates or {}) > 1 then
+        local choices = { { value = 0, name = "CANCEL" } }
+        local groups = state.newGroupCandidates
+        for index, group in ipairs(groups) do
+            choices[#choices + 1] = { value = index, name = groupCommand(group) .. " " .. label(group) }
+        end
+        local choice = safe(MessageBox, {
+            title = "Choose Group",
+            message = "These Groups contain the same selected fixtures. Choose the Group for NEW CONTENT.",
+            commands = choices
+        })
+        if type(choice) ~= "table" or choice.success ~= true or not groups[choice.result] then return end
+        state.creationGroupOverride = groups[choice.result]
+        render(state)
+    end
+    local commands = { { value = 0, name = "CANCEL" } }
+    local hasPreset = state.currentRecipe and state.currentNewPreset
+        and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
+    if hasPreset and commandAddress(state.currentOldPreset) ~= commandAddress(state.currentNewPreset) then
+        commands[#commands + 1] = { value = 1, name = "ORIGINAL CONTENT" }
+    end
+    if canCreateRecipe(state) and state.currentGroup then
+        commands[#commands + 1] = { value = 2, name = "NEW CONTENT" }
+    end
+    local result = safe(MessageBox, {
+        title = "Update Recipe",
+        message = "Group: " .. label(state.currentGroup) ..
+            "\nSource Cue: " .. (state.currentRecipe and cueLabel(state.currentSourceCue) or "NONE") ..
+            "\nCurrent Cue: " .. cueLabel(state.currentCue) ..
+            "\nOld: " .. presetText(state.currentOldPreset) ..
+            "\nNew: " .. presetText(state.currentNewPreset) ..
+            "\n\nORIGINAL CONTENT replaces the source Recipe." ..
+            "\nNEW CONTENT appends a Recipe in the current Cue, Part " .. tostring(partNumber(state.currentPart) or 0) .. "." ..
+            "\nChoose an action to apply now. Use Oops once to undo.",
+        commands = commands
+    })
+    if type(result) ~= "table" or result.success ~= true then return end
+    if result.result == 1 then updateRecipeTrackingValue("original")
+    elseif result.result == 2 then updateRecipeTrackingValue("new") end
+end
+
+signalTable.ShowRecipeTrackingMoreMenu = function()
+    local state = _G[STATE_KEY]
+    if not state then return end
+    local result = safe(MessageBox, {
+        title = "Display Options",
+        message = "View: " .. (state.expanded and "Detailed" or "Compact") ..
+            "\nBackground: " .. STYLE_LABELS[state.styleIndex or 1],
+        commands = {
+            { value = 1, name = state.expanded and "SHOW COMPACT" or "SHOW DETAILS" },
+            { value = 2, name = "CYCLE BACKGROUND" },
+            { value = 3, name = state.poolBlink == false and "POOL BLINK ON" or "POOL BLINK OFF" },
+            { value = 0, name = "CLOSE" }
+        }
+    })
+    if type(result) ~= "table" or result.success ~= true then return end
+    if result.result == 1 then signalTable.ToggleRecipeTrackingDetails()
+    elseif result.result == 2 then signalTable.CycleRecipeTrackingStyle()
+    elseif result.result == 3 then
+        state.poolBlink = state.poolBlink == false
+        if not state.poolBlink then clearPoolMarkers(state) end
+    end
+end
+
 local function batchUpdateItems(sequence, currentCue, fixtures)
     local writable, notes, seenRecipe = {}, {}, {}
     for _, info in ipairs(readAllProgrammerFeatures(fixtures)) do
@@ -928,6 +1302,14 @@ local function batchUpdateItems(sequence, currentCue, fixtures)
             notes[#notes + 1] = tostring(info.feature) .. ": REVIEW ONLY (raw, Phaser, or ambiguous)"
         else
             local candidates = scanTracking(sequence, currentCue, fixtures, info)
+            local state = _G[STATE_KEY]
+            if state and state.targetGroup and #candidates > 1 then
+                local filtered = {}
+                for _, candidate in ipairs(candidates) do
+                    if sameReference(candidate.group, state.targetGroup) then filtered[#filtered + 1] = candidate end
+                end
+                if #filtered > 0 then candidates = filtered end
+            end
             if #candidates == 1 then
                 local item = candidates[1]
                 if sameReference(item.values, info.preset) then
@@ -942,7 +1324,7 @@ local function batchUpdateItems(sequence, currentCue, fixtures)
             elseif #candidates == 0 then
                 notes[#notes + 1] = tostring(info.feature) .. ": NO MATCHING TRACKING RECIPE"
             else
-                notes[#notes + 1] = string.format("%s: AMBIGUOUS (%d matching Recipes)",
+                notes[#notes + 1] = string.format("%s: %d matching Groups - choose SELECT GROUP",
                     tostring(info.feature), #candidates)
             end
         end
@@ -975,7 +1357,7 @@ local function updateRecipeTrackingBatch()
 
     local removeAttributes, seenAttribute = {}, {}
     local lines = {
-        "BATCH UPDATE - " .. #writable .. " feature(s) as one Oops (Undo)"
+        "READY: " .. #writable .. "    SKIPPED: " .. #notes .. "\nMode: Update source Recipes"
     }
     for index, item in ipairs(writable) do
         local info = item.info
@@ -985,10 +1367,12 @@ local function updateRecipeTrackingBatch()
             notify("Batch Update", tostring(info.feature) .. ": could not resolve command addresses. No update was performed.")
             return
         end
-        lines[#lines + 1] = string.format("%d) %s", index, tostring(info.feature))
-        lines[#lines + 1] = "   Target: " .. recipeAddress
-        lines[#lines + 1] = "   Old: " .. presetText(item.item.values, info.feature)
-        lines[#lines + 1] = "   New: " .. presetText(info.preset, info.feature)
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = string.format("%d. %s | Cue %s | Part %s | Recipe %s", index,
+            tostring(info.feature), cueLabel(item.item.cue), tostring(partNumber(item.item.part)),
+            tostring(item.item.recipeIndex or recipeNumber(item.item.recipe) or "?"))
+        lines[#lines + 1] = "   Group: " .. label(item.item.group)
+        lines[#lines + 1] = "   " .. presetText(item.item.values, info.feature) .. "  ->  " .. presetText(info.preset, info.feature)
         for _, attributeName in ipairs(info.attributes or {}) do
             if not seenAttribute[attributeName] then
                 seenAttribute[attributeName] = true
@@ -1006,10 +1390,10 @@ local function updateRecipeTrackingBatch()
     lines[#lines + 1] = "All Assigns and Programmer cleanup will be available as one Oops (Undo)."
 
     local confirmation = safe(MessageBox, {
-        title = "Confirm Batch Update",
+        title = "Batch Preview",
         message = table.concat(lines, "\n"),
         commands = {
-            { value = 1, name = "UPDATE ALL" },
+            { value = 1, name = "APPLY ALL" },
             { value = 0, name = "CANCEL" }
         }
     })
@@ -1114,7 +1498,7 @@ local function processPendingVerification(state)
     if #failures == 0 then
         state.updating = false
         state.forceRefresh = true
-        notify("Recipe Updated", "Recipe Values updated and the assigned Attributes removed from the Programmer.\nUse Oops once to undo all changes.")
+        if callable("Printf") then Printf("[RecipeTracking] Updated %d Recipe(s). Use Oops once to undo.", #(pending.targets or {})) end
         return
     end
 
@@ -1158,14 +1542,12 @@ local function createPanel(state)
     window.W = PANEL_WIDTH
     window.H = COMPACT_HEIGHT
     window.Columns = 1
-    window.Rows = 4
+    window.Rows = 3
     window[1][1].SizePolicy = "Fixed"
     window[1][1].Size = "36"
     window[1][2].SizePolicy = "Stretch"
     window[1][3].SizePolicy = "Fixed"
     window[1][3].Size = "44"
-    window[1][4].SizePolicy = "Fixed"
-    window[1][4].Size = "44"
     window.AutoClose = "No"
     window.CloseOnEscape = "No"
     pcall(function() window.WantsModal = "0" end)
@@ -1262,117 +1644,42 @@ local function createPanel(state)
     pcall(function() presetHighlights.BackColor = "Global.Transparent" end)
     pcall(function() presetHighlights.TextColor = "Global.SuccessText" end)
 
-    local actions = safe(function() return window:Append("UILayoutGrid") end)
-    if actions == nil then deleteHandle(window) return nil, "could not append action row" end
-    actions.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
-    actions.Columns = 3
-    actions.Rows = 1
-
     local footer = safe(function() return window:Append("UILayoutGrid") end)
-    if footer == nil then deleteHandle(window) return nil, "could not append utility row" end
-    footer.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
-    footer.Columns = 6
+    if footer == nil then deleteHandle(window) return nil, "could not append toolbar" end
+    footer.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
+    footer.Columns = 4
     footer.Rows = 1
 
-    local detail = safe(function() return footer:Append("Button") end)
-    if detail == nil then deleteHandle(window) return nil, "could not append detail button" end
-    detail.Name = "RecipeTrackingInspectorDetail"
-    detail.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-    detail.Text = "DETAIL"
-    detail.Font = "Medium20"
-    detail.PluginComponent = componentHandle
-    detail.Clicked = "ToggleRecipeTrackingDetails"
-
-    local style = safe(function() return footer:Append("Button") end)
-    if style == nil then deleteHandle(window) return nil, "could not append style button" end
-    style.Name = "RecipeTrackingInspectorStyle"
-    style.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
-    style.Text = "STYLE 75"
-    style.Font = "Medium20"
-    style.PluginComponent = componentHandle
-    style.Clicked = "CycleRecipeTrackingStyle"
-
-    local selectGroup = safe(function() return footer:Append("Button") end)
-    if selectGroup == nil then deleteHandle(window) return nil, "could not append select Group button" end
-    selectGroup.Name = "RecipeTrackingInspectorSelectGroup"
-    selectGroup.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-    selectGroup.Text = "SELECT GROUP"
-    selectGroup.Font = "Medium20"
-    selectGroup.PluginComponent = componentHandle
-    selectGroup.Clicked = "SelectRecipeTrackingGroup"
-
-    local batch = safe(function() return footer:Append("Button") end)
-    if batch == nil then deleteHandle(window) return nil, "could not append batch preview button" end
-    batch.Name = "RecipeTrackingInspectorBatch"
-    batch.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-    batch.Text = "BATCH"
-    batch.Font = "Medium20"
-    batch.PluginComponent = componentHandle
-    batch.Clicked = "ShowRecipeTrackingBatchPreview"
-
-    local batchUpdate = safe(function() return footer:Append("Button") end)
-    if batchUpdate == nil then deleteHandle(window) return nil, "could not append batch update button" end
-    batchUpdate.Name = "RecipeTrackingInspectorBatchUpdate"
-    batchUpdate.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
-    batchUpdate.Text = "BATCH UPDATE"
-    batchUpdate.Font = "Medium20"
-    batchUpdate.PluginComponent = componentHandle
-    batchUpdate.Clicked = "UpdateRecipeTrackingBatch"
-
-    detail.Anchors = { left = 3, right = 3, top = 0, bottom = 0 }
-    style.Anchors = { left = 4, right = 4, top = 0, bottom = 0 }
-
-    local update = safe(function() return actions:Append("Button") end)
-    if update == nil then deleteHandle(window) return nil, "could not append update button" end
-    update.Name = "RecipeTrackingInspectorUpdate"
-    update.Anchors = { left = 0, right = 0, top = 0, bottom = 0 }
-    update.Text = "UPDATE ORIGINAL"
-    update.Font = "Medium20"
-    update.PluginComponent = componentHandle
-    update.Clicked = "UpdateRecipeTrackingValue"
-    update.Enabled = "No"
-
-    local updateCurrent = safe(function() return actions:Append("Button") end)
-    if updateCurrent == nil then deleteHandle(window) return nil, "could not append current update button" end
-    updateCurrent.Name = "RecipeTrackingInspectorUpdateCurrent"
-    updateCurrent.Anchors = { left = 1, right = 1, top = 0, bottom = 0 }
-    updateCurrent.Text = "UPDATE CURRENT CUE"
-    updateCurrent.Font = "Medium20"
-    updateCurrent.PluginComponent = componentHandle
-    updateCurrent.Clicked = "UpdateCurrentCueRecipe"
-    updateCurrent.Enabled = "No"
-
-    local updateNew = safe(function() return actions:Append("Button") end)
-    if updateNew == nil then deleteHandle(window) return nil, "could not append new content button" end
-    updateNew.Name = "RecipeTrackingInspectorUpdateNew"
-    updateNew.Anchors = { left = 2, right = 2, top = 0, bottom = 0 }
-    updateNew.Text = "UPDATE NEW CONTENT"
-    updateNew.Font = "Medium20"
-    updateNew.PluginComponent = componentHandle
-    updateNew.Clicked = "UpdateNewCueRecipe"
-    updateNew.Enabled = "No"
-
-    local stop = safe(function() return footer:Append("Button") end)
-    if stop == nil then deleteHandle(window) return nil, "could not append stop button" end
-    stop.Name = "RecipeTrackingInspectorStop"
-    stop.Anchors = { left = 5, right = 5, top = 0, bottom = 0 }
-    stop.Text = "STOP"
-    stop.Font = "Medium20"
-    stop.PluginComponent = componentHandle
-    stop.Clicked = "StopRecipeTrackingInspector"
+    local buttons = {}
+    local definitions = {
+        { "SelectGroup", "SELECT GROUP", "SelectRecipeTrackingGroup" },
+        { "Update", "UPDATE", "ShowRecipeTrackingUpdateMenu" },
+        { "Batch", "BATCH", "UpdateRecipeTrackingBatch" },
+        { "More", "MORE", "ShowRecipeTrackingMoreMenu" }
+    }
+    for index, definition in ipairs(definitions) do
+        local button = safe(function() return footer:Append("Button") end)
+        if button == nil then deleteHandle(window) return nil, "could not append toolbar button" end
+        button.Name = "RecipeTrackingInspector" .. definition[1]
+        button.Anchors = { left = index - 1, right = index - 1, top = 0, bottom = 0 }
+        button.Text = definition[2]
+        button.Font = "Medium20"
+        button.PluginComponent = componentHandle
+        button.Clicked = definition[3]
+        buttons[index] = button
+    end
+    buttons[2].Enabled = "No"
     local resize = safe(function() return window:Append("ResizeCorner") end)
     if resize ~= nil then
         resize.Name = "Resizer"
-        resize.Anchors = { left = 0, right = 0, top = 3, bottom = 3 }
+        resize.Anchors = { left = 0, right = 0, top = 2, bottom = 2 }
         resize.AlignmentH = "Right"
         resize.AlignmentV = "Bottom"
     end
-
-    state.window, state.panel, state.sourceHighlights, state.currentHighlights, state.presetHighlights,
-        state.detail, state.style, state.selectGroup, state.batch, state.batchUpdate,
-        state.update, state.updateCurrent, state.updateNew, state.stop =
-        window, panel, sourceHighlights, currentHighlights, presetHighlights, detail, style, selectGroup, batch,
-        batchUpdate, update, updateCurrent, updateNew, stop
+    state.window, state.panel = window, panel
+    state.sourceHighlights, state.currentHighlights, state.presetHighlights =
+        sourceHighlights, currentHighlights, presetHighlights
+    state.selectGroup, state.update, state.batch = buttons[1], buttons[2], buttons[3]
     state.titleButton = titleButton
     state.expanded = false
     state.styleIndex = 1
@@ -1406,6 +1713,7 @@ local function main()
                 "\n\nStatus: ERROR\n" .. tostring(text)
             sourceHighlightText, currentHighlightText, presetHighlightText = "", "", ""
         end
+        fitCompactWindowToText(state, text)
         if text ~= previous or sourceHighlightText ~= previousSourceHighlights
             or currentHighlightText ~= previousCurrentHighlights
             or presetHighlightText ~= previousPresetHighlights or state.forceRefresh then
@@ -1419,9 +1727,12 @@ local function main()
             pcall(function() state.currentHighlights.Text = currentHighlightText or "" end)
             pcall(function() state.presetHighlights.Text = presetHighlightText or "" end)
         end
+        local markersOK = pcall(refreshPoolMarkers, state)
+        if not markersOK then clearPoolMarkers(state) end
         coroutine.yield(REFRESH_SECONDS)
     end
 
+    clearPoolMarkers(state)
     deleteHandle(state.window)
     if _G[STATE_KEY] == state then _G[STATE_KEY] = nil end
 end
