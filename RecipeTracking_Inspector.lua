@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.11"
+local PLUGIN_VERSION = "0.7.0.12"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
@@ -525,6 +525,158 @@ local function valuesMatchFeature(values, feature)
     if string.find(identity, string.lower(feature), 1, true) then return true end
     if presetDataHasFeature(values, feature) then return true end
     return string.find(identity, "presetpools.all", 1, true) ~= nil
+end
+
+-- Recipe objects retain their Selection and Values/Generator references even
+-- when the cooked channel data is large.  Use that cheap object tree as the
+-- medium resolver between the current-Cue direct path and GetPresetData.
+-- The supported lanes mirror grandMA3's standard feature Preset pools.
+local RECIPE_FEATURES = { "Dimmer", "Position", "Gobo", "Color", "Beam",
+    "Focus", "Control", "Shapers", "Other" }
+local RECIPE_FEATURE_SET = {
+    Dimmer = true, Position = true, Gobo = true, Color = true, Beam = true,
+    Focus = true, Control = true, Shapers = true
+}
+local NUMBERED_PRESET_FEATURES = {
+    [1] = "Dimmer", [2] = "Position", [3] = "Gobo", [4] = "Color",
+    [5] = "Beam", [6] = "Focus", [7] = "Control", [8] = "Shapers"
+}
+
+local function recipeReferenceFeatures(reference)
+    local result, seen, all = {}, {}, false
+    local function add(feature)
+        feature = normalizeFeature(feature)
+        if feature ~= "" and feature ~= "UNRESOLVED" and not seen[feature] then
+            seen[feature], result[#result + 1] = true, feature
+        end
+    end
+    local function addTextHints(value)
+        local text = string.lower(tostring(value or ""))
+        if string.find(text, "dimmer", 1, true) then add("Dimmer") end
+        if string.find(text, "position", 1, true) or string.find(text, "pan", 1, true)
+            or string.find(text, "tilt", 1, true) or string.find(text, "fly", 1, true) then add("Position") end
+        if string.find(text, "gobo", 1, true) then add("Gobo") end
+        if string.find(text, "color", 1, true) or string.find(text, "colour", 1, true) then add("Color") end
+        if string.find(text, "beam", 1, true) or string.find(text, "shutter", 1, true)
+            or string.find(text, "strobe", 1, true) then add("Beam") end
+        if string.find(text, "focus", 1, true) or string.find(text, "zoom", 1, true) then add("Focus") end
+        if string.find(text, "control", 1, true) then add("Control") end
+        if string.find(text, "shaper", 1, true) or string.find(text, "blade", 1, true)
+            or string.find(text, "framing", 1, true) then add("Shapers") end
+    end
+    if not isObjectReference(reference) then return result, false end
+    local nativeAddress = address(reference)
+    local pool = string.match(nativeAddress, "PresetPools%.([^%.]+)%.")
+    if pool and string.lower(pool) == "all" then
+        all = true
+    elseif pool then
+        local feature = normalizeFeature(pool)
+        if RECIPE_FEATURE_SET[feature] then add(feature) end
+    end
+    local numberedPool = tonumber(string.match(commandAddress(reference) or "", "^Preset%s+(%d+)%."))
+    if numberedPool and NUMBERED_PRESET_FEATURES[numberedPool] then add(NUMBERED_PRESET_FEATURES[numberedPool]) end
+
+    if isRandomGenerator(reference) then
+        local channels = safe(function() return reference.RandomChannels end)
+        if channels == nil then
+            for _, child in ipairs(children(reference)) do
+                local kind = string.lower(class(child))
+                if kind == "randomchannels" or kind == "generatorchannels" then channels = child; break end
+            end
+        end
+        for _, channel in ipairs(children(channels)) do
+            local attribute = safe(function() return channel.Attribute end)
+            local name = isObjectReference(attribute) and label(attribute)
+                or property(channel, "Attribute") or property(channel, "ATTRIBUTE")
+            local normalized = string.lower(tostring(name or "")):match("^%s*(.-)%s*$")
+            if normalized == "" or normalized == "none" or normalized == "all" then all = true else add(name) end
+        end
+    end
+
+    if isPhaserRecipePreset(reference) then
+        local visited = 0
+        local function visit(node, depth)
+            if not node or depth > 6 or visited >= 256 then return end
+            visited = visited + 1
+            if string.find(string.lower(class(node)), "phaserecipevaluesource", 1, true) then
+                for _, key in ipairs({ "Attributes", "Attribute", "Feature" }) do
+                    addTextHints(property(node, key))
+                end
+            end
+            for _, child in ipairs(children(node)) do visit(child, depth + 1) end
+        end
+        visit(reference, 0)
+    end
+    if #result == 0 and not all then
+        addTextHints(nativeAddress)
+        addTextHints(label(reference))
+    end
+    if all then
+        result, seen = {}, {}
+        for _, feature in ipairs(RECIPE_FEATURES) do add(feature) end
+    elseif #result == 0 then
+        add("Other")
+    end
+    return result, all
+end
+
+-- This intentionally mirrors the reference plugin's "first hit backwards
+-- wins" rule, but it is only a progressive result.  Group overlap, manually
+-- stored channels and releases require the later cooked-data resolver.
+local function trackedRecipeEffects(sequence, currentCue)
+    local result, rows = {}, {}
+    if not sequence or not cueNumber(currentCue) then return result end
+    local cueCount, recipeCount = 0, 0
+    for _, cue in ipairs(children(sequence)) do
+        local number = cueNumber(cue)
+        if string.lower(class(cue)) == "cue" and number and number <= cueNumber(currentCue) then
+            cueCount = cueCount + 1
+            if cueCount > MAX_CUES then error("Recipe effect scan exceeds 512 Cues") end
+            for _, part in ipairs(children(cue)) do
+                if string.lower(class(part)) == "part" then
+                    for ordinal, recipe in ipairs(children(part)) do
+                        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                            recipeCount = recipeCount + 1
+                            if recipeCount > MAX_RECIPES then error("Recipe effect scan exceeds 2048 Recipes") end
+                            rows[#rows + 1] = { cue = cue, part = part, recipe = recipe,
+                                index = recipeNumber(recipe, ordinal) or ordinal }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(rows, function(left, right)
+        local lc, rc = cueNumber(left.cue), cueNumber(right.cue)
+        if lc ~= rc then return lc > rc end
+        local lp, rp = partNumber(left.part), partNumber(right.part)
+        if lp ~= rp then return lp > rp end
+        return left.index > right.index
+    end)
+    local decided = {}
+    for _, row in ipairs(rows) do
+        local group = safe(function() return row.recipe.Selection end)
+        local reference = safe(function() return row.recipe.Generator end)
+        if not isObjectReference(reference) then reference = safe(function() return row.recipe.Values end) end
+        local groupKey = commandAddress(group) or (isObjectReference(group) and address(group) or nil)
+        if groupKey and isObjectReference(reference) then
+            local features = recipeReferenceFeatures(reference)
+            local activeReference = isPhaserRecipePreset(reference) or isRandomGenerator(reference)
+            local publish = false
+            for _, feature in ipairs(features) do
+                local laneKey = groupKey .. "|" .. feature
+                if not decided[laneKey] then
+                    decided[laneKey] = true
+                    if activeReference then publish = true end
+                end
+            end
+            if publish then
+                local key = commandAddress(reference)
+                if key then result[key] = {object = reference, fixtures = {}, count = 0, progressive = true} end
+            end
+        end
+    end
+    return result
 end
 
 local function selectionRelation(group, fixtures)
@@ -1263,6 +1415,7 @@ local function refreshCueEffects(state, allowScan)
         state.effectSequenceKey, state.effectCueKey = sequenceKey, cueKey
         state.effectSequence, state.effectCue = sequence, cue
         state.currentCueEffects = currentCueRecipeEffects(cue)
+        state.progressiveEffects = nil
         if state.effectCacheSequence ~= sequenceKey then
             state.effectCacheSequence, state.effectCache, state.effectCacheOrder = sequenceKey, {}, {}
         end
@@ -1270,6 +1423,7 @@ local function refreshCueEffects(state, allowScan)
         state.activeEffects = addCurrentCueRecipeEffects(cached and cached.result or {}, state.currentCueEffects)
         logAbandonedScan(state.effectScanner)
         state.effectScanner = nil
+        state.recipeScanPending = cached == nil
         state.effectScanPending, state.effectWait = cached == nil, 1
         state.poolMarkersDirty = true
     end
@@ -1278,10 +1432,25 @@ local function refreshCueEffects(state, allowScan)
     if state.poolBlink == false or not sequence or not cue then
         logAbandonedScan(state.effectScanner)
         state.activeEffects, state.currentCueEffects, state.effectScanner = {}, {}, nil
+        state.recipeScanPending, state.progressiveEffects = false, nil
         state.effectScanPending, state.effectWait = false, 0
         return
     end
     if allowScan == false then return end
+    -- Publish inherited Recipe references on their own host tick. Returning
+    -- here guarantees the next UI pass can paint them before GetPresetData.
+    if state.recipeScanPending then
+        state.recipeScanPending = false
+        local ok, progressive = pcall(trackedRecipeEffects, sequence, cue)
+        if ok then
+            state.progressiveEffects = progressive
+            state.activeEffects = addCurrentCueRecipeEffects(progressive, state.currentCueEffects)
+            state.poolMarkersDirty = true
+        elseif callable("ErrEcho") then
+            safe(ErrEcho, "[RecipeTracking] " .. tostring(progressive))
+        end
+        return
+    end
     state.effectWait = (state.effectWait or 0) - 1
     if state.effectScanPending and not state.effectScanner and state.effectWait <= 0 then
         state.effectScanner = newCueEffectScan(sequence, cue)
@@ -1294,7 +1463,10 @@ local function refreshCueEffects(state, allowScan)
         -- large Showfiles from blocking selection and panel refresh for seconds.
         local ok, result = pcall(advanceCueEffectScan, state.effectScanner)
         if not ok or state.effectScanner.done then
-            state.activeEffects = addCurrentCueRecipeEffects(ok and result or {}, state.currentCueEffects)
+            -- A completed cooked scan is authoritative. If it aborts, retain
+            -- the progressive Recipe result instead of blanking useful markers.
+            local resolved = ok and result or state.progressiveEffects or {}
+            state.activeEffects = addCurrentCueRecipeEffects(resolved, state.currentCueEffects)
             local errorText = not ok and tostring(result) or nil
             if not ok then
                 effectScanLog(string.format("abort cue=%s advances=%d elapsed_ms=%s error=%s", cueLabel(cue),

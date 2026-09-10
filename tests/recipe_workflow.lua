@@ -505,6 +505,49 @@ local directCueState = {}
 functions.refreshCueEffects(directCueState)
 check(directCueState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
     "Current Cue Phaser Recipe must publish immediately without waiting for cooked-data scanning")
+-- The medium resolver mirrors Recipe tracking before any native cooked read.
+local inheritedEmptyPart = object("Part", "Inherited Empty Part", {Part = 0})
+local inheritedEmptyCue = object("Cue", "Inherited Empty Cue", {No = 17000}, {inheritedEmptyPart})
+local inheritedRecipeSequence = object("Sequence", "Inherited Recipe Sequence", {},
+    {phaserCueOnly, inheritedEmptyCue})
+SelectedSequence = function() return inheritedRecipeSequence end
+GetCurrentCue = function() return inheritedEmptyCue end
+local inheritedReads = 0
+GetPresetData = function(target)
+    inheritedReads = inheritedReads + 1
+    return dataByPart[target] or {}
+end
+local inheritedState = {}
+functions.refreshCueEffects(inheritedState)
+check(inheritedState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil
+        and inheritedReads == 0,
+    "Inherited Phaser Recipe must publish from the object tree before GetPresetData")
+local staticStopRow = object("StandardRecipe", "Static stop", {
+    Index = 1, Selection = group, Values = underlyingDimmer, Enabled = "Yes"
+})
+local staticStopPart = object("Part", "Static stop Part", {Part = 0}, {staticStopRow})
+local staticStopCue = object("Cue", "Static stop Cue", {No = 18000}, {staticStopPart})
+local stoppedRecipeSequence = object("Sequence", "Stopped Recipe Sequence", {},
+    {phaserCueOnly, staticStopCue})
+SelectedSequence = function() return stoppedRecipeSequence end
+GetCurrentCue = function() return staticStopCue end
+local stoppedState = {}
+functions.refreshCueEffects(stoppedState)
+check(stoppedState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] == nil,
+    "A newer static Recipe in the same Group and feature must terminate the progressive Phaser marker")
+local otherStaticStopRow = object("StandardRecipe", "Other Group static", {
+    Index = 1, Selection = otherGroup, Values = underlyingDimmer, Enabled = "Yes"
+})
+local otherStaticPart = object("Part", "Other Group Part", {Part = 0}, {otherStaticStopRow})
+local otherStaticCue = object("Cue", "Other Group Cue", {No = 18000}, {otherStaticPart})
+local otherGroupSequence = object("Sequence", "Other Group Sequence", {},
+    {phaserCueOnly, otherStaticCue})
+SelectedSequence = function() return otherGroupSequence end
+GetCurrentCue = function() return otherStaticCue end
+local otherGroupState = {}
+functions.refreshCueEffects(otherGroupState)
+check(otherGroupState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
+    "A static Recipe for another Group must not terminate the inherited Phaser marker")
 GetCurrentCue = function() return nil end
 functions.refreshCueEffects(directCueState)
 check(next(directCueState.activeEffects) == nil, "Leaving Cue must discard old scan and effects")
