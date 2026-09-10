@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.13"
+local PLUGIN_VERSION = "0.7.0.14"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
@@ -2380,14 +2380,21 @@ local function createPanel(state)
     return panel
 end
 
+local function stopExistingForLaunch(existing)
+    if type(existing) ~= "table" or not existing.running then return false end
+    local sameVersion = tostring(existing.version or "") == PLUGIN_VERSION
+    existing.running = false
+    return sameVersion
+end
+
 local function main()
     local existing = _G[STATE_KEY]
-    if type(existing) == "table" and existing.running then
-        existing.running = false
-        return
-    end
+    -- Running the same version remains an ON/OFF toggle. After importing an
+    -- update, replace the older instance in this same invocation so the user
+    -- is not left with the plugin silently stopped and no Pool frames.
+    if stopExistingForLaunch(existing) then return end
 
-    local state = { running = true }
+    local state = { running = true, version = PLUGIN_VERSION }
     _G[STATE_KEY] = state
     local panel, err = createPanel(state)
     if not panel then
