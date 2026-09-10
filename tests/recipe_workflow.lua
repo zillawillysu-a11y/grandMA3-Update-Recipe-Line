@@ -437,6 +437,34 @@ local phaserCueEffects = scanCueEffects(phaserCueSequence, phaserCueOnly)
 check(phaserCueEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"]
         and not phaserCueEffects["Preset 1.5"],
     "Cue scan must recover a custom-pool StandardRecipe with only an RT fixture handle")
+-- Native Recipe properties may expose address strings rather than handles.
+-- Match the reference plugin's Get()+ObjectList path in that data shape.
+local objectsByAddress = {
+    ["Group 1"] = group,
+    ["Preset 25.303"] = exportedSongEfx,
+    ["Preset 1.5"] = underlyingDimmer
+}
+ObjectList = function(raw)
+    local resolved = objectsByAddress[tostring(raw)]
+    return resolved and {resolved} or {}
+end
+local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
+    Index = 1, Enabled = "Yes",
+    Get = function(_, key)
+        if key == "SELECTION" then return "Group 1" end
+        if key == "VALUES" then return "Preset 25.303" end
+        return ""
+    end
+})
+local stringRecipePart = object("Part", "String Recipe Part", {Part = 0}, {stringRecipeRow})
+local stringRecipeCue = object("Cue", "String Recipe Cue", {No = 16000}, {stringRecipePart})
+local stringRecipeSequence = object("Sequence", "String Recipe Sequence", {}, {stringRecipeCue})
+check(functions.currentCueRecipeEffects(stringRecipeCue)
+        ["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
+    "Current-Cue resolver must resolve Recipe address strings through ObjectList")
+check(functions.trackedRecipeEffects(stringRecipeSequence, stringRecipeCue)
+        ["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
+    "Progressive resolver must resolve Recipe Get() address strings through ObjectList")
 GetRTChannel = function() return {} end
 phaserCueEffects = scanCueEffects(phaserCueSequence, phaserCueOnly)
 check(phaserCueEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,

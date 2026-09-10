@@ -4,25 +4,25 @@
 Deliver a useful three-tier Cue effect resolver: immediate Recipe markers, fast inherited Recipe tracking, and bounded cooked/legacy fallback. Cue-to-purple target is <= 0.3 seconds where Recipe object evidence exists.
 
 ## Current Working State
-v0.7.0.12 is deployed to the grandMA3 plugin directory. FAST publishes Phaser Recipes/Generators stored in the current Cue before the first yield. MEDIUM runs on the next host tick, scans only the bounded Cue/Part/Recipe object tree, and applies newest Recipe per exact Group+feature. SLOW retains the existing bounded `GetPresetData` channel scan and replaces the provisional result when complete; an abort retains MEDIUM markers. Completed cooked snapshots are still cached. REAL-WORLD VALIDATION PENDING.
+v0.7.0.13 is deployed to the grandMA3 plugin directory. It retains the three-tier resolver but now resolves Recipe `Selection`, `Values`, and `Generator` links whether grandMA3 exposes them as handles or address strings; strings use the reference plugin's proven `recipe:Get()` + `ObjectList()` path. MEDIUM logs its reference count or abort. SLOW retains the bounded `GetPresetData` scan. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-The user's external `recipes-highlight.xml` switches almost instantly because it reads only Recipe `SELECTION`/`VALUES` object references and never calls `GetPresetData`. Our v0.7.0.11 already marked current-Cue Phaser Recipes almost instantly, but traditional/cooked Phasers took 6-10 seconds and some never marked. v0.7.0.12 has not yet been tested in grandMA3.
+v0.7.0.12 produced no purple frames at all in the user's real Show, so that implementation is unsuccessful. The external `recipes-highlight.xml` switches almost instantly using `recipe:Get("SELECTION")`, `recipe:Get("VALUES")`, and `ObjectList(address)`. Inspection identified that v0.7.0.12's new MEDIUM path admitted only object handles, so native string links were skipped. v0.7.0.13 has not yet been tested.
 
 ## Verified Facts
-87 offline workflow assertions pass, including inherited Recipe publication before the first `GetPresetData`, same-Group/feature static termination, and isolation from other Groups. Lua and XML parse checks pass. The deployed Lua, diagnostic Lua, and Plugin XML SHA256 hashes match repository sources. Offline tests cannot prove native latency or crash freedom.
+89 offline workflow assertions pass, including native-shaped `Get()` address strings resolved through `ObjectList` for both current-Cue and progressive Recipe paths. Lua and XML parse checks pass. All three deployed SHA256 hashes match repository sources. Offline tests cannot prove native latency or marker visibility.
 
 ## Current Problem
-MEDIUM should make current and inherited Recipe-based Phaser markers appear within roughly one 0.1-second UI cycle, but native validation is required. Truly traditional/cooked Phasers with no Recipe object evidence still depend on SLOW; the existing diagnostics are needed to locate their 6-10 second cost and unresolved shapes.
+Confirm whether address-string resolution restores purple frames in the real Show. If not, `progressive cue=... refs=N` versus `progressive_abort` separates Recipe discovery from Pool UI overlay failure. Traditional/cooked Phasers with no Recipe evidence still depend on SLOW.
 
 ## Known Failed Attempts
-Four Parts per tick blocked large Shows. Repeated full scans wasted work. Render cache retained deleted Recipe rows and was removed. SheetColor.PhaserText yielded black; GroupedProgLayerActive.Phaser works. Do not increase the 32-record cooked batch as a substitute for diagnosis. MEDIUM exact-Group tracking is provisional because overlapping Groups, releases, and manually stored channels require SLOW correction.
+v0.7.0.12's handle-only MEDIUM resolver produced no purple frames in the real Show. Four Parts per tick blocked large Shows. Repeated full scans wasted work. Render cache retained deleted Recipe rows and was removed. SheetColor.PhaserText yielded black; GroupedProgLayerActive.Phaser works. Do not increase the 32-record cooked batch as a substitute for diagnosis.
 
 ## Important Files
 RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml, tests/recipe_workflow.lua, tools/run_workflow.py, tools/check_parse.py, docs/cue-effect-markers.md, AGENTS.md.
 
 ## Current Branch / Commit
-qwen, checkpoint subject: `perf: add progressive recipe effect resolver`. Never merge to main without explicit user approval.
+qwen. Pending checkpoint subject: `fix: resolve native Recipe address strings`. Never merge to main without explicit user approval.
 
 ## Exact Next Action
-Reload/import v0.7.0.12 in grandMA3 and cold-test: (1) a Phaser Recipe in the current Cue, (2) an inherited Phaser Recipe from an earlier Cue, (3) a later static Recipe in the same Group+feature, and (4) one traditional/cooked Phaser with no Recipe row. Confirm Recipe cases reach purple within <=0.3 seconds and collect `[RecipeTracking][EffectScan]` history for the traditional case. Also revisit each Cue once to distinguish cached timing.
+Reload/import v0.7.0.13 and cold-test one Cue that should be purple. If it still is not, report the `[RecipeTracking][EffectScan] progressive cue=... refs=N` line (or `progressive_abort`) from Command Line History; this is the minimum evidence needed for the next source change.

@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.12"
+local PLUGIN_VERSION = "0.7.0.13"
 local STATE_KEY = "RecipeTrackingInspectorState"
 local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
 local MAX_SELECTION = 2048
@@ -248,6 +248,29 @@ local function isObjectReference(value)
     if type(value) == "userdata" then return true end
     if type(value) ~= "table" then return false end
     return type(value.GetClass) == "function" or type(value.ToAddr) == "function"
+end
+
+-- Depending on the grandMA3 object/property path, a Recipe link may be
+-- exposed either as a handle or as the same address string returned by
+-- recipe:Get(). The reference plugin succeeds by resolving those strings
+-- through ObjectList, so every Recipe reader here accepts both forms.
+local function resolveObjectReference(value)
+    if isObjectReference(value) then return value end
+    local text = value ~= nil and tostring(value) or ""
+    if text == "" or not callable("ObjectList") then return nil end
+    local list = safe(ObjectList, text)
+    return type(list) == "table" and list[1] or nil
+end
+
+local function recipeField(recipe, name)
+    local direct = safe(function() return recipe[name] end)
+    local object = resolveObjectReference(direct)
+    if object then return object, tostring(direct) end
+    local raw = safe(function() return recipe:Get(string.upper(name)) end)
+    object = resolveObjectReference(raw)
+    if object then return object, tostring(raw) end
+    local text = raw ~= nil and tostring(raw) or (direct ~= nil and tostring(direct) or "")
+    return nil, text
 end
 
 local function readProgrammer(fixtures)
@@ -655,10 +678,11 @@ local function trackedRecipeEffects(sequence, currentCue)
     end)
     local decided = {}
     for _, row in ipairs(rows) do
-        local group = safe(function() return row.recipe.Selection end)
-        local reference = safe(function() return row.recipe.Generator end)
-        if not isObjectReference(reference) then reference = safe(function() return row.recipe.Values end) end
+        local group, groupText = recipeField(row.recipe, "Selection")
+        local reference = recipeField(row.recipe, "Generator")
+        if not reference then reference = recipeField(row.recipe, "Values") end
         local groupKey = commandAddress(group) or (isObjectReference(group) and address(group) or nil)
+            or (groupText ~= "" and groupText or nil)
         if groupKey and isObjectReference(reference) then
             local features = recipeReferenceFeatures(reference)
             local activeReference = isPhaserRecipePreset(reference) or isRandomGenerator(reference)
@@ -729,11 +753,11 @@ local function scanTracking(sequence, currentCue, fixtures, info)
                         if recipeCount >= MAX_RECIPES then break end
                         if isStandardRecipe(recipe) and recipeEnabled(recipe) then
                             recipeCount = recipeCount + 1
-                            local selection = safe(function() return recipe.Selection end)
+                            local selection = recipeField(recipe, "Selection")
                             -- Standard Generator recipe lines store the usable
                             -- handle in Generator; Values is only the display name.
-                            local generator = safe(function() return recipe.Generator end)
-                            local values = generator or safe(function() return recipe.Values end)
+                            local generator = recipeField(recipe, "Generator")
+                            local values = generator or recipeField(recipe, "Values")
                             local subset, exact, selectedCount, groupCount = selectionRelation(selection, fixtures)
                             if subset and valuesMatchFeature(values, info.feature) then
                                 candidates[#candidates + 1] = {
@@ -865,9 +889,8 @@ local function render(state)
         lines[#lines + 1] = "\nMode: EDIT RECIPE"
         if #direct == 1 then
             local recipe = direct[1]
-            local group = safe(function() return recipe.Selection end)
-            local values = safe(function() return recipe.Generator end)
-                or safe(function() return recipe.Values end)
+            local group = recipeField(recipe, "Selection")
+            local values = recipeField(recipe, "Generator") or recipeField(recipe, "Values")
             if state then
                 state.currentGroup = group
                 state.currentRecipe = recipe
@@ -1046,7 +1069,7 @@ local function recipePoolReferences(state)
     end
     local function addRecipe(recipe)
         for _, name in ipairs({ "Selection", "Values", "MAtricks", "Filter", "World", "Generator" }) do
-            add(safe(function() return recipe[name] end))
+            add(recipeField(recipe, name))
         end
     end
     if state.currentRecipe then
@@ -1224,10 +1247,10 @@ local function scanCueEffectPart(scan, part)
     for ordinal, recipe in ipairs(children(part)) do
         scanCheckpoint(scan)
         if isStandardRecipe(recipe) and recipeEnabled(recipe) then
-            local group = safe(function() return recipe.Selection end)
+            local group = recipeField(recipe, "Selection")
             local members = safe(function() return group.Selection end)
-            local ref = safe(function() return recipe.Generator end)
-            if not isObjectReference(ref) then ref = safe(function() return recipe.Values end) end
+            local ref = recipeField(recipe, "Generator")
+            if not ref then ref = recipeField(recipe, "Values") end
             if type(members) == "table" and isObjectReference(ref) then
                 local selection = {}
                 for _, member in pairs(members) do
@@ -1384,8 +1407,8 @@ local function currentCueRecipeEffects(cue)
         if string.lower(class(part)) == "part" then
             for _, recipe in ipairs(children(part)) do
                 if isStandardRecipe(recipe) and recipeEnabled(recipe) then
-                    local ref = safe(function() return recipe.Generator end)
-                    if not isObjectReference(ref) then ref = safe(function() return recipe.Values end) end
+                    local ref = recipeField(recipe, "Generator")
+                    if not ref then ref = recipeField(recipe, "Values") end
                     if isObjectReference(ref) and (isPhaserRecipePreset(ref) or isRandomGenerator(ref)) then
                         local key = commandAddress(ref)
                         if key then result[key] = {object = ref, fixtures = {}, count = 0} end
@@ -1446,7 +1469,11 @@ local function refreshCueEffects(state, allowScan)
             state.progressiveEffects = progressive
             state.activeEffects = addCurrentCueRecipeEffects(progressive, state.currentCueEffects)
             state.poolMarkersDirty = true
+            local count = 0
+            for _ in pairs(progressive) do count = count + 1 end
+            effectScanLog(string.format("progressive cue=%s refs=%d", cueLabel(cue), count))
         elseif callable("ErrEcho") then
+            effectScanLog(string.format("progressive_abort cue=%s error=%s", cueLabel(cue), tostring(progressive)))
             safe(ErrEcho, "[RecipeTracking] " .. tostring(progressive))
         end
         return
