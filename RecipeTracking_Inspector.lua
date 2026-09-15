@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.15"
+local PLUGIN_VERSION = "0.7.0.16"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
 -- disables both its purple Pool frames and all automatic Cue/Recipe/cooked-data
@@ -706,6 +706,66 @@ local function trackedRecipeEffects(sequence, currentCue)
     return result
 end
 
+-- Resolve only the Recipe references that are still tracked for the currently
+-- selected Group. This keeps the useful green Group/Recipe pulse without
+-- enabling Cue-wide Phaser markers or touching cooked GetPresetData records.
+local function trackedGroupRecipeReferences(sequence, currentCue, wantedGroup)
+    local result, rows = {}, {}
+    local currentNumber = cueNumber(currentCue)
+    if not sequence or not currentNumber or not wantedGroup then return result end
+    local cueCount, recipeCount = 0, 0
+    for _, cue in ipairs(children(sequence)) do
+        local number = cueNumber(cue)
+        if string.lower(class(cue)) == "cue" and number and number <= currentNumber then
+            cueCount = cueCount + 1
+            if cueCount > MAX_CUES then error("Group Recipe scan exceeds 512 Cues") end
+            for _, part in ipairs(children(cue)) do
+                if string.lower(class(part)) == "part" then
+                    for ordinal, recipe in ipairs(children(part)) do
+                        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                            recipeCount = recipeCount + 1
+                            if recipeCount > MAX_RECIPES then error("Group Recipe scan exceeds 2048 Recipes") end
+                            local group = recipeField(recipe, "Selection")
+                            if sameReference(group, wantedGroup) then
+                                rows[#rows + 1] = { cue = cue, part = part, recipe = recipe,
+                                    index = recipeNumber(recipe, ordinal) or ordinal }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(rows, function(left, right)
+        local lc, rc = cueNumber(left.cue), cueNumber(right.cue)
+        if lc ~= rc then return lc > rc end
+        local lp, rp = partNumber(left.part), partNumber(right.part)
+        if lp ~= rp then return lp > rp end
+        return left.index > right.index
+    end)
+    local decided = {}
+    local function add(object)
+        local key = commandAddress(object)
+        if key then result[key] = object end
+    end
+    for _, row in ipairs(rows) do
+        local reference = recipeField(row.recipe, "Generator")
+        if not reference then reference = recipeField(row.recipe, "Values") end
+        if isObjectReference(reference) then
+            local wins = false
+            for _, feature in ipairs(recipeReferenceFeatures(reference)) do
+                if not decided[feature] then decided[feature], wins = true, true end
+            end
+            if wins then
+                for _, name in ipairs({ "Selection", "Values", "MAtricks", "Filter", "World", "Generator" }) do
+                    add(recipeField(row.recipe, name))
+                end
+            end
+        end
+    end
+    return result
+end
+
 local function selectionRelation(group, fixtures)
     if group == nil or #fixtures == 0 then return false, false, 0, 0 end
     local ok, selection = pcall(function() return group.Selection end)
@@ -1081,6 +1141,20 @@ local function recipePoolReferences(state)
         for _, item in ipairs(state.matchingCandidates or {}) do addRecipe(item.recipe) end
     end
     add(state.currentGroup)
+    local sequenceKey = commandAddress(state.currentSequence) or address(state.currentSequence)
+    local groupKey = commandAddress(state.currentGroup) or address(state.currentGroup)
+    local referenceKey = sequenceKey .. ":" .. tostring(cueNumber(state.currentCue) or "")
+        .. ":" .. groupKey
+    if state.groupPoolReferenceKey ~= referenceKey then
+        local ok, scoped = pcall(trackedGroupRecipeReferences,
+            state.currentSequence, state.currentCue, state.currentGroup)
+        state.groupPoolReferenceKey = referenceKey
+        state.groupPoolReferences = ok and scoped or {}
+        if not ok and callable("ErrEcho") then
+            safe(ErrEcho, "[RecipeTracking] " .. tostring(scoped))
+        end
+    end
+    for _, object in pairs(state.groupPoolReferences or {}) do add(object) end
     return references
 end
 
@@ -2417,7 +2491,10 @@ local function main()
         syncTitleWidth(state)
         processPendingVerification(state)
         local forceRefresh = state.forceRefresh
-        if forceRefresh then state.effectSequenceKey, state.effectCacheSequence = nil, nil end
+        if forceRefresh then
+            state.effectSequenceKey, state.effectCacheSequence = nil, nil
+            state.groupPoolReferenceKey = nil
+        end
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..

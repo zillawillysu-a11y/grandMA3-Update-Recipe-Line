@@ -1,12 +1,15 @@
 # Cue Effect Pool Markers
 
-## Live-safe status (v0.7.0.15)
+## Live-safe status (v0.7.0.16)
 
 Automatic current-Cue Phaser markers are temporarily disabled. The runtime does
 not enter the FAST/MEDIUM/SLOW Cue effect resolver, does not call its cooked-data
-scan, and does not create purple Pool frames. The existing current Group/Recipe
-reference frame continues to pulse. The resolver implementation below remains in
-the source for later development and offline testing, but is dormant in this build.
+scan, and does not create purple Pool frames. A separate Recipe-object-only pass
+keeps the currently selected Group and its tracked All, Phaser Recipe, Generator,
+MAtricks, Filter and World references pulsing. This pass is cached per
+Sequence/Cue/Group and never calls cooked `GetPresetData`. The Cue-wide resolver
+implementation below remains in the source for later development and offline
+testing, but is dormant in this build.
 
 v0.7.0.9 adds selected-Sequence Cue usage markers independent of fixture selection.
 

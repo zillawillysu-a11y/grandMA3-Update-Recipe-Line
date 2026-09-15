@@ -346,14 +346,56 @@ local oldAll = object("Preset", "ShowData.DataPools.Default.PresetPools.All.Spot
 local oldAllRow = object("Recipe", "Old All Recipe", {Index = 1, Selection = group, Values = oldAll})
 local currentPhaserRow = object("StandardRecipe", "Current Phaser Recipe", {Index = 1, Selection = group, Values = phaserPreset})
 currentPhaserRow.Active = "No"
+local positionGenerator = object("Random", "Generator 105", {
+    Name = "Position Phaser",
+    RandomChannels = object("RandomChannels", "Position Channels", {},
+        {object("RandomChannel", "Pan Channel", {Attribute = "Pan"})})
+})
+local currentGeneratorRow = object("StandardRecipe", "Current Generator Recipe", {
+    Index = 2, Selection = group, Generator = positionGenerator, Enabled = "Yes"
+})
 local oldAllPart = object("Part", "Old All Part", {Part = 0}, {oldAllRow})
-local currentPhaserPart = object("Part", "Current Phaser Part", {Part = 0}, {currentPhaserRow})
+local currentPhaserPart = object("Part", "Current Phaser Part", {Part = 0},
+    {currentPhaserRow, currentGeneratorRow})
 local oldAllCue = object("Cue", "Cue 5", {No = 5000}, {oldAllPart})
 local currentPhaserCue = object("Cue", "Cue 16", {No = 16000}, {currentPhaserPart})
 local phaserTrackingSequence = object("Sequence", "Phaser Tracking Sequence", {}, {oldAllCue, currentPhaserCue})
 local phaserCandidate = functions.scanTracking(phaserTrackingSequence, currentPhaserCue, fixtures, namedInfo)
 check(#phaserCandidate == 1 and phaserCandidate[1].recipe == currentPhaserRow,
     "Enabled StandardRecipe with Active=No must override an older matching All Preset")
+local groupCookedReads, previousGroupGetPresetData = 0, GetPresetData
+GetPresetData = function(...)
+    groupCookedReads = groupCookedReads + 1
+    return previousGroupGetPresetData and previousGroupGetPresetData(...) or {}
+end
+local groupReferences = functions.trackedGroupRecipeReferences(
+    phaserTrackingSequence, currentPhaserCue, group)
+check(groupReferences["ShowData.DataPools.Default.PresetPools.All.Spot"] == oldAll
+        and groupReferences["Preset 25.303"] == phaserPreset
+        and groupReferences["Generator 105"] == positionGenerator,
+    "Current Group references must retain tracked All, Phaser Recipe and Generator items")
+check(groupCookedReads == 0,
+    "Current Group reference resolution must never read cooked GetPresetData")
+local sequenceChildren, groupTreeScans = phaserTrackingSequence.Children, 0
+phaserTrackingSequence.Children = function(self)
+    groupTreeScans = groupTreeScans + 1
+    return sequenceChildren(self)
+end
+local scopedReferenceState = {
+    currentSequence = phaserTrackingSequence,
+    currentCue = currentPhaserCue,
+    currentGroup = group,
+    matchingCandidates = {}
+}
+local pooledGroupReferences = functions.recipePoolReferences(scopedReferenceState)
+functions.recipePoolReferences(scopedReferenceState)
+check(pooledGroupReferences["ShowData.DataPools.Default.PresetPools.All.Spot"] == oldAll
+        and pooledGroupReferences["Preset 25.303"] == phaserPreset
+        and pooledGroupReferences["Generator 105"] == positionGenerator
+        and groupTreeScans == 1,
+    "Pool markers must merge and cache the current Group's tracked Recipe references")
+phaserTrackingSequence.Children = sequenceChildren
+GetPresetData = previousGroupGetPresetData
 local disabled = object("Recipe", "Disabled Open", {
     Name = "[8 'S FL'/1195 'Open']", Selection = group, Values = object("Preset", "Preset 5.1 Beam", {Name = "Open"}),
     Enabled = "No"
@@ -451,7 +493,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.0.15"}
+local sameInstance = {running = true, version = "0.7.0.16"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
