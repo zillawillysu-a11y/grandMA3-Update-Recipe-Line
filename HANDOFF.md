@@ -22,7 +22,7 @@ v0.7.0.12 produced no purple frames in the user's real Show. Earlier cooked-data
 RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml, tests/recipe_workflow.lua, docs/cue-effect-markers.md, AGENTS.md.
 
 ## Current Branch / Commit
-qwen. Pending checkpoint subject: `chore: disable cue phaser markers for live use`. Never merge to main without explicit user approval.
+qwen. Latest checkpoint subject: `chore: disable cue phaser markers for live use`. Never merge to main without explicit user approval.
 
 ## Exact Next Action
 Import and execute v0.7.0.15 once, then confirm in the production Show that Cue Phaser Pool items never receive purple frames and the currently resolved Group still pulses.
