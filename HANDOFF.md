@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Deliver a useful three-tier Cue effect resolver: immediate Recipe markers, fast inherited Recipe tracking, and bounded cooked/legacy fallback. Cue-to-purple target is <= 0.3 seconds where Recipe object evidence exists.
+Provide a live-safe Recipe update plugin with automatic current-Cue Phaser highlighting temporarily disabled, while retaining the current Group/Recipe Pool-frame pulse.
 
 ## Current Working State
-v0.7.0.14 is deployed to the grandMA3 plugin directory. It resolves Recipe links as handles or address strings and now records the running version. Executing a newly imported version stops and replaces an older instance in one invocation; executing the same version remains an ON/OFF toggle. MEDIUM logs its reference count or abort. REAL-WORLD VALIDATION PENDING.
+v0.7.0.15 is deployed. It disables the automatic Cue Phaser runtime path behind `ENABLE_CUE_PHASER_MARKERS = false`. The main loop does not enter FAST/MEDIUM/SLOW effect resolution, and Pool markers ignore dormant `activeEffects`. Current Group/Recipe references still pulse. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-v0.7.0.12 produced no purple frames at all in the user's real Show, so that implementation is unsuccessful. Two concrete causes were corrected: native Recipe links can be address strings requiring `recipe:Get()` + `ObjectList()`, and the first execution after importing over a running old instance only toggled the old plugin off. v0.7.0.14 has not yet been tested.
+The user needs the plugin for a live show and requested removal of all current-Cue Phaser purple markers because that unfinished feature may affect console performance. The Group pulse must remain. v0.7.0.15 has not yet been tested in grandMA3.
 
 ## Verified Facts
-91 offline workflow assertions pass, covering native-shaped address strings and old-version replacement versus same-version toggle. Lua and XML parse checks pass. All three deployed SHA256 hashes match repository sources. Offline tests cannot prove native latency or marker visibility.
+Lua and XML parse checks pass. 82 offline workflow assertions pass, including no cooked-data read or purple marker while disabled and a continuing non-purple current-Group pulse. All three deployed SHA256 hashes match repository sources. Offline checks cannot prove native performance, marker appearance, or crash freedom.
 
 ## Current Problem
-Confirm whether v0.7.0.14 restores purple frames in the real Show. If not, `progressive cue=... refs=N` versus `progressive_abort` separates Recipe discovery from Pool UI overlay failure. Traditional/cooked Phasers with no Recipe evidence still depend on SLOW.
+Confirm on grandMA3 that v0.7.0.15 shows no Cue-derived purple frames, retains the current Group pulse, and behaves safely in the production Show.
 
 ## Known Failed Attempts
-v0.7.0.12's handle-only MEDIUM resolver produced no purple frames in the real Show. Four Parts per tick blocked large Shows. Repeated full scans wasted work. Render cache retained deleted Recipe rows and was removed. SheetColor.PhaserText yielded black; GroupedProgLayerActive.Phaser works. Do not increase the 32-record cooked batch as a substitute for diagnosis.
+v0.7.0.12 produced no purple frames in the user's real Show. Earlier cooked-data work could block large Shows, and the complete Cue Phaser feature remains unfinished. Do not re-enable it for live use until development resumes.
 
 ## Important Files
-RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml, tests/recipe_workflow.lua, tools/run_workflow.py, tools/check_parse.py, docs/cue-effect-markers.md, AGENTS.md.
+RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml, tests/recipe_workflow.lua, docs/cue-effect-markers.md, AGENTS.md.
 
 ## Current Branch / Commit
-qwen. Pending checkpoint subject: `fix: replace stale plugin instance on upgrade`. Never merge to main without explicit user approval.
+qwen. Pending checkpoint subject: `chore: disable cue phaser markers for live use`. Never merge to main without explicit user approval.
 
 ## Exact Next Action
-Import and execute v0.7.0.14 once; it should replace the running older instance without requiring a second execution. Cold-test one Cue that should be purple. If it still is not, report the `[RecipeTracking][EffectScan] progressive cue=... refs=N` line (or `progressive_abort`) from Command Line History.
+Import and execute v0.7.0.15 once, then confirm in the production Show that Cue Phaser Pool items never receive purple frames and the currently resolved Group still pulses.

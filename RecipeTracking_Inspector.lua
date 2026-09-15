@@ -4,9 +4,12 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.14"
+local PLUGIN_VERSION = "0.7.0.15"
 local STATE_KEY = "RecipeTrackingInspectorState"
-local PHASER_MARKER_COLOR = "GroupedProgLayerActive.Phaser"
+-- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
+-- disables both its purple Pool frames and all automatic Cue/Recipe/cooked-data
+-- scanning, while regular current Group/Recipe reference frames keep pulsing.
+local ENABLE_CUE_PHASER_MARKERS = false
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
@@ -1429,6 +1432,13 @@ local function addCurrentCueRecipeEffects(result, direct)
 end
 
 local function refreshCueEffects(state, allowScan)
+    if not ENABLE_CUE_PHASER_MARKERS then
+        logAbandonedScan(state.effectScanner)
+        state.activeEffects, state.currentCueEffects, state.progressiveEffects = {}, {}, nil
+        state.effectScanner, state.recipeScanPending = nil, false
+        state.effectScanPending, state.effectWait = false, 0
+        return
+    end
     local sequence = callable("SelectedSequence") and safe(SelectedSequence)
     local cue = sequence and callable("GetCurrentCue") and safe(GetCurrentCue)
     local sequenceKey = commandAddress(sequence) or address(sequence)
@@ -1537,13 +1547,12 @@ local function refreshPoolMarkers(state)
     for _, entry in pairs(state.poolMarkers or {}) do
         pcall(function()
             entry.overlay.Visible = "Yes"
-            entry.overlay.BackColor = entry.activeEffect and PHASER_MARKER_COLOR or pulseColor
+            entry.overlay.BackColor = pulseColor
         end)
     end
     if state.poolBlinkTicks % 2 ~= 0 and not state.poolMarkersDirty then return end
     state.poolMarkersDirty = false
     local references = recipePoolReferences(state)
-    local effects = state.activeEffects or {}
     local markers, found = state.poolMarkers or {}, {}
     state.poolMarkers = markers
     local function uiChildren(object)
@@ -1596,7 +1605,7 @@ local function refreshPoolMarkers(state)
                 and tonumber(property(button, "ObjectIndex")) or nil
             local object = index and safe(function() return pool:Ptr(index) end) or nil
             local key = commandAddress(object)
-            if key and (references[key] or effects[key]) then
+            if key and references[key] then
                 found[button] = true
                 local entry = markers[button]
                 if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end
@@ -1625,12 +1634,11 @@ local function refreshPoolMarkers(state)
                     end
                 end
                 if entry then
-                    entry.activeEffect = effects[key] ~= nil
                     pcall(function()
                         entry.overlay.W = button.W
                         entry.overlay.H = button.H
                         entry.overlay.Visible = "Yes"
-                        entry.overlay.BackColor = entry.activeEffect and PHASER_MARKER_COLOR or pulseColor
+                        entry.overlay.BackColor = pulseColor
                         entry.overlay.Text = ""
                     end)
                 end
@@ -2430,15 +2438,14 @@ local function main()
             pcall(function() state.currentHighlights.Text = currentHighlightText or "" end)
             pcall(function() state.presetHighlights.Text = presetHighlightText or "" end)
         end
-        -- Publish direct Cue effects and all regular UI changes before the
-        -- potentially expensive single-Part background scan.
-        local effectsOK = pcall(refreshCueEffects, state, false)
-        if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
         local markersOK = pcall(refreshPoolMarkers, state)
         if not markersOK then clearPoolMarkers(state) end
-        coroutine.yield(0.01)
-        effectsOK = pcall(refreshCueEffects, state, true)
-        if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
+        if ENABLE_CUE_PHASER_MARKERS then
+            -- This dormant path remains available for later development, but
+            -- is not entered by the live-safe build.
+            local effectsOK = pcall(refreshCueEffects, state, true)
+            if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
+        end
         coroutine.yield(REFRESH_SECONDS)
     end
 

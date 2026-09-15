@@ -1,5 +1,13 @@
 # Cue Effect Pool Markers
 
+## Live-safe status (v0.7.0.15)
+
+Automatic current-Cue Phaser markers are temporarily disabled. The runtime does
+not enter the FAST/MEDIUM/SLOW Cue effect resolver, does not call its cooked-data
+scan, and does not create purple Pool frames. The existing current Group/Recipe
+reference frame continues to pulse. The resolver implementation below remains in
+the source for later development and offline testing, but is dormant in this build.
+
 v0.7.0.9 adds selected-Sequence Cue usage markers independent of fixture selection.
 
 - Purple `GroupedProgLayerActive.Phaser` frame for referenced moving Presets and Generators. This is a valid ColorGroups entry and resolves to RGBA `A34CB4FF` in the grandMA3 2.5 default themes.

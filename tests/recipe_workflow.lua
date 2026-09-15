@@ -451,7 +451,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.0.14"}
+local sameInstance = {running = true, version = "0.7.0.15"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
@@ -519,6 +519,8 @@ check(scanCueEffects(fxSequence, fxCue)["Random 103"] ~= nil,
 fxSequence.IsRunningPlayback = function() return true end
 check(scanCueEffects(fxSequence, fxCue)["Random 103"] ~= nil,
     "Current Cue effect markers must remain available while playback is running")
+-- The unfinished automatic Cue Phaser marker path is intentionally dormant in
+-- the live-safe build. It must not read cooked Cue data or publish purple state.
 local workerState = {}
 SelectedSequence = function() return fxSequence end
 GetCurrentCue = function() return fxCue end
@@ -527,85 +529,28 @@ GetPresetData = function(...)
     workerDataCalls = workerDataCalls + 1
     return originalGetPresetData(...)
 end
-for _ = 1, 8 do functions.refreshCueEffects(workerState) end
-check(workerState.activeEffects["Random 103"] ~= nil, "Incremental scan must publish finished effects")
-local completedDataCalls = workerDataCalls
-for _ = 1, 20 do functions.refreshCueEffects(workerState) end
-check(workerDataCalls == completedDataCalls,
-    "An unchanged Cue must not restart the expensive cooked-data scan")
-SelectedSequence = function() return phaserCueSequence end
-GetCurrentCue = function() return phaserCueOnly end
-local directCueState = {}
-functions.refreshCueEffects(directCueState)
-check(directCueState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
-    "Current Cue Phaser Recipe must publish immediately without waiting for cooked-data scanning")
--- The medium resolver mirrors Recipe tracking before any native cooked read.
-local inheritedEmptyPart = object("Part", "Inherited Empty Part", {Part = 0})
-local inheritedEmptyCue = object("Cue", "Inherited Empty Cue", {No = 17000}, {inheritedEmptyPart})
-local inheritedRecipeSequence = object("Sequence", "Inherited Recipe Sequence", {},
-    {phaserCueOnly, inheritedEmptyCue})
-SelectedSequence = function() return inheritedRecipeSequence end
-GetCurrentCue = function() return inheritedEmptyCue end
-local inheritedReads = 0
-GetPresetData = function(target)
-    inheritedReads = inheritedReads + 1
-    return dataByPart[target] or {}
-end
-local inheritedState = {}
-functions.refreshCueEffects(inheritedState)
-check(inheritedState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil
-        and inheritedReads == 0,
-    "Inherited Phaser Recipe must publish from the object tree before GetPresetData")
-local staticStopRow = object("StandardRecipe", "Static stop", {
-    Index = 1, Selection = group, Values = underlyingDimmer, Enabled = "Yes"
-})
-local staticStopPart = object("Part", "Static stop Part", {Part = 0}, {staticStopRow})
-local staticStopCue = object("Cue", "Static stop Cue", {No = 18000}, {staticStopPart})
-local stoppedRecipeSequence = object("Sequence", "Stopped Recipe Sequence", {},
-    {phaserCueOnly, staticStopCue})
-SelectedSequence = function() return stoppedRecipeSequence end
-GetCurrentCue = function() return staticStopCue end
-local stoppedState = {}
-functions.refreshCueEffects(stoppedState)
-check(stoppedState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] == nil,
-    "A newer static Recipe in the same Group and feature must terminate the progressive Phaser marker")
-local otherStaticStopRow = object("StandardRecipe", "Other Group static", {
-    Index = 1, Selection = otherGroup, Values = underlyingDimmer, Enabled = "Yes"
-})
-local otherStaticPart = object("Part", "Other Group Part", {Part = 0}, {otherStaticStopRow})
-local otherStaticCue = object("Cue", "Other Group Cue", {No = 18000}, {otherStaticPart})
-local otherGroupSequence = object("Sequence", "Other Group Sequence", {},
-    {phaserCueOnly, otherStaticCue})
-SelectedSequence = function() return otherGroupSequence end
-GetCurrentCue = function() return otherStaticCue end
-local otherGroupState = {}
-functions.refreshCueEffects(otherGroupState)
-check(otherGroupState.activeEffects["ShowData.DataPools.Default.PresetPools.Song EFX.Dimmer Speed#3"] ~= nil,
-    "A static Recipe for another Group must not terminate the inherited Phaser marker")
-GetCurrentCue = function() return nil end
-functions.refreshCueEffects(directCueState)
-check(next(directCueState.activeEffects) == nil, "Leaving Cue must discard old scan and effects")
-local purpleState = {running = true, activeEffects = {["Preset 21.1"] = {object = allPreset, count = 8}}}
+functions.refreshCueEffects(workerState)
+check(workerDataCalls == 0 and next(workerState.activeEffects) == nil
+        and workerState.effectScanner == nil,
+    "Disabled Cue Phaser markers must not read or publish automatic Cue effects")
+local purpleState = {
+    running = true,
+    activeEffects = {["Preset 21.1"] = {object = allPreset, count = 8}}
+}
 functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
-local purple = purpleState.poolMarkers[buttons[2]].overlay
-check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Text == "",
-    "Active effects must have a purple frame without fixture-count text")
-functions.refreshPoolMarkers(purpleState)
-check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Visible == "Yes",
-    "Active-only frame must stay purple throughout pulse ticks")
+check(next(purpleState.poolMarkers) == nil,
+    "Dormant Cue Phaser state must not create purple Pool frames")
 purpleState.currentGroup = allPreset
 functions.refreshPoolMarkers(purpleState)
-check(purple.BackColor == "GroupedProgLayerActive.Phaser" and purple.Text == "",
-    "Active effect purple must take priority over the Recipe selection pulse")
-purpleState.currentGroup = nil
 functions.refreshPoolMarkers(purpleState)
+local groupPulse = purpleState.poolMarkers[buttons[2]].overlay
+check(groupPulse ~= nil and groupPulse.BackColor ~= "GroupedProgLayerActive.Phaser",
+    "The current Group must keep its non-purple pulsing Pool frame")
+local groupPulseColor = groupPulse.BackColor
 functions.refreshPoolMarkers(purpleState)
-check(purple.BackColor == "GroupedProgLayerActive.Phaser", "Deselecting must restore persistent purple")
-purpleState.activeEffects = {}
-functions.refreshPoolMarkers(purpleState)
-functions.refreshPoolMarkers(purpleState)
-check(purple.deleted, "Inactive effects must lose their Pool frame")
+check(groupPulse.BackColor ~= groupPulseColor,
+    "The current Group frame must continue pulsing while Cue Phaser markers are disabled")
 -- Large Part processing must yield without rereading native cooked data.
 local largePart = object("Part", "Large Part", {Part = 0})
 local largeCue = object("Cue", "Large Cue", {No = 1000}, {largePart})
@@ -633,15 +578,4 @@ check(largeDiagnostic and largeDiagnostic.movingLayers == 1000 and largeDiagnost
         and boundedScan.diagnostics.firstRefAdvance == 1
         and (largeDiagnostic.elapsedMs == nil or type(largeDiagnostic.elapsedMs) == "number"),
     "Large Part diagnostics must report reference classification and bounded timing evidence")
-SelectedSequence = function() return largeSequence end
-GetCurrentCue = function() return largeCue end
-local cachedState = {}
-for i = 1, 40 do functions.refreshCueEffects(cachedState) end
-local warmReads = largeReads
-GetCurrentCue = function() return nil end
-functions.refreshCueEffects(cachedState)
-GetCurrentCue = function() return largeCue end
-functions.refreshCueEffects(cachedState, false)
-check(cachedState.activeEffects["Preset 25.1206"] ~= nil and largeReads == warmReads,
-    "Revisiting a scanned Cue must publish cached effects before any native data read")
 print("PASS: " .. count .. " workflow assertions")
