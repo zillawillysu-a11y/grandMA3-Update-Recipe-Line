@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.16"
+local PLUGIN_VERSION = "0.7.0.17"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
 -- disables both its purple Pool frames and all automatic Cue/Recipe/cooked-data
@@ -1146,6 +1146,7 @@ local function recipePoolReferences(state)
     local referenceKey = sequenceKey .. ":" .. tostring(cueNumber(state.currentCue) or "")
         .. ":" .. groupKey
     if state.groupPoolReferenceKey ~= referenceKey then
+        state.poolGridRefreshNeeded = true
         local ok, scoped = pcall(trackedGroupRecipeReferences,
             state.currentSequence, state.currentCue, state.currentGroup)
         state.groupPoolReferenceKey = referenceKey
@@ -1644,13 +1645,22 @@ local function refreshPoolMarkers(state)
         local status = safe(IsObjectValid, object)
         return status ~= nil and status ~= false
     end
-    local grids = {}
-    for _, grid in ipairs(state.poolGrids or {}) do
-        if valid(grid) then grids[#grids + 1] = grid end
+    local function actuallyVisible(object)
+        if not valid(object) then return false end
+        local status = safe(function() return object:IsActuallyVisible() end)
+        if status == nil then return true end
+        local normalized = string.lower(tostring(status))
+        return status == true or normalized == "yes" or normalized == "true" or normalized == "1"
     end
-    if #grids == 0 then
-        -- Discover the expensive display tree only on startup or after every
-        -- cached Pool grid becomes invalid. Visible buttons still update at 2 Hz.
+    local grids, needsDiscovery = {}, state.poolGridRefreshNeeded == true
+    state.poolGridRefreshNeeded = false
+    for _, grid in ipairs(state.poolGrids or {}) do
+        if actuallyVisible(grid) then grids[#grids + 1] = grid else needsDiscovery = true end
+    end
+    if #grids == 0 or needsDiscovery then
+        -- Recall View can leave the previous Pool grids valid but hidden. Do
+        -- one bounded rediscovery when a cached grid becomes actually hidden,
+        -- invalid, or the selected Group/Recipe reference context changes.
         grids = {}
         local visited, budget = {}, 6000
         local function visit(node, depth)
@@ -1658,7 +1668,7 @@ local function refreshPoolMarkers(state)
             visited[node], budget = true, budget - 1
             if node == state.window then return end
             if string.find(class(node), "PoolLayoutGrid", 1, true) then
-                grids[#grids + 1] = node
+                if actuallyVisible(node) then grids[#grids + 1] = node end
                 return
             end
             for _, child in ipairs(uiChildren(node)) do visit(child, depth + 1) end
@@ -1679,7 +1689,16 @@ local function refreshPoolMarkers(state)
                 and tonumber(property(button, "ObjectIndex")) or nil
             local object = index and safe(function() return pool:Ptr(index) end) or nil
             local key = commandAddress(object)
-            if key and references[key] then
+            local matched = key and references[key] or nil
+            if not matched and object then
+                -- Generator Recipe links and Generator Pool targets can expose
+                -- different command-address text (Random vs Generator) for the
+                -- same native object. Fall back only after the O(1) key lookup.
+                for _, reference in pairs(references) do
+                    if sameReference(object, reference) then matched = reference; break end
+                end
+            end
+            if matched then
                 found[button] = true
                 local entry = markers[button]
                 if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end

@@ -200,6 +200,7 @@ check(#latestPart == 1 and latestPart[1].recipe == partOneRecipe,
     "Current Cue Part 1 must override Part 0 across overlapping Groups")
 -- UI-only markers cover all referenced pool types and are removed on stop/scroll.
 local generator = object("Generator", "Generator 1", {Name = "Random"})
+generator.AddrNative = function() return "ShowData.DataPools.Default.GeneratorTypes.Random.1" end
 local allPreset = object("Preset", "Preset 21.1", {Name = "All"})
 rows[3].Generator, rows[3].Values = generator, allPreset
 local buttons, titles, pools = {}, {}, {}
@@ -255,6 +256,34 @@ check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
     "Markers must remain visible through the pulse cycle")
 check(displayLookupCount == 7,
     "Cached Pool grids must avoid repeating the full display-tree traversal")
+-- Recall View can keep old Pool grid handles valid while hiding them. Hidden
+-- grids must trigger one bounded rediscovery, and Generator aliases must match
+-- by native identity when their command-address text differs.
+local recalledGenerator = object("Random", "GeneratorRandom 1", {Name = "Random"})
+recalledGenerator.AddrNative = generator.AddrNative
+local recalledButton = object("AllPoolButton", "Recalled Generator Button", {
+    ObjectIndex = 1, W = 80, H = 80,
+    Anchors = {left = 2, right = 2, top = 0, bottom = 0}
+})
+local recalledGrid = object("AllPoolLayoutGrid", "Recalled Generator Pool", {
+    PoolObject = {Ptr = function() return recalledGenerator end},
+    IsActuallyVisible = function() return true end
+}, {recalledButton})
+recalledGrid.Append = function()
+    local overlay = {}
+    overlay.CommandDelete = function() overlay.deleted = true end
+    return overlay
+end
+pools[3].IsActuallyVisible = function() return false end
+GetDisplayByIndex = function(index)
+    displayLookupCount = displayLookupCount + 1
+    if index == 1 then return object("Display", "Display", {}, {pools[1], pools[2], recalledGrid}) end
+end
+functions.refreshPoolMarkers(state)
+functions.refreshPoolMarkers(state)
+check(state.poolMarkers[recalledButton] ~= nil and state.poolMarkers[buttons[3]] == nil
+        and displayLookupCount == 14,
+    "Recall View must replace hidden Pool grids and preserve Generator markers")
 state.currentRecipe, state.currentGroup, state.matchingCandidates = nil, nil, {}
 functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
@@ -493,7 +522,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.0.16"}
+local sameInstance = {running = true, version = "0.7.0.17"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {

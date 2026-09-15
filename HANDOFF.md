@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Provide a live-safe Recipe update plugin with automatic current-Cue Phaser highlighting disabled, while restoring the selected Group's tracked All/Phaser/Phaser Recipe Pool-frame pulses.
+Keep automatic current-Cue purple highlighting disabled while making selected-Group All/Phaser/Phaser Recipe/Generator pulses survive Generator address aliases and Recall View.
 
 ## Current Working State
-v0.7.0.16 is deployed. It keeps `ENABLE_CUE_PHASER_MARKERS = false`, so the main loop does not enter FAST/MEDIUM/SLOW Cue-wide effect resolution. It adds a separate cached Recipe-object-only resolver for the currently selected Group, restoring its tracked All, Phaser Recipe, Generator and ancillary Recipe references without cooked `GetPresetData`. REAL-WORLD VALIDATION PENDING.
+v0.7.0.17 is deployed. It keeps `ENABLE_CUE_PHASER_MARKERS = false`. Selected-Group references still use the cached Recipe-object-only resolver without cooked `GetPresetData`. Pool grid caching now rejects actually hidden grids after Recall View, triggers one bounded rediscovery, and falls back from command-address lookup to native-object identity for Generator/Random aliases. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-In v0.7.0.15, the Cue-wide purple markers were removed as requested, but selecting a Group no longer made its All, Phaser and Phaser Recipe items flash. Therefore v0.7.0.15 is unsuccessful for the retained Group-pulse requirement. v0.7.0.16 has not yet been tested in grandMA3.
+v0.7.0.16 resolves and displays Generator 103 `S2 Verse` in the panel, but its visible Generator Pool tile does not flash. A Phaser tile can flash initially, then stops after the user recalls the View. This proves Recipe resolution works and the remaining failure is Pool tile/grid matching across Generator aliases and View replacement.
 
 ## Verified Facts
-Lua and XML parse checks pass. 85 offline workflow assertions pass. They cover Cue-wide effects remaining disabled, no cooked-data read by the selected-Group resolver, tracked All/Phaser Recipe/Generator references reaching Pool markers, and one cached object-tree scan per Sequence/Cue/Group. All three deployed SHA256 hashes match repository sources. Offline checks cannot prove native performance, marker appearance, or crash freedom.
+Lua and XML parse checks pass. 86 offline workflow assertions pass. They cover Cue-wide effects remaining disabled, no cooked-data read by the selected-Group resolver, tracked Group references, cached Recipe scans, valid-but-hidden grid replacement, and Generator native-address fallback. All three deployed SHA256 hashes match repository sources. Offline checks cannot prove native performance, marker appearance, or crash freedom.
 
 ## Current Problem
-Confirm on grandMA3 that v0.7.0.16 restores flashing for the selected Group's All, Phaser and Phaser Recipe items without restoring Cue-wide purple frames or affecting live performance.
+Confirm on grandMA3 that v0.7.0.17 makes Generator 103 flash and restores Phaser flashing shortly after Recall View, without restoring Cue-wide purple frames or causing live-performance issues.
 
 ## Known Failed Attempts
-v0.7.0.15 removed both Cue-wide effects and the Pool marker consumption of `activeEffects`; it preserved only the single resolved Recipe, so other tracked references for the selected Group stopped flashing. Earlier cooked-data work could block large Shows. Do not re-enable Cue-wide scanning for live use.
+v0.7.0.16 cached Pool grids solely by `IsObjectValid`; Recall View can leave old grids valid but hidden. Exact command-address-only matching also misses Generator links represented differently by Recipe and Pool objects. Do not re-enable Cue-wide scanning for live use.
 
 ## Important Files
 RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml, tests/recipe_workflow.lua, docs/cue-effect-markers.md, AGENTS.md.
 
 ## Current Branch / Commit
-qwen. Latest checkpoint subject: `fix: restore selected group recipe pulses`. Never merge to main without explicit user approval.
+qwen. Latest checkpoint subject: `fix: refresh pool markers after view recall`. Never merge to main without explicit user approval.
 
 ## Exact Next Action
-Import and execute v0.7.0.16, select a known Group, and verify that its All, Phaser and Phaser Recipe items pulse while unrelated current-Cue Phaser items remain unmarked.
+Import/execute v0.7.0.17, verify Generator 103 flashes for the shown Group, then recall the View and confirm its Phaser marker resumes within the next UI refresh.

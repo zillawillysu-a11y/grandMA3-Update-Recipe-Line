@@ -1,6 +1,6 @@
 # Cue Effect Pool Markers
 
-## Live-safe status (v0.7.0.16)
+## Live-safe status (v0.7.0.17)
 
 Automatic current-Cue Phaser markers are temporarily disabled. The runtime does
 not enter the FAST/MEDIUM/SLOW Cue effect resolver, does not call its cooked-data
@@ -10,6 +10,13 @@ MAtricks, Filter and World references pulsing. This pass is cached per
 Sequence/Cue/Group and never calls cooked `GetPresetData`. The Cue-wide resolver
 implementation below remains in the source for later development and offline
 testing, but is dormant in this build.
+
+Pool grid caching treats `IsActuallyVisible() == false` as stale even when
+`IsObjectValid()` remains true after Recall View. A stale grid or changed
+Sequence/Cue/Group context triggers one bounded display-tree rediscovery. Direct
+command-address matching remains the fast path; native-object identity is the
+fallback for Generator links exposed as `Generator` in Recipes and `Random` in
+the Generator Pool.
 
 v0.7.0.9 adds selected-Sequence Cue usage markers independent of fixture selection.
 
