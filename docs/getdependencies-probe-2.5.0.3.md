@@ -2,11 +2,27 @@
 
 ## 結論
 
-**PARTIAL ONLY — REAL-WORLD VALIDATION PENDING。**
+**SUITABLE FOR CANDIDATE DISCOVERY**（直接／結構性引用）。
 
-獨立 probe 與十種案例的離線驗證已建立。使用者目前沒有測試 Show 的 Cue/Part 與正確 references 對照，本輪未取得 grandMA3 native 執行結果。不能宣告 `SUITABLE FOR CANDIDATE DISCOVERY` 或 `SUITABLE FOR FINAL ACTIVE REFERENCES`，也不能據此替換現有掃描。
+**NOT SUITABLE FOR FINAL ACTIVE/TRACKING REFERENCES**。
 
-官方 contract 與 system tests 支持「物件的 database dependency 關係」：Sequence 的 dependencies 包含 Preset，Preset 的 references 指回 Cue Part。它們沒有保證 dependency table 是此刻 playback 的有效使用集合。**本輪尚未實測 2.5.0.3 的 Cue/Part graph 是否會隨 tracking、override、release 過濾**；不能只因 table 中有 handle 就判 active，也不能只因目前 Cue graph 沒有某 handle 就判不存在 inherited effect。
+使用者已完成 grandMA3 **2.5.0.3** native 測試：直接 Recipe 的 Cue/Part graph 有 Preset、StandardRecipe、Group；Sequence 14 Cue 2 tracks Cue 1 時，Cue 與 Part 0 graph 都只有 root node，沒有 dependency edges。已知 tracked Preset **1.11** 與 previous Recipe 沒有回傳。
+
+因此 GetDependencies 是 structural/database dependency API，不能作完整 playback provenance，也不能代替目前 tracking 掃描。候選探索結論限於直接／結構性引用，**不保證包含所有 inherited candidates**。production 不變。
+
+## Native evidence — 2.5.0.3
+
+來源為本次使用者實機回報；沒有完整原始 logs、repeat count 或分布，以下是使用者提供的近似值，不是代理重測或普遍 latency 保證。
+
+| Scope | Observation | Cold | Warm |
+|---|---|---|---|
+| Direct Recipe Cue/Part | 直接 Preset、StandardRecipe、Group | 未另提供 | 未另提供 |
+| Sequence 14 Cue 2 | tracks Cue 1；nodes=1、edges=0；missing Preset 1.11 / previous Recipe | 未綁定 case | 未綁定 case |
+| Sequence 14 Cue 2 Part 0 | nodes=1、edges=0；missing Preset 1.11 / previous Recipe | 未綁定 case | 未綁定 case |
+| Cue read timing（case 未指定） | 使用者回報 native 讀取時間 | ~0.063 ms | ~0.025 ms |
+| Part read timing（case 未指定） | 使用者回報 native 讀取時間 | ~0.022 ms | ~0.019 ms |
+
+nodes=1 是 probe 加入的 root，不是 API 回傳了 Cue/Part 本身。edges=0 表示沒有 dependency entries。此 inherited counterexample 已足以排除完整 final active/tracking 用途。其餘 override/release/disabled 等 native cases 未另提供結果，不補造紀錄。cold/warm 標籤保留使用者量測；下方 native cache coldness 與 clock 精度限制仍適用。原始 probe log 中固定 PARTIAL ONLY 字樣是初始標籤，此文件的新結論優先。
 
 ## 檔案與範圍
 
@@ -98,8 +114,8 @@ false positive / missing 是**相對於操作者提供的 active ground truth**�
 
 | Case ID | 操作者準備／已知 truth | Probe 必須比較 | 本輪 native 結果 |
 |---|---|---|---|
-| direct_recipe | Current Cue Part enabled StandardRecipe 明確引用 A | Cue、Part、Recipe graph 能否找到同一 A | NOT RUN；ground truth 待提供 |
-| inherited_recipe | Earlier Cue 引用 A；Current Cue 對該 lane 無新資料且應繼承 A | current graph 是否含 A；earlier graph 的 A 不可自行補進 current 結果 | NOT RUN |
+| direct_recipe | Current Cue Part enabled StandardRecipe 明確引用 A | Cue、Part、Recipe graph 能否找到同一 A | OBSERVED：Preset / StandardRecipe / Group |
+| inherited_recipe | Earlier Cue 引用 A；Current Cue 對該 lane 無新資料且應繼承 A | current graph 是否含 A；earlier graph 的 A 不可自行補進 current 結果 | OBSERVED：Cue/Part 未含 inherited Preset 1.11 / previous Recipe |
 | static_override | earlier Phaser/Generator A；current static B 覆蓋同 fixtures/attribute/layer | B 應存在；A 若仍出現，對 active-set 需求為 false positive | NOT RUN |
 | release | 同 lane earlier A；Current Cue 已 release，active truth 不含 A | graph 是否保留 A；與 inherited baseline 比較 | NOT RUN |
 | disabled_recipe | Recipe ingredient 仍指 A，但 Enabled=No，無其他 lane 使用 A | ingredients 有 A 不代表 active；dependency 保留 A 是否造成誤報 | NOT RUN |
@@ -144,9 +160,9 @@ mock 結果不驗證 MA native dependency 完整度、active filtering、速度�
 
 ## 後續判定門檻
 
-- `SUITABLE FOR CANDIDATE DISCOVERY`：native cases 支持完整的候選集合；活動性不足可容許，但需明列缺漏範圍與後續 filtering，不宣稱可取代完整 scan。
+- `SUITABLE FOR CANDIDATE DISCOVERY`：本次確認 direct structural 引用可探索；已明列 inherited references 缺漏，不能宣稱涵蓋完整 Cue candidates 或可取代 scan。
 - `SUITABLE FOR FINAL ACTIVE REFERENCES`：native direct/inherited/override/release/disabled/multi-Part 全部和每 scope 的完整 active truth 相符，無 missing/false positive，且正式語意或足夠案例支持；不能只憑 direct Recipe 案例通過。
-- `PARTIAL ONLY`：部分 scopes 有價值，或尚無 native 矩陣可判定完整 suitability。**目前採用此標記**。
+- `PARTIAL ONLY`：初始待實測時的標記；本次已由上方 direct-candidate 與 final-tracking 雙結論取代。
 - `NOT SUITABLE`：native 顯示重要 candidates 缺漏，或資料/latency不符合用途且無可靠 bounded 補救。尚未取得這種否定結果。
 
-Exact next action：操作者在 2.5.0.3 已準備的測試 Show 填對照，執行上述十個 cases，回傳完整 logs 與 cold/warm 量測。此 checkpoint 可供實測使用；production 維持目前狀態，不能重新啟用 Cue-wide purple markers。
+Exact next action：移至獨立 [Generator / Random CompareHandle probe](comparehandle-probe-2.5.0.3.md)。GetDependencies 不替代 tracking；production 不變。
