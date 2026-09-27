@@ -1,5 +1,6 @@
 -- MOCK ONLY. Never connects to MA or establishes native reliability.
 local count=0
+local logs={}
 local function check(v,msg) assert(v,msg); count=count+1 end
 local objects,seq,cue,recipe,expected,alias,other,grid,mutations,tick
 local function object(kind,address,id,native)
@@ -27,14 +28,14 @@ env.HandleToStr=function(h) return "H#"..h.id end
 env.SelectedSequence=function() return seq end
 env.GetCurrentCue=function() return cue end
 env.Time=function() tick=tick+0.00001; return tick end
-env.Printf=function() end
+env.Printf=function(fmt,...) logs[#logs+1]=string.format(fmt,...) end
 env.GetDisplayByIndex=function(i) if i==1 then return object("Display","Display 1",nil,nil) end end
 for _,key in ipairs({"Cmd","CmdIndirect","GetPresetData","GetPresetDataFast","SetProgPhaser","SetProgPhaserValue","HookObjectChange"}) do
     env[key]=function() mutations=mutations+1; error("forbidden API") end
 end
 local run=assert(loadfile("diagnostics/CompareHandle_Probe_2_5_0_3.lua","t",env))()
 local function setup()
-    objects={}; mutations=0; tick=0
+    objects={}; mutations=0; tick=0; logs={}
     local dp=object("DataPool","DataPool 1")
     seq=object("Sequence","Sequence 14"); seq.parent=dp
     cue=object("Cue","Sequence 14 Cue 1"); cue.parent=seq
@@ -49,6 +50,7 @@ local function setup()
     local b=object("AllPoolButton","Tile 104"); b.ObjectIndex=2
     local title=object("AllPoolTitleButton","Title"); title.ObjectIndex=1
     local empty=object("AllPoolButton","Empty"); empty.ObjectIndex=3
+    for _,h in ipairs({a,b,empty}) do h.IsActuallyVisible=function() return true end end
     grid=object("AllPoolLayoutGrid","Generator Grid"); grid.PoolObject=pool; grid.Pooltype="GeneratorRandom"; grid.children={a,b,title,empty}
     grid.IsActuallyVisible=function() return true end
     local display=object("Display","Display 1"); display.children={grid}
@@ -112,4 +114,29 @@ env.Time=function() tick=tick+0.00001; return tick end
 setup(); env.BuildDetails=function() return {BigVersion="2.5.1.0"} end
 check(not pcall(run,nil,nil),"wrong build accepted")
 env.BuildDetails=function() return {BigVersion="2.5.0.3"} end
+setup(); r=controlled()
+check(r.tiles[1].widget.object~=r.tiles[1].object,"widget conflated with database target")
+check(r.widgets[1].metadata.class=="AllPoolButton" and r.tiles[1].metadata.class=="GeneratorRandom","widget/target metadata missing")
+check(r.widgets[1].target_index==1 and r.widgets[2].target_index==2,"widget/target cross references missing")
+check(r.ui_targets==2 and r.alias_status=="UI_ALIAS_EQUALITY_OBSERVED","UI alias evidence missing")
+check(r.widgets[3].extraction=="NO_TARGET_HANDLE","empty/missing target must be explicit")
+check(table.concat(logs,"\n"):find("UI_TILE",1,true) and table.concat(logs,"\n"):find("ui_evidence=true",1,true),"logs must distinguish widget and target")
+setup(); grid.PoolObject.kind="UnexpectedPoolClass"; grid.Pooltype=nil; r=controlled()
+check(#r.tiles==2,"assumed pool class must not block production extraction path")
+setup(); grid.UIChildren=nil; r=controlled()
+check(#r.tiles==2,"production Children fallback missing")
+setup(); grid.IsActuallyVisible=function() return "Yes" end; r=controlled()
+check(#r.tiles==2,"production visibility normalization missing")
+setup(); grid.children[1].IsActuallyVisible=function() return false end; r=controlled()
+check(r.ui_targets==1 and r.status~="CONTROLLED_PAIR_PASS_NATIVE_CONFIRMATION_REQUIRED","hidden tile accepted")
+setup(); grid.children[1].IsActuallyVisible=nil; r=controlled()
+check(r.widgets[1].extraction=="WIDGET_VISIBILITY_UNVERIFIED_OR_HIDDEN","unknown tile visibility accepted")
+setup(); grid.PoolObject.Ptr=function() return nil end
+r=run(nil,{pool_addresses={"Generator 103","Generator 104"},expected_generator="Generator 103",other_generator="Generator 104"})
+check(r.ui_targets==0 and r.status=="UNVERIFIED_NO_UI_EVIDENCE","ObjectList cannot fake UI success")
+check(#r.widgets==3 and r.widgets[1].extraction=="NO_TARGET_HANDLE","missing extraction not reported")
+setup(); grid.children={grid.children[1]}; r=controlled()
+check(r.status=="CONTROLLED_PAIR_FAIL","visible negative control required")
+setup(); alias.address=expected.address; alias.native=expected.native; r=controlled()
+check(r.alias_status=="NOT_OBSERVED","same-text UI test must not claim alias tested")
 print("PASS: "..count.." CompareHandle probe assertions (MOCK ONLY)")

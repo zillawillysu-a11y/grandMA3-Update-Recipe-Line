@@ -1,93 +1,90 @@
-# Generator / Random CompareHandle probe — 2.5.0.3
+# Generator / Random CompareHandle probe - 2.5.0.3
 
-狀態：**REAL-WORLD VALIDATION PENDING**。目前只完成獨立 probe 與離線驗證，沒有 native equality 結果；不改 production sameReference、tracking、Pool marker 或版本。未部署此新 Plugin。
+**DATABASE IDENTITY NATIVE PASS / VISIBLE UI ALIAS VALIDATION PENDING**.
+Production matching, tracking, markers and version remain unchanged. The extended source is deployed in the independent Plugin folder. Native UI alias validation remains pending.
 
-## 目的與證據
+## Native evidence
 
-比較 Recipe 的 Generator/Random handle 與實際可見 Generator Pool tile 的 `PoolObject:Ptr(ObjectIndex)`。即使 command/native address 不同，仍以 `CompareHandle()` 結果判斷 identity，不以名字、slot、native path 或 handle 字串猜測。
+User reports on grandMA3 2.5.0.3:
 
-主要依據：[2.5.0.3 functions dump](../.reference/ma3/DiDiDo-MA3-Developer-Reference/01_API_Dump/MA3_2.5.0.3/grandMA3_lua_functions.json) 的 CompareHandle、Ptr、UIChildren、ObjectList、Parent、AddrNative、BuildDetails。MA 2.5 `system_test_helping_functions_db.lua:320,338,599` 使用 CompareHandle 比較 preset/integrated handles；Pool UI 取物件方式與目前專案一致。IsActuallyVisible 有 MA 2.5 UI system tests 證據，但不在該 functions dump；可見性未知時跳過，不假定 visible。
+- Recipe Generator 103: class Random, command address Generator 103.
+- CompareHandle(recipe_ref, ObjectList("Generator 103")) = true; reverse = true.
+- CompareHandle(recipe_ref, Generator 104) = false.
+- Comparison cost approximately 0.001 ms.
+- origin = ObjectList Generator 103 (not UI tile evidence).
+- Positive pair command_equal=true and native_equal=true.
 
-GetDependencies native 結果已更新為 structural candidates 可用、final active/tracking 不可用，見 [native evidence](getdependencies-probe-2.5.0.3.md)。本實驗只研究 identity，不重新處理 tracking provenance。
+This establishes database object identity for those controls. It does **not** establish identity of the actual visible Pool target or resolve the production alias failure. No raw complete log, sample count or timing distribution was supplied. Same-text ObjectList controls cannot prove different-representation compatibility.
 
-## 檔案與執行
+GetDependencies remains suitable for structural candidate discovery and unsuitable for final active/tracking references; see [native evidence](getdependencies-probe-2.5.0.3.md).
 
-- [Lua](../diagnostics/CompareHandle_Probe_2_5_0_3.lua)、[獨立 XML](../diagnostics/comparehandle_probe_2_5_0_3.xml)，測試 Plugin 名稱 **CompareHandle Probe 2.5.0.3**。
-- [mock tests](../tests/comparehandle_probe.lua)、[runner](../tools/run_comparehandle_probe.py)。
-- 本輪只建立 source，沒有複製到 grandMA3 Plugin folder、沒有匯入或執行 native Plugin。
-- 只讀取 APIs 與 Printf；不呼叫 GetPresetData/GetPresetDataFast/GetDependencies、不寫 UI/Show/Recipe/Programmer、不發送 Cmd、不操作 playback、不註冊 hooks、不使用 nested coroutine。
+## Source and evidence
 
-預設無參數執行：只查看 Current Cue 的直接 StandardRecipe/Recipe rows，辨識 Generator（或 Values 中的 Generator）並重新發現可見 Generator Pool tiles；**不自動尋找 inherited Recipes**。測試時操作者應顯示 Generator Pool 並選好含直接 Generator Recipe 的 Cue。無 ground truth 的結果維持 UNVERIFIED，但仍完整記錄 equality 與地址差異。
+- [Lua](../diagnostics/CompareHandle_Probe_2_5_0_3.lua), [XML](../diagnostics/comparehandle_probe_2_5_0_3.xml).
+- [Mock tests](../tests/comparehandle_probe.lua), [runner](../tools/run_comparehandle_probe.py).
+- [Production extraction](../RecipeTracking_Inspector.lua): refreshPoolMarkers reads displays, UIChildren with Children fallback, visible PoolLayoutGrid, poolbutton excluding pooltitlebutton, grid.PoolObject:Ptr(tonumber(button.ObjectIndex)). The probe copies only these reads; no markers, writes, hooks or commands.
+- [2.5.0.3 API dump](../.reference/ma3/DiDiDo-MA3-Developer-Reference/01_API_Dump/MA3_2.5.0.3/grandMA3_lua_functions.json): CompareHandle, Ptr, UIChildren, ObjectList, Parent, AddrNative, BuildDetails.
+- MA 2.5 system_test_helping_functions_db.lua:320,338,599 uses CompareHandle for database handles. IsActuallyVisible has MA UI system-test evidence, although absent from this function dump.
 
-若要測 earlier Recipe，傳 `recipe_addresses` 明確指定；不切 Cue。`pool_addresses` 可以補充 ObjectList-resolved targets，但會標示 **not UI tile evidence**，不能用它代替實際 UI tile case。
+Only 2.5.0.3 is accepted. No GetPresetData/GetPresetDataFast/GetDependencies, Show/Recipe/Programmer/UI writes, commands, playback changes, hooks or nested coroutines. Default discovery examines direct Current Cue Recipe rows, not inherited Recipe provenance. Config recipe_addresses can select explicit existing Recipe rows without switching Cue.
 
-外部檔案手動執行（onPC，launch command 待 native 確認）：
+## Visible widget vs database target
 
-```text
-Lua "local f=assert(loadfile([[C:/Users/willy/Downloads/Update-Recipe-Line/grandMA3-Update-Recipe-Line/diagnostics/CompareHandle_Probe_2_5_0_3.lua]])); f()(nil)"
-```
+Discovery follows production, scans displays 1-7 (GetFocusDisplay fallback), and attempts extraction in every visible Pool grid. It no longer requires a presumed Generators pool class or GeneratorRandom Pooltype before extraction. Target Generator/Random classes still determine relevant objects.
 
-Controlled run 的 config 形狀如下；操作者用已知地址替換 placeholder，選定單一 Generator Recipe，提供相異 Generator 作 negative control。不是實機 fixture 或自動建立測試資料。
+Visibility accepts true / Yes / true / 1. Unlike production's permissive unknown case, probe requires explicit grid and widget visibility for UI evidence. Unknown widget visibility records an unaccepted target, not success. Each run rediscovers grids and holds no cross-run UI cache.
 
-```lua
-f()(nil, {
-    recipe_addresses = {"<known StandardRecipe command address>"},
-    expected_generator = "Generator <known slot>",
-    other_generator = "Generator <different slot>"
-})
-```
+- GRID: class/address, visibility, actual pool class/type, button count, accepted Generator target count.
+- UI_TILE: widget's own class/address/native/handle, grid, ObjectIndex, visibility, extraction status, linked target number.
+- POOL: extracted database target's class/address/native/handle, origin, ui_evidence, expected/other controls.
+- RECIPE: reference class/address/native/handle plus Recipe row address, field, raw value/type, enabled and controls.
+- PAIR: ref/target indices, forward cold/warm results, reverse, stability, command_equal/native_equal and timings.
 
-每個輸出 `[CHProbe] RECIPE` 包含 Recipe address、field、Enabled、raw type/value、resolved class/command/native address、parent、DataPool ancestor、handle token、self/expected/other comparison。每個 POOL 記錄實際來源；PAIR 記錄 cold/warm、reverse、stability、command/native text 是否相同、時間與錯誤。到 Command Line History 複製 `[CHProbe] START` 至 END；Lua error 可在 System Monitor 查看。
+ToAddr() and AddrNative() use the same no-argument form as production matching. HandleToStr is diagnostic only; equality is determined by CompareHandle, never by name/index/address/token text.
 
-## Native cases 與判定
+NO_TARGET_HANDLE / OBJECT_INDEX_UNAVAILABLE explicitly reports unavailable extraction. Nil Ptr might be an empty slot: operator must identify known occupied 103/104 tiles; probe does not guess occupancy. INVALID_OR_NON_GENERATOR_TARGET and WIDGET_VISIBILITY_UNVERIFIED_OR_HIDDEN record separate failures; UNACCEPTED_TARGET logs extracted metadata when available. No ObjectList fallback substitutes for missing tile targets.
 
-1. **同一 Generator**：Recipe handle 與 Generator Pool tile 為 true；自己比自己為 true。
-2. **不同 Generator**：positive control A、negative control B 為相異；Recipe A 與 tile B 必須 false。相同 index 不足以跨 DataPool 判 identity。
-3. **地址 aliases**：保存 command/native 不同的實際 pair，驗證同一 native object 仍 true。若此 Show 兩種字串都相同，不能宣稱測到 alias case。
-4. **handle vs string**：記錄 Recipe property raw_type；地址字串必須 ObjectList 唯一解析。nil/無法解析/多物件不作 equality 成功。
-5. **Disabled Recipe**：仍可比較 identity；true 不代表 enabled、active 或 playback 正在使用。
-6. **重複 tile／多 display**：逐 tile 保留結果，不把一個畫面的 success 推廣到所有畫面。
-7. **Recall View 前後**：操作者 Recall，再重新執行，重新讀取 tiles；本 probe 不持有跨執行 UI handles，也不解決 production cache invalidation。
-8. **不同 DataPool／deleted handle**：若已有測試 fixture，確認不同物件 false、失效 handle 報 error；probe 不自行建立、刪除、move 或重載 Show。
+ObjectList targets from optional pool_addresses remain controls with ui_evidence=false. A controlled pass requires BOTH an actual visible positive tile and actual visible different negative tile, plus self/expected true, other false, stable forward/warm/reverse comparisons and no capture errors. ObjectList-only evidence cannot pass.
 
-Controlled result 只有 supplied positive/negative controls 有效且相異、Recipe self/expected true、other false、找到對應 target、cold/warm/reverse 穩定且沒有 capture errors 時才標 `CONTROLLED_PAIR_PASS_NATIVE_CONFIRMATION_REQUIRED`；它表示本次 pair 通過檢查，不證明所有 Recipe/Pool wrappers 永遠可靠。UI 與 ObjectList 證據分開，native operator 需確認 log 的來源與已知物件。沒有對照為 UNVERIFIED；CompareHandle failure 不 fallback 到地址文字。
+END ui_status=NO_VISIBLE_UI_TARGET_HANDLE means no accepted visible UI target. With valid controls, this produces UNVERIFIED_NO_UI_EVIDENCE. Partial discovery or missing visible negative control gives CONTROLLED_PAIR_FAIL; inspect extraction logs to distinguish discovery failure from equality failure.
 
-cold/warm 是首次與立即重複的 comparison calls，使用 Time（依 MA vendor seconds 用法）換算 ms，不保證 native cache miss；可能低於 clock 精度，缺 timer 為 unavailable。comparison 計時包含 validity reads，不含 discovery/metadata/logging；不等同整個 Plugin latency。每次最多 64 rows、16 refs、128 tiles、3000 UI nodes、depth20、16000 read-wrapper calls；超限與未知可見性都記錄，不能當作完整成功。
+alias_status=UI_ALIAS_EQUALITY_OBSERVED requires an actual UI target pair with differing command or native text and stable forward/reverse true. Different Generator false pairs do not qualify. Same-text successful UI pairs yield NOT_OBSERVED: they still do not demonstrate the original alias scenario. DIFFERENT_TEXT_PAIR_ONLY indicates an inconclusive differing-text comparison. Even a passing pair requires operator confirmation of the known intended tile.
 
-## Validation
+## Simple native test
 
-```powershell
-python tools/run_comparehandle_probe.py
-python tools/run_getdependencies_probe.py
-python tools/check_parse.py
-python tools/run_workflow.py
-```
-
-**37 CompareHandle mock assertions PASS**；既有 **59 dependency probe assertions**、**86 production workflow assertions**、production Lua/XML parse 亦通過。新 Lua/XML 另行 parse 與 referenced files 檢查通過。
-
-mock 驗證地址不同而 identity 相同、不同 Generator false、相同地址文字但不同 identity、string/Values fallback、disabled identity、UI title/empty slots、hidden/unknown visibility、ObjectList-only 標籤、無效 controls、API failure、wrong build、unstable comparisons 與 missing timer。結果不代表 native 測試已完成。native logs 通過上述 cases 後，再討論 production 局部採用 CompareHandle；本輪不修改 production。
-
-## Independent deployment ? 2026-09-27
-
-?????`C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\CompareHandle Probe 2.5.0.3`?Import `comparehandle_probe_2_5_0_3.xml`?Plugin ?? **CompareHandle Probe 2.5.0.3**?
-
-Source/deployed XML ? Lua parse PASS?SHA256 MATCH?
-
-- XML: `4dbf073be1affecb78cc841694c461fa02d821c346b751e7f2b24d2a1f8bb058`
-- Lua: `5ba5cc9dbb25b10635ab8077074b256c16ba20345a255182c723e8ea86f96d6f`
-
-?? Update Plugin ???????? SHA256 snapshot ???37 ? mock assertions PASS?native validation ????????Production matching / tracking ????
-
-?? native ???
-
-1. ?? grandMA3 2.5.0.3??????? Generator Recipe ? Current Cue?? Generator Pool ?????????? Generator ? tile ???Probe ????? Show data????????
-2. Import ?? XML ??? Plugin slot?? **CompareHandle Probe 2.5.0.3** ??????? pair log????? controls ? status ? UNVERIFIED?
-3. ???????????????????????????? command line ?????????? deployed Lua????? Plugin ? Show?
+1. On 2.5.0.3, use an existing direct Recipe referencing Generator 103. Show the actual Generator Pool with 103 and known different 104 tiles visible. The probe creates no Show fixtures and changes no playback.
+2. Execute the latest source below; omit pool_addresses to keep pair evidence focused on UI targets. Replace example slots if necessary. Optionally provide recipe_addresses to restrict to one known Recipe.
 
 ```text
-Lua "local f=assert(loadfile([[C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins/CompareHandle Probe 2.5.0.3/CompareHandle_Probe_2_5_0_3.lua]])); f()(nil,{expected_generator='Generator 103',other_generator='Generator 104'})"
+Lua "local f=assert(loadfile([[C:/Users/willy/Downloads/Update-Recipe-Line/grandMA3-Update-Recipe-Line/diagnostics/CompareHandle_Probe_2_5_0_3.lua]])); f()(nil,{expected_generator='Generator 103',other_generator='Generator 104'})"
 ```
 
-`103` / `104` ???????????? controlled run ???????? Generator reference ??? Recipe?????? `recipe_addresses` ???? Recipe???? Random/Generator ???????????????????? class?
+3. Copy Command Line History [CHProbe] START through END. Confirm UI_TILE links to POOL ui_evidence=true; positive forward/reverse true and visible negative forward/reverse false. Examine command_equal/native_equal. Both true means alias representation was not exercised.
+4. Repeat for an existing Recipe exposing another Random/Generator representation if available. Never alter address strings to manufacture an alias. If no target can be extracted, send GRID/UI_TILE/UNACCEPTED_TARGET logs rather than substituting ObjectList. Lua errors appear in System Monitor.
 
-4. ? Command Line History ?? `[CHProbe] START` ? `END`?RECIPE ? `address/native` ? Recipe ???????`recipe` ? Recipe row ???POOL ? `address/native` ? Pool ?????PAIR ? `compare_cold/compare_warm` ??????`reverse` ??????RECIPE ? `other` ??????????? false??? `ref/tile` ?????? tile?Lua ?????? System Monitor?
+Config fields: recipe_addresses (explicit Recipe rows), expected_generator (known positive address), other_generator (different Generator address), pool_addresses (optional database controls only).
+
+## Validation and limits
+
+60 mock assertions PASS, including widget/target separation, different-text same-identity pairs, unknown pool class, Children fallback, Yes visibility, hidden/unknown tiles, nil Ptr, ObjectList-only rejection, missing visible negative control, same-text non-alias and no mutation/cooked calls. Existing dependency suite: 59 assertions PASS. Mocks do not establish native UI reliability.
+
+Run python tools/run_comparehandle_probe.py. Traversal limits: 64 rows, 16 refs, 128 targets/widgets, 6000 UI nodes, depth 20, 32000 protected read calls. Bounds/errors are explicit. Cold/warm are first/repeat comparison calls, not proven cache miss/hit. Timing uses MA Time seconds converted to ms and includes validity reads, excluding discovery/metadata/logging. Missing clocks remain unavailable.
+
+## Earlier independent deployment (2026-09-27)
+
+Folder: C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins/CompareHandle Probe 2.5.0.3.
+Import comparehandle_probe_2_5_0_3.xml. Plugin name: CompareHandle Probe 2.5.0.3.
+
+Earlier source/deployed XML and Lua parsed and SHA256 matched. Production Update Plugin three-file snapshot was unchanged. Historical hashes (NOT hashes of the extended source):
+
+- XML: 4dbf073be1affecb78cc841694c461fa02d821c346b751e7f2b24d2a1f8bb058.
+- Earlier Lua: 5ba5cc9dbb25b10635ab8077074b256c16ba20345a255182c723e8ea86f96d6f.
+
+The extended probe has now been deployed independently. Re-import the XML into its existing diagnostic slot if grandMA3 cached the old Lua, or execute the source launch above.
+
+## Extended deployment verification
+
+- comparehandle_probe_2_5_0_3.xml: SHA256 MATCH `4dbf073be1affecb78cc841694c461fa02d821c346b751e7f2b24d2a1f8bb058`; deployed parse PASS.
+- CompareHandle_Probe_2_5_0_3.lua: SHA256 MATCH `e25b0c99ee55d4dc94013642f7804553989a55d5f73e36ecf5cbe58ed5e6a789`; deployed parse PASS.
+
+Production Update Plugin three-file snapshot unchanged. Re-import the same independent XML (Plugin name unchanged) to refresh imported Lua. For controlled testing, the source launch above uses the latest probe directly. Native UI identity/alias results remain pending.
