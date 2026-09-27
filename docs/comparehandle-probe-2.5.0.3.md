@@ -1,5 +1,8 @@
 # Generator / Random CompareHandle probe - 2.5.0.3
 
+UI topology follow-up: **PROBE INVALID / RETEST REQUIRED**. Native UI-only calls on database handles and discovery-budget starvation invalidated the previous topology run (914 discovery nodes, 5 grids, truncated). Actual Generator grid was already observed at Display 3.5.3.1.5.1.4.4. No absence or virtualization conclusion is valid. Revision 2 type-gates UI APIs and locates that grid before bounded inspection; see [retest](ui-topology-probe-2.5.0.3.md). CompareHandle production integration remains stopped.
+
+
 Latest native UI-target result: AllPoolLayoutGrid / Generators / GeneratorRandom found; IsActuallyVisible unavailable, buttons=0 and targets=0 across discovered pools. END NO_VISIBLE_UI_TARGET_HANDLE, ui_targets=0, alias_status=NOT_OBSERVED. **Production integration STOPPED.** Previous early visibility return means these zero counts do not prove virtualization or a childless native grid. Database identity PASS remains valid. Next experiment: [bounded UI topology](ui-topology-probe-2.5.0.3.md).
 
 
