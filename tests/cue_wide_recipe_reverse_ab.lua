@@ -75,12 +75,14 @@ end
 local function run() return assert(loadfile('diagnostics/Cue_Wide_Recipe_Reverse_Resolver_AB_2_5_0_3.lua','t',env))()() end
 local function has(s) return table.concat(logs,'\n'):find(s,1,true)~=nil end
 local p=setup(); local g=group(1,{1}); local a=phaser(91,'Absolute'); row(p,g,a)
+cue.Name='Native 50% Cue'
 data[p]={[1]={abs_preset=a,[1]={absolute=10},[2]={absolute=20}}}
 local r=run()
 check(r.fastCalls==0 and r.oracleCalls>0,'zero fast calls')
 check(r.classifications.RECIPE_REVERSE_EXACT_MATCH and next(r.final),'independent exact match')
 check(r.stats.groups==1 and r.stats.expansions==1,'group metrics')
 check(has('SOURCE') and has('surviving_member_count=1'),'trace')
+check(has('50% Cue'),'literal percent text survives copied oracle logging')
 -- New static row in overlapping Group terminates one subfixture only.
 p=setup(); a=phaser(92,'Absolute'); row(p,group(2,{1,2}),a)
 local prev=cue; cue=add(seq,obj('Cue','Sequence 7 Cue 2')); cue.No=2000

@@ -16,7 +16,7 @@ return function()
 local nativePrintf = _G.Printf
 local oracleLogSink
 local function Printf(fmt, ...)
-    local line = string.format(fmt, ...)
+    local line = select('#', ...) == 0 and tostring(fmt) or string.format(fmt, ...)
     if oracleLogSink then oracleLogSink(line) else nativePrintf("%s", line) end
 end
 local commandAddress, children, recipeNumber, generatorHasFeature
