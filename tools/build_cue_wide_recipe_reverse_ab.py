@@ -12,6 +12,13 @@ sections = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, as
 body = '\n\n'.join(source[source.index(a):source.index(b)].rstrip() for a, b in sections)
 header = f'''-- Independent diagnostic; production SHA256 {hashlib.sha256(source.encode()).hexdigest()}.
 return function()
+-- Native Printf has stricter vararg types than Lua string.format.
+local nativePrintf = _G.Printf
+local oracleLogSink
+local function Printf(fmt, ...)
+    local line = string.format(fmt, ...)
+    if oracleLogSink then oracleLogSink(line) else nativePrintf("%s", line) end
+end
 local commandAddress, children, recipeNumber, generatorHasFeature
 local GetPresetData, SelectedSequence, GetCurrentCue
 local MAX_CUES, MAX_RECIPES, REFRESH_SECONDS = 512, 2048, 0.1
@@ -19,6 +26,7 @@ local ENABLE_CUE_PHASER_MARKERS = true -- private oracle only
 '''
 engine = (root / 'tools/templates/cue_wide_recipe_reverse_engine.lua').read_text(encoding='utf-8')
 adapter = (root / 'tools/templates/cue_wide_recipe_reverse_ab_core.lua').read_text(encoding='utf-8')
+auditor = (root / 'tools/templates/cue_wide_recipe_value_source.lua').read_text(encoding='utf-8')
 (root / 'diagnostics/Cue_Wide_Recipe_Reverse_Resolver_AB_2_5_0_3.lua').write_text(
-    header + body + '\n' + engine + '\n' + adapter, encoding='utf-8')
-print('Built Recipe Reverse A/B; oracle sections copied unchanged')
+    header + body + '\n' + engine + '\n' + auditor + '\n' + adapter, encoding='utf-8')
+print('Built Recipe Reverse A/B Rev2 VALUE_SOURCE_AUDIT; oracle sections copied unchanged')

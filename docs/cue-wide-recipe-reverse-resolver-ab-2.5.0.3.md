@@ -1,105 +1,33 @@
-# Cue-wide Recipe Reverse Resolver A/B 2.5.0.3
+﻿# Cue-wide Recipe Reverse Resolver A/B 2.5.0.3
 
-Independent read-only experiment. Production remains dormant and unchanged. The
-previous cooked footprint optimization is paused. No merge to main.
+Current diagnostic revision: **2_VALUE_SOURCE_AUDIT**. See [Rev2 evidence and proof gates](cue-wide-recipe-value-source-rev2.md) for the native failure, verified MA 2.5 source semantics, supported subset and compact output.
 
-## Supported authoring contract
+## Supported product contract
 
-Cue state is authored through Recipe rows using Stored Groups and referenced
-Presets, Phasers, Generators or equivalent objects. Arbitrary manual Cue values
-are outside the supported product model. Structurally unreadable cases are
-unsupported/unsafe; they must never silently trigger a cooked-history fallback.
-The intended production architecture is Recipe/Group reverse tracking, subject
-to successful native multi-Cue validation. Cooked machinery in this artifact is
-only an after-the-fact correctness oracle.
+Cue state is authored through Recipe rows using Stored Groups and referenced Presets, Phasers, Generators or equivalent objects. Arbitrary hard/manual Cue state is outside the supported authoring model. The intended production architecture is Recipe/Group structural reverse tracking. Structurally unreadable cases are unsupported/unsafe and never silently trigger cooked fallback. Production remains unchanged and dormant until native multi-Cue validation.
 
-## Algorithm and identity
+## Resolution
 
-Cues, Parts and Recipe indices are visited newest first. Each Stored Group is
-expanded once per invocation into a set of native `sf_index` identities. This
-preserves distinct subfixtures/cells represented by those indices; it never
-collapses membership to a parent fixture or Group identity. Native cell coverage
-still requires tests with actual cell Groups. No cache persists between runs, so
-Group/Recipe edits and deletions are observed on the next invocation.
+Visit Current Cue history newest first, including every Part and enabled Recipe row. Expand each Group once per run into a native sf_index member set. Distinct subfixture/cell indices are never collapsed to parent fixture or exact Group identity. For each proven member + FeatureGroup identity + layer lane, newer rows win only on their overlapping members. Static rows terminate older moving rows without adding a marker reference. Re-sourced references retain their occurrence ownership until membership resolution and only then deduplicate by database identity.
 
-For each member + feature + layer, the first safe Recipe decides its assignment.
-Moving references survive if any member remains. Static rows resolve members
-without adding a moving reference. Newer overlap only covers shared members.
-References are deduplicated after occurrence-specific membership resolution.
-Unknown newer selections block historical claims globally; unknown feature or
-layer evidence blocks the corresponding member scope. Known newer assignments
-are preserved. Symbolic unresolved lanes use `*` where exact scope is unreadable.
+Rev2 uses source-correlated feature/layer pairs, never a Cartesian product. Unsafe newer rows block older assertions conservatively. Unknown selection blocks historical claims globally. Unknown feature/layer scope uses symbolic wildcard barriers. No cache persists between runs, so Group/Recipe edits and deletions are observed on the next invocation. Actual cell selection inheritance remains a native acceptance item.
 
-History is exhausted rather than stopped early: the full relevant member universe
-is not known until the object-tree traversal completes. This performs no cooked
-channel enumeration, UI-channel expansion, waits, markers or 32-record batching.
-The private GetPresetData wrapper raises if the fast path attempts a read.
+## Fast path and oracle
 
-## Structural evidence audit and current limits
+The fast path has no cooked channel scan, GetPresetData calls, waits, marker drawing or production batching. Its private GetPresetData wrapper raises on attempted reads, and successful finalization requires the call count to remain zero. The fast result is frozen before running the existing copied Structural A/B oracle pipeline, including its current-Cue merge and Recipe recovery. That last-running oracle can compare but never repair or broaden the fast result.
 
-The existing `recipeReferenceFeatures` helper includes label/address text hints
-and broad `all` expansion. The fast path does **not** call it. It reuses only the
-numbered standard Preset-family mapping. Phaser Value Source / Generator channel
-Attribute identifiers are recognized by exact tokens; unknown identifiers or
-unassigned/all channels are unsafe. User-authored object names never infer scope.
-Family-level resolution follows the requested algorithm; attribute-level
-replacements within one family need native validation before integration.
+All requested match/missing/extra/unsafe/UNVERIFIED classifications remain available. EXACT_MATCH establishes only the current snapshot identity set; unsafe rows still prevent a production-completeness claim. The four observed native oracle identities are not embedded in code.
 
-Native object properties are enumerated through `PropertyCount`/`PropertyName`,
-which are present in the shared 2.5.0.3 API dump. An explicitly advertised Layer
-value of Absolute/Relative is required on the Recipe or every relevant source.
-There is no assumed absolute default. These per-object Layer exposures have not
-yet been demonstrated in the target Show; missing exposure is reported unsafe.
-Mixed feature/layer associations that would require a Cartesian-product guess
-are rejected unless an explicit Recipe layer scopes the whole row.
+## Local verification and deployment
 
-Motion is established by Generator class, or one structurally exposed Phaser
-Recipe with multiple step objects. One exposed step with readable sources is a
-static terminator. Ordinary opaque Presets, multiple nested Phaser Recipes and
-equivalent objects whose motion cannot be read are UNVERIFIED. An ordinary
-Preset's pool alone does not prove it static. No GetPresetData is used to decide
-these cases. Native metadata printed in UNSAFE records is evidence for the next
-bounded structural improvement; it is not an API claim.
+- `python tools/build_cue_wide_recipe_reverse_ab.py`
+- `python tools/run_cue_wide_recipe_reverse_ab.py`
+- `python tools/deploy_cue_wide_recipe_reverse_ab.py`
 
-No source means `FAST_PATH_UNSAFE_NON_RECIPE_DATA` for an oracle-only identity;
-the exact member/feature/layer remains UNVERIFIED rather than guessed. A missing
-reference with Recipe sources prints those Groups and their members, feature,
-layer, unsafe reason and newer superseding Recipe. The oracle never repairs or
-widens the finalized fast result.
+The runner checks Lua 5.4, mocks, deterministic generation, unchanged oracle-source fidelity and the disabled production flag. The independent deployer validates XML, referenced component existence, source/deployed Lua 5.4 parsing and matching SHA256. It copies only the standalone XML/Lua and proves production source and the deployed Update Plugin folder remain unchanged.
 
-## Reports and interpretation
+## Native run
 
-`FAST_FINALIZED` precedes any oracle read. Metrics include walked Cues/Parts,
-inspected rows (including disabled rows), resolved Groups, expansion count,
-resolved lanes, empty effective rows, static terminators, contributing moving
-rows, unsafe rows, symbolic unresolved lanes and unknown-selection rows. ACTIVE
-and SOURCE show unique surviving members and source Cue/Part/Recipe/Group.
-FIRST_NEWER reports the first newer decider for each rejected overlap. DIFF
-prints exact missing/extra identity sets and available member attribution.
+Import `cue_wide_recipe_reverse_resolver_ab_2_5_0_3.xml` from the separate `Cue-wide Recipe Reverse Resolver AB 2.5.0.3` plugin folder. Select Sequence 3841 / Cue 8 and run the diagnostic. START must show `revision=2_VALUE_SOURCE_AUDIT`.
 
-All requested classifications are supported, including simultaneous unsafe and
-identity-match statuses. EXACT_MATCH proves only this snapshot's identity set;
-an exact match with unsafe rows does not establish a safe architecture. Final
-production eligibility is deliberately false until native multi-Cue validation.
-Oracle replay uses the same unchanged `refreshCueEffects` pipeline as the
-existing Structural A/B diagnostic, including current-Cue merge and recovery.
-The oracle's own cooked batching is confined to this last phase.
-
-## Validation and native run
-
-Run `python tools/build_cue_wide_recipe_reverse_ab.py`, then
-`python tools/run_cue_wide_recipe_reverse_ab.py`. The runner checks Lua 5.4,
-deterministic generation, unchanged production oracle sections, the disabled
-production flag, membership semantic mocks and full diagnostic mocks.
-`python tools/deploy_cue_wide_recipe_reverse_ab.py` validates XML/components/Lua,
-copies only the two independent runtime files, compares deployed SHA256 and
-checks that production source and deployed production folder stayed unchanged.
-
-Import `cue_wide_recipe_reverse_resolver_ab_2_5_0_3.xml` from the separate
-`Cue-wide Recipe Reverse Resolver AB 2.5.0.3` plugin folder. Select Sequence 3841
-and Current Cue 8, then run the plugin and capture START through END. The observed
-cooked result has four references, but neither the count nor identities are
-hardcoded. Required native result: same identity set with fast GetPresetData
-calls zero. Report unsafe structure even when identity sets match. Then test
-multiple Cues, Group overlaps, static replacements, re-sources and actual cells
-before considering integration. REAL-WORLD VALIDATION PENDING.
+Capture START through END, including FAST_PATH_METRICS, VALUE_SOURCE_AUDIT, aggregated UNSAFE/UNRESOLVED, Recipe-only final refs, oracle final refs, DIFF and RESULT. Require identical identity sets and zero fast GetPresetData calls. If a difference remains, use the exact source/dependency audit and aggregated Group/member/lane attribution to improve only the unproven structural case. Do not broaden into cooked history. Then test multiple Cues, static replacements, re-sources, overlapping Groups and actual cells before integration. REAL-WORLD VALIDATION PENDING.

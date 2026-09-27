@@ -1,5 +1,12 @@
 -- Independent diagnostic; production SHA256 a6e15338449ef365fa152ef6400fe849d084f20a32d363b5bc8d6159314230b6.
 return function()
+-- Native Printf has stricter vararg types than Lua string.format.
+local nativePrintf = _G.Printf
+local oracleLogSink
+local function Printf(fmt, ...)
+    local line = string.format(fmt, ...)
+    if oracleLogSink then oracleLogSink(line) else nativePrintf("%s", line) end
+end
 local commandAddress, children, recipeNumber, generatorHasFeature
 local GetPresetData, SelectedSequence, GetCurrentCue
 local MAX_CUES, MAX_RECIPES, REFRESH_SECONDS = 512, 2048, 0.1
@@ -858,7 +865,7 @@ local function recipeReverseResolve(rows)
  local function checkpoint() work=work+1; assert(work<=1048576,'Recipe reverse lane work limit exceeded') end
  for reverseIndex,row in ipairs(rows) do
   row.reverseIndex=reverseIndex
-  row.survivors={}; row.superseded={}; row.effective=0
+  row.survivors={}; row.movingSurvivors={}; row.movingEffective=false; row.staticEffective=false; row.superseded={}; row.effective=0
   local reasons=row.unsafe or {}
   if #reasons>0 then
    result.unsafe[#result.unsafe+1]=row
@@ -873,11 +880,13 @@ local function recipeReverseResolve(rows)
     end end
    end end
   else
+   local rowLanes=row.lanes or {}
+   if not row.lanes then for feature in pairs(row.features) do for layer in pairs(row.layers) do rowLanes[feature..'|'..layer]={feature=feature,layer=layer,moving=row.moving} end end end
    for member in pairs(row.members) do
     decided[member]=decided[member] or {}
-    for feature in pairs(row.features) do for layer in pairs(row.layers) do
+    for lane,laneState in pairs(rowLanes) do
+     local feature,layer=laneState.feature,laneState.layer
      checkpoint()
-     local lane=feature..'|'..layer
      local old=decided[member][lane]
      local barrier=globalBlock[1]
      for _,key in ipairs({lane,feature..'|*','*'}) do
@@ -891,17 +900,21 @@ local function recipeReverseResolve(rows)
       decided[member][lane]=row; row.effective=row.effective+1; row.survivors[member]=true
       result.lanesResolved=result.lanesResolved+1
       result.assignments[#result.assignments+1]={member=member,lane=lane,row=row}
-      if row.moving then
+      if laneState.moving then
+       row.movingEffective=true
+       row.movingSurvivors[member]=true
        local entry=result.refs[row.refId] or {ref=row.ref,members={},sources={}}
        result.refs[row.refId]=entry; entry.members[member]=true
        entry.sources[row]=true
-      end
+      else row.staticEffective=true end
      end
-    end end
+    end
    end
    if row.effective==0 then result.rowsSkipped=result.rowsSkipped+1
-   elseif row.moving then result.movingRows=result.movingRows+1
-   else result.staticRows=result.staticRows+1 end
+   else
+    if row.movingEffective then result.movingRows=result.movingRows+1 end
+    if row.staticEffective then result.staticRows=result.staticRows+1 end
+   end
   end
   if row.moving and #row.superseded>0 then result.rejected[#result.rejected+1]=row end
  end
@@ -914,6 +927,220 @@ local function recipeReverseResolve(rows)
  return result
 end
 
+-- Rev2: proof gates are documented in docs/cue-wide-recipe-value-source-rev2.md.
+-- Native handles are retained. Labels, preset/attribute numbers and Shape presence
+-- never classify features or motion. Raw layer mapping is from MA's 2.5 keypad.
+local function newRecipeValueSourceAuditor(api)
+ local function read(h,key)
+  local v=api.safe(function() return h[key] end)
+  if v==nil then v=api.safe(function() return h:Get(key) end) end
+  return v
+ end
+ local function trim(v) return v~=nil and tostring(v):match('^%s*(.-)%s*$') or '' end
+ local function empty(v) local s=trim(v):lower(); return s=='' or s=='empty' end
+ local function meta(h)
+  local m={}; local n=api.safe(function() return h:PropertyCount() end)
+  if type(n)~='number' or n<0 or n>512 then return m end
+  for i=0,n-1 do
+   local key=api.safe(function() return h:PropertyName(i) end)
+   if type(key)=='string' then
+    m[key:lower()]={key=key,raw=read(h,key),type=api.safe(function() return h:PropertyType(i) end),info=api.safe(function() return h:PropertyInfo(i) end)}
+   end
+  end
+  return m
+ end
+ local function raw(m,k) return m[k] and m[k].raw end
+ local function resolve(v,expected)
+  if api.isObject(v) then
+   if not expected or api.class(v):lower()==expected then return v,'DIRECT_HANDLE' end
+   return nil,'WRONG_CLASS_'..api.class(v)
+  end
+  if empty(v) then return nil,'EMPTY' end
+  local s=trim(v)
+  -- Exact command identities only, and exactly one class-checked result.
+  if not s:match('^Attribute%s+[%d%.]+$') and not s:match('^Preset%s+[%d%.]+$')
+     and not s:match('^Shape%s+[%d%.]+$') then return nil,'UNRESOLVED_PROPERTY_TYPE_'..type(v) end
+  local list=api.safe(api.objectList,s)
+  if type(list)=='table' and #list==1 and api.isObject(list[1]) and (not expected or api.class(list[1]):lower()==expected) then return list[1],'EXACT_OBJECTLIST' end
+  return nil,'OBJECTLIST_NOT_UNIQUE_OR_WRONG_CLASS'
+ end
+ local function attrEvidence(v)
+  local a,route=resolve(v,'attribute')
+  if not a then return nil,nil,nil,route end
+  -- Vendor system_test_ui_misc.lua uses Attribute.Feature:Parent() for FG.
+  local feature=read(a,'Feature')
+  if not api.isObject(feature) or api.class(feature):lower()~='feature' then return a,nil,nil,'ATTRIBUTE_FEATURE_HANDLE_UNAVAILABLE' end
+  local fg=api.safe(function() return feature:Parent() end)
+  if not api.isObject(fg) or api.class(fg):lower()~='featuregroup' then return a,feature,nil,'FEATUREGROUP_PARENT_UNAVAILABLE' end
+  return a,feature,fg,'PROVEN_ATTRIBUTE_FEATURE_PARENT_'..route
+ end
+ local specials={none=true,release=true,remove=true,default=true,channelfunctiondefault=true,highlight=true,lowlight=true,zero=true,full=true}
+ local function valueKind(v)
+  if empty(v) then return 'EMPTY' end
+  local s=trim(v):lower()
+  if specials[s] then return s=='none' and 'NONE' or 'UNSUPPORTED_SPECIAL_'..s end
+  local n=tonumber(s)
+  local enum=api.enums and api.enums.PhaserRecipeValueSpecialsRaw
+  if n and type(enum)=='table' then for name,value in pairs(enum) do
+   if n==value then return name:lower()=='none' and 'NONE' or 'UNSUPPORTED_SPECIAL_'..name:lower() end
+  end end
+  -- Raw specials are encoded integers in the native API enum dump.
+  if n and n==n and math.abs(n)<1000000 and n~=264 then return 'NUMERIC' end
+  return 'UNSUPPORTED_RAW_ENCODING'
+ end
+ local function patternValue(v) local k=valueKind(v); return k=='NUMERIC' and 'NUMERIC' or k..':'..trim(v) end
+ local function selectedMetadata(m)
+  local out={}
+  for key,p in pairs(m) do
+   if key:find('layer',1,true) or key:find('value',1,true) or key:find('step',1,true)
+      or key:find('motion',1,true) or key:find('multi',1,true) or key:find('phaser',1,true)
+      or key:find('absolute',1,true) or key:find('relative',1,true) or key:find('data',1,true)
+      or key:find('reference',1,true) or key=='enabled' or key=='preset' or key=='shape'
+      or key=='feature' or key=='featuregroup' then
+    out[#out+1]=p.key..'='..trim(p.raw)..'<'..tostring(p.type or '?')..'>'
+   end
+  end
+  table.sort(out); return table.concat(out,';')
+ end
+ local function inspect(ref)
+  local data={features={},layers={},lanes={},audits={},classes={},reasons={},sourceCount=0,stepCount=0,recipeCount=0,refMeta=selectedMetadata(meta(ref))}
+  local complete=true; local featureComplete,layerComplete=true,true; local visited={}; local visitedCount=0
+  local buckets={}; local hasOpaqueDependency=false
+  local function reason(s) data.reasons[s]=true end
+  local function source(node,recipe,step)
+   local m=meta(node); local av=raw(m,'attributes') or raw(m,'attribute')
+   local a,f,fg,attributeProof=attrEvidence(av)
+   local fields={attribute=av,attributeProperty=m.attributes and m.attributes.key or (m.attribute and m.attribute.key),attributeHandle=a,feature=f,featureGroup=fg,attributeProof=attributeProof,
+    abs=raw(m,'rawvalueabs'),rel=raw(m,'rawvaluerel'),shape=raw(m,'shape'),preset=raw(m,'preset'),layer=raw(m,'layer'),
+    valueAbsolute=raw(m,'valueabsolute'),valueRelative=raw(m,'valuerelative'),node=node,sourceClass=api.class(node),metadata=selectedMetadata(m)}
+   local inherited={}; local chain={}; local current=node; local cm=m
+   -- Official popup selects Shape as a ValueSource handle. Follow that precise
+   -- node only; never import all sibling lanes or use its parent step count.
+   for depth=1,8 do
+    local sv=raw(cm,'shape')
+    if empty(sv) then break end
+    local link,route=resolve(sv,'phaserrecipevaluesource')
+    if not link or chain[link] or link==node then reason('SHAPE_VALUESOURCE_LINK_UNVERIFIED_'..route); complete=false; featureComplete=false; layerComplete=false; break end
+    fields.shapeHandle=fields.shapeHandle or link
+    chain[link]=true; inherited[#inherited+1]=api.desc(link)
+    local lm=meta(link)
+    if not empty(raw(lm,'preset')) then hasOpaqueDependency=true; reason('SHAPE_PRESET_DEPENDENCY_UNPROVEN'); complete=false; layerComplete=false end
+    if empty(av) then av=raw(lm,'attributes') or raw(lm,'attribute'); a,f,fg,attributeProof=attrEvidence(av); attributeProof=attributeProof..'_SHAPE_VALUESOURCE_INHERITED' end
+    for _,key in ipairs({'rawvalueabs','rawvaluerel'}) do
+     if empty(raw(m,key)) and lm[key] then m[key]=lm[key] end
+    end
+    if depth==8 and not empty(raw(lm,'shape')) then reason('SHAPE_CHAIN_LIMIT'); complete=false; featureComplete=false; layerComplete=false end
+    current=link; cm=lm
+   end
+   fields.attributeHandle,fields.feature,fields.featureGroup,fields.attributeProof=a,f,fg,attributeProof
+   fields.effectiveAttribute=av
+   fields.shapeChain=table.concat(inherited,' -> ')
+   if not fg then reason('ATTRIBUTE_FEATUREGROUP_UNPROVEN_'..attributeProof); complete=false; featureComplete=false end
+   local preset,presetRoute=resolve(fields.preset)
+   fields.presetHandle=preset; fields.presetProof=presetRoute
+   fields.presetMetadata=preset and selectedMetadata(meta(preset)) or ''
+   local presetPresent=not empty(fields.preset)
+   local presetValid=preset and (api.class(preset):lower()=='preset' or api.class(preset):lower()=='phaserrecipe')
+   if presetPresent then hasOpaqueDependency=true end
+   local laneReasons={}; local layerSet={}
+   for _,spec in ipairs({{'rawvalueabs','abs','valueabsolute'},{'rawvaluerel','rel','valuerelative'}}) do
+    local k,layer,virtual=spec[1],spec[2],spec[3]
+    local kind=valueKind(raw(m,k))
+    if kind=='NUMERIC' then
+     -- A referenced Preset may replace the authored cell. Require the exposed
+     -- effective ValueAbsolute/Relative numeric property too; raw alone is not
+     -- proof of the Preset's applicable layer.
+     if presetPresent and (not presetValid or valueKind(raw(m,virtual))~='NUMERIC') then
+      laneReasons[#laneReasons+1]='PRESET_EFFECTIVE_'..layer..'_UNPROVEN'; complete=false
+     else layerSet[layer]=true end
+    elseif kind~='EMPTY' and kind~='NONE' then
+     laneReasons[#laneReasons+1]=layer..'_'..kind; complete=false
+    end
+   end
+   if next(layerSet)==nil then laneReasons[#laneReasons+1]='NO_PROVEN_AUTHORED_LAYER'; complete=false end
+   if #laneReasons>0 then layerComplete=false end
+   fields.layerProof=#laneReasons==0 and 'PROVEN_MA25_KEYPAD_RAW_LAYER_MAPPING' or table.concat(laneReasons,',')
+   fields.effectiveAbs,fields.effectiveRel=raw(m,'rawvalueabs'),raw(m,'rawvaluerel')
+   fields.proposed='feature='..(fg and api.desc(fg) or 'UNPROVEN')..' layers='..api.joined(layerSet)
+   if fg then
+    local featureKey='FG:'..tostring(api.id(fg)); data.features[featureKey]=true
+    for layer in pairs(layerSet) do
+     local key=featureKey..'|'..layer
+     buckets[key]=buckets[key] or {attributes={},feature=featureKey,layer=layer}
+     if a and step and recipe then
+      local aid=api.id(a); buckets[key].attributes[aid]=buckets[key].attributes[aid] or {}
+      buckets[key].attributes[aid][step]=recipe
+     end
+     data.layers[layer]=true
+    end
+   end
+   for _,r in ipairs(laneReasons) do reason(r) end
+   data.sourceCount=data.sourceCount+1; data.audits[#data.audits+1]=fields
+  end
+  local function visit(node,depth,recipe,step)
+   if depth>8 or visitedCount>=512 or visited[node] then complete=false; featureComplete=false; layerComplete=false; reason('TREE_LIMIT_OR_CYCLE'); return end
+   visited[node]=true; visitedCount=visitedCount+1
+   local kind=api.class(node):lower(); data.classes[api.class(node)]=true
+   if kind=='phaserrecipe' then recipe=node; step=nil; data.recipeCount=data.recipeCount+1 end
+   if kind=='phaserrecipestep' then step=node; data.stepCount=data.stepCount+1 end
+   if kind=='phaserrecipevaluesource' then source(node,recipe,step) end
+   if kind=='randomchannel' or kind=='generatorchannel' then
+    -- Generator attribute metadata is audited, but the channel layer semantics
+    -- have no demonstrated raw-value mapping. No absolute default.
+    local m=meta(node); local av=raw(m,'attribute') or raw(m,'attributes')
+    local a,f,fg,proof=attrEvidence(av)
+    data.audits[#data.audits+1]={node=node,sourceClass=api.class(node),attribute=av,attributeProperty=m.attribute and m.attribute.key or (m.attributes and m.attributes.key),attributeHandle=a,feature=f,featureGroup=fg,attributeProof=proof,layer=raw(m,'layer'),proposed='GENERATOR_LAYER_UNPROVEN',layerProof='GENERATOR_LAYER_UNPROVEN',metadata=selectedMetadata(m)}
+    if fg then data.features['FG:'..tostring(api.id(fg))]=true else featureComplete=false end
+    complete=false; layerComplete=false; reason('GENERATOR_LAYER_UNPROVEN')
+   end
+   local childList=api.safe(function() return node:Children() end)
+   if type(childList)~='table' then complete=false; featureComplete=false; layerComplete=false; reason('TREE_CHILDREN_UNREADABLE'); return end
+   for _,child in ipairs(childList) do visit(child,depth+1,recipe,step) end
+  end
+  visit(ref,0)
+  if next(data.features)==nil then reason('NO_PROVEN_FEATURE_SCOPE') end
+  if next(data.layers)==nil then reason('NO_PROVEN_LAYER_SCOPE') end
+  if data.sourceCount==0 then complete=false; reason('OPAQUE_REFERENCE_NO_VALUESOURCES') end
+  local anyMoving=false
+  for key,bucket in pairs(buckets) do
+   local moving
+   local first=true
+   for _,steps in pairs(bucket.attributes) do
+    local n=api.count(steps); local attributeMoving
+    if data.recipeCount==1 and n>1 then attributeMoving=true
+    elseif data.recipeCount==1 and n==1 and not hasOpaqueDependency then attributeMoving=false end
+    if first then moving=attributeMoving; first=false
+    elseif attributeMoving~=moving then complete=false; featureComplete=false; moving=nil; reason('MIXED_ATTRIBUTE_MOTION_WITHIN_FEATUREGROUP'); break end
+   end
+   if moving==nil then complete=false; reason('MOTION_UNPROVEN_EFFECTIVE_STEPS_OR_PRESET_DEPENDENCY')
+   else data.lanes[key]={feature=bucket.feature,layer=bucket.layer,moving=moving}; if moving then anyMoving=true end end
+  end
+  data.motionReason='PROVEN_PER_LANE_AUTHORED_STEP_COUNT'
+  if not complete then data.motionReason='UNSAFE:'..api.joined(data.reasons) end
+  if api.isGenerator(ref) then data.motionReason='GENERATOR_CLASS_PROVEN_LAYER_UNPROVEN' end
+  data.proven=complete and next(data.lanes)~=nil
+  data.featureProven=featureComplete and next(data.features)~=nil
+  data.layerProven=layerComplete and next(data.layers)~=nil
+  data.moving=data.proven and anyMoving or nil
+  -- Preserve a proven static false rather than Lua's and/or false-to-nil idiom.
+  if data.proven then data.moving=anyMoving end
+  for _,a in ipairs(data.audits) do
+   a.confidence=data.proven and 'PROVEN_SUPPORTED_SUBSET' or 'UNSAFE'
+   a.reason=api.joined(data.reasons)
+   a.motionReason=data.motionReason
+   a.proposed=(a.proposed or '')..' recipes='..tostring(data.recipeCount)..' steps='..tostring(data.stepCount)..' lanes='..api.joined(data.lanes)
+   a.pattern=table.concat({a.sourceClass,api.class(a.attributeHandle),api.desc(a.featureGroup),
+    patternValue(a.abs),patternValue(a.rel),api.class(a.shapeHandle),api.class(a.presetHandle),a.layerProof or '',
+    tostring(data.recipeCount),tostring(data.stepCount),a.confidence,a.reason},'|')
+  end
+  if #data.audits==0 then
+   data.audits[1]={sourceClass='NONE',proposed='OPAQUE_REFERENCE',confidence='UNSAFE',reason=api.joined(data.reasons),motionReason=data.motionReason,pattern=api.class(ref)..'|OPAQUE|'..data.refMeta}
+  end
+  return data
+ end
+ return {inspect=inspect,metadata=meta,selectedMetadata=selectedMetadata}
+end
+
 local rawData=_G.GetPresetData
 assert((safe(BuildDetails) or {}).BigVersion=='2.5.0.3','Requires grandMA3 2.5.0.3')
 local sequence,cue=safe(_G.SelectedSequence),safe(_G.GetCurrentCue)
@@ -921,9 +1148,21 @@ assert(sequence and cue and cueNumber(cue),'Select Sequence and Current Cue')
 SelectedSequence=function() return sequence end
 GetCurrentCue=function() return cue end
 local function count(t) local n=0; for _ in pairs(t or {}) do n=n+1 end; return n end
-local function text(v) return tostring(v or 'UNAVAILABLE'):gsub('[\r\n]',' '):sub(1,500) end
+local function text(v) return (v==nil and 'UNAVAILABLE' or tostring(v)):gsub('[\r\n]',' '):sub(1,240) end
 local function desc(h) return text(commandAddress(h))..' ['..text(safe(HandleToStr,h))..']' end
-local function log(fmt,...) Printf('[CueRecipeReverseAB] '..fmt,...) end
+local function log(fmt,...) nativePrintf('%s','[CueRecipeReverseAB] '..string.format(fmt,...)) end
+local detailCount,diffDetailCount,detailsSuppressed=0,0,0
+local function detail(fmt,...)
+ local label=fmt:match('^([%w_]+)') or select(1,...)
+ if type(label)=='string' and label:sub(1,4)=='DIFF' then
+  if diffDetailCount>=150 then detailsSuppressed=detailsSuppressed+1; return end
+  diffDetailCount=diffDetailCount+1
+ else
+  if detailCount>=500 then detailsSuppressed=detailsSuppressed+1; return end
+  detailCount=detailCount+1
+ end
+ log(fmt,...)
+end
 local function now() return safe(Time) end
 local function ms(a,b) return type(a)=='number' and type(b)=='number' and b>=a and (b-a)*1000 or 'UNVERIFIED' end
 local identities={}
@@ -941,69 +1180,23 @@ GetPresetData=function(...)
  if phase=='FAST' then fastCalls=fastCalls+1; error('FAST_PATH_FORBIDDEN_GetPresetData') end
  oracleCalls=oracleCalls+1; return rawData(...)
 end
--- Enumerate native advertised properties: never invent a readable property.
-local function metadata(h)
- local result={}; local n=safe(function() return h:PropertyCount() end)
- if type(n)~='number' or n>512 then return result end
- for i=0,n-1 do
-  local key=safe(function() return h:PropertyName(i) end)
-  if type(key)=='string' then result[key:lower()]=property(h,key) end
- end
- return result
-end
 local function joined(t) local a={}; for k in pairs(t or {}) do a[#a+1]=tostring(k) end; table.sort(a); return table.concat(a,',') end
--- Pool numbers are structural. Attribute names below are enum/Attribute identifiers,
--- never the user-authored name of a Preset, Phaser, Generator, Group or Recipe.
-local attributeFamilies={dimmer='Dimmer',pan='Position',tilt='Position',color='Color',colour='Color',gobo='Gobo',beam='Beam',focus='Focus',control='Control',shapers='Shapers'}
-local function structure(ref)
- local features,layers={},{}; local badFeature,badLayer=false,false
- local pool=tonumber((commandAddress(ref) or ''):match('^Preset%s+(%d+)%.'))
- if NUMBERED_PRESET_FEATURES[pool] then features[NUMBERED_PRESET_FEATURES[pool]]=true end
- local visited,steps,sources,recipeCount=0,0,0,0
- local evidence={}
- local function attributes(value)
-  if not value or value=='' then badFeature=true; return end
-  local found=false
-  for word in value:lower():gmatch('[%w_]+') do
-   local f=attributeFamilies[word]
-   if not f then for _,family in ipairs(RECIPE_FEATURES) do if family:lower()==word then f=family end end end
-   if f then features[f]=true; found=true else badFeature=true end
-  end
-  if not found then badFeature=true end
- end
- local function visit(node,depth)
-  if depth>8 or visited>=512 then badFeature=true; badLayer=true; return end
-  visited=visited+1
-  local k=class(node):lower(); local props=metadata(node)
-  if k=='phaserrecipe' then recipeCount=recipeCount+1 end
-  if k=='phaserrecipestep' then steps=steps+1 end
-  if k=='phaserrecipevaluesource' or k=='randomchannel' or k=='generatorchannel' then
-   sources=sources+1
-   attributes(props.attributes or props.attribute or props.feature)
-   -- Only an explicitly advertised Layer enum is accepted. No default absolute.
-   local layer=(props.layer or ''):lower()
-   if layer=='absolute' or layer=='abs' then layers.abs=true
-   elseif layer=='relative' or layer=='rel' then layers.rel=true
-   else badLayer=true end
-   local fields={}; for key,value in pairs(props) do fields[#fields+1]=key..'='..text(value) end; table.sort(fields)
-   evidence[#evidence+1]=k..'{'..table.concat(fields,';')..'}'
-  end
-  for _,child in ipairs(children(node)) do visit(child,depth+1) end
- end
- visit(ref,0)
- -- A feature pool is sufficient family evidence for an ordinary Preset;
- -- no exposed value source means its layer and motion state remain opaque.
- local moving
- if isRandomGenerator(ref) then moving=true
- elseif recipeCount==1 and steps>1 then moving=true
- elseif recipeCount==1 and sources>0 and steps==1 then moving=false end
- if sources==0 then badLayer=true end
- -- A Cartesian product would guess source-specific feature/layer association.
- if count(features)>1 and count(layers)>1 then badLayer=true end
- return next(features) and not badFeature and features or nil,
-        next(layers) and not badLayer and layers or nil,moving,table.concat(evidence,' ')
+local function sample(members)
+ local ids={}; for member in pairs(members or {}) do ids[#ids+1]=member end; table.sort(ids)
+ local a={}; for i=1,math.min(5,#ids) do a[#a+1]=tostring(ids[i]) end; return table.concat(a,',')
 end
-log('START target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+local auditor=newRecipeValueSourceAuditor({safe=safe,class=class,isObject=isObjectReference,
+ objectList=_G.ObjectList,id=id,desc=desc,count=count,joined=joined,isGenerator=isRandomGenerator,enums=_G.Enums})
+local patterns,patternOrder={},{}
+local function retainAudit(row,data)
+ for _,a in ipairs(data.audits) do
+  local key=a.pattern
+  local p=patterns[key]
+  if not p then p={row=row,audit=a,data=data,count=0,recipes={}}; patterns[key]=p; patternOrder[#patternOrder+1]=p end
+  p.count=p.count+1; p.recipes[row.recipe]=true
+ end
+end
+log('START revision=2_VALUE_SOURCE_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -1044,14 +1237,18 @@ local ok,err=pcall(function()
     end
     if not row.members then row.unsafe[#row.unsafe+1]='FAST_PATH_UNSAFE_SELECTION' end
     if ref then
-     row.features,row.layers,row.moving,row.evidence=structure(ref)
-     local recipeProps=metadata(r)
-     local advertisedLayer=(recipeProps.layer or ''):lower()
-     if advertisedLayer=='absolute' or advertisedLayer=='abs' then row.layers={abs=true}
-     elseif advertisedLayer=='relative' or advertisedLayer=='rel' then row.layers={rel=true} end
+     local data=auditor.inspect(ref); row.structural=data
+     row.features=data.featureProven and data.features or nil
+     row.layers=data.layerProven and data.layers or nil
+     row.lanes=data.proven and data.lanes or nil
+     row.moving=data.moving; row.motionReason=data.motionReason
+     row.evidence=joined(data.reasons)
+     retainAudit(row,data)
+     local recipeMeta=auditor.metadata(r)
+     row.recipeLayer=recipeMeta.layer and recipeMeta.layer.raw
      if not row.features then row.unsafe[#row.unsafe+1]='FAST_PATH_UNSAFE_FEATURE_SCOPE' end
      if not row.layers then row.unsafe[#row.unsafe+1]='FAST_PATH_UNSAFE_LAYER' end
-     if row.moving==nil then row.unsafe[#row.unsafe+1]='UNVERIFIED'; row.motionReason='ORDINARY_PRESET_OR_PHASER_MOTION_NOT_EXPOSED' end
+     if not data.proven then row.unsafe[#row.unsafe+1]='UNVERIFIED' end
     else
      row.unsafe[#row.unsafe+1]='UNVERIFIED'; row.evidence='Unresolved '..field..'='..text(rawRef)..' Selection='..text(rawGroup)
     end
@@ -1060,22 +1257,53 @@ local ok,err=pcall(function()
   end
  end
  result=recipeReverseResolve(rows)
+ assert(fastCalls==0,'FAST_PATH_FORBIDDEN_GetPresetData_CALLS')
 end)
 local fastElapsed=ms(start,now())
 result=result or {refs={},unsafe={},rejected={},assignments={}}
 -- Immutable snapshot finalized before the oracle is even constructed.
 local final={}; for rid,entry in pairs(result.refs) do final[rid]=entry.ref end
 log('FAST_FINALIZED valid=%s refs=%d GetPresetData_calls=%d elapsed_ms=%s error=%s',text(ok),count(final),fastCalls,text(fastElapsed),text(err))
-log('METRICS Cues=%d Parts=%d Recipe_rows=%d Stored_Groups=%d group_member_expansion=%d member_feature_lanes_resolved=%d empty_effective_rows=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d unresolved_symbolic_lanes=%d unknown_selection_rows=%d history_exhausted=%s',count(cues),stats.parts,stats.rows,stats.groups,stats.expansions,result.lanesResolved or 0,result.rowsSkipped or 0,result.staticRows or 0,result.movingRows or 0,#result.unsafe,#(result.unresolved or {}),result.unknownSelectionRows or 0,text(ok))
-local function trace(row,tag)
- log('%s ref=%s Cue=%s Part=%s Recipe=%s Group=%s features=%s layers=%s surviving_member_count=%d surviving_members=%s group_members=%s unsafe=%s motion_reason=%s evidence=%s',tag,desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(row.survivors),joined(row.survivors),joined(row.members),table.concat(row.unsafe or {},','),text(row.motionReason),text(row.evidence))
+local function metrics()
+ log('FAST_PATH_METRICS Cues=%d Parts=%d Recipe_rows=%d Stored_Groups=%d group_member_expansion=%d member_feature_lanes_resolved=%d empty_effective_rows=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d unresolved_symbolic_lanes=%d unknown_selection_rows=%d GetPresetData_calls=%d elapsed_ms=%s history_exhausted=%s',count(cues),stats.parts,stats.rows,stats.groups,stats.expansions,result.lanesResolved or 0,result.rowsSkipped or 0,result.staticRows or 0,result.movingRows or 0,#result.unsafe,#(result.unresolved or {}),result.unknownSelectionRows or 0,fastCalls,text(fastElapsed),text(ok))
 end
+metrics()
+local function path(h) return desc(h)..' native='..text(h and address(h)) end
+for i,p in ipairs(patternOrder) do
+ if i<=120 then
+  local a,row,data=p.audit,p.row,p.data
+  detail('VALUE_SOURCE_AUDIT pattern=%d occurrences=%d Recipe=%s Group=%s reference=%s native_classes=%s ValueSource=%s ValueSource_class=%s Attributes_property=%s Attributes_raw=%s Attributes_type=%s Attributes_handle_path=%s Feature=%s FeatureGroup=%s RawValueAbs=%s RawValueRel=%s effective_abs=%s effective_rel=%s Shape=%s Shape_handle=%s Shape_chain=%s Preset=%s Preset_handle=%s Layer=%s Recipe_Layer=%s proposed=%s confidence=%s attribute_proof=%s layer_proof=%s motion=%s unsafe_reason=%s reference_metadata=%s preset_metadata=%s source_metadata=%s',
+   i,p.count,desc(row.recipe),desc(row.group),desc(row.ref),joined(data.classes),desc(a.node),text(a.sourceClass),text(a.attributeProperty),text(a.attribute),type(a.attribute),path(a.attributeHandle),path(a.feature),path(a.featureGroup),text(a.abs),text(a.rel),text(a.effectiveAbs),text(a.effectiveRel),text(a.shape),path(a.shapeHandle),text(a.shapeChain),text(a.preset),path(a.presetHandle),text(a.layer),text(row.recipeLayer),text(a.proposed),text(a.confidence),text(a.attributeProof),text(a.layerProof),text(a.motionReason),text(a.reason),text(data.refMeta),text(a.presetMetadata),text(a.metadata))
+ end
+end
+log('VALUE_SOURCE_AUDIT_SUMMARY distinct_patterns=%d shown=%d suppressed=%d',#patternOrder,math.min(120,#patternOrder),math.max(0,#patternOrder-120))
+local function trace(row,tag)
+ local survivors=tag=='SOURCE' and row.movingSurvivors or row.survivors
+ detail('%s ref=%s Cue=%s Part=%s Recipe=%s Group=%s features=%s layers=%s surviving_member_count=%d surviving_sample=%s group_member_count=%d member_sample=%s unsafe=%s motion_reason=%s evidence=%s',tag,desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(survivors),sample(survivors),count(row.members),sample(row.members),table.concat(row.unsafe or {},','),text(row.motionReason),text(row.evidence))
+end
+local function identityOutput(tag,set)
+ log('%s count=%d',tag,count(set))
+ local refs={}; for _,ref in pairs(set) do refs[#refs+1]=ref end
+ table.sort(refs,function(a,b) return desc(a)<desc(b) end)
+ for i=1,math.min(128,#refs) do log('%s_REF reference=%s',tag,desc(refs[i])) end
+ if #refs>128 then log('%s_DETAIL_LIMIT suppressed=%d exact_set_preserved_in_comparison=true',tag,#refs-128) end
+end
+identityOutput('RECIPE_ONLY_FINAL',final)
 for rid,entry in pairs(result.refs) do
- log('ACTIVE ref=%s surviving_member_count=%d surviving_members=%s',desc(entry.ref),count(entry.members),joined(entry.members))
+ detail('ACTIVE ref=%s surviving_member_count=%d surviving_sample=%s',desc(entry.ref),count(entry.members),sample(entry.members))
  for row in pairs(entry.sources) do trace(row,'SOURCE') end
 end
 for _,row in ipairs(result.unsafe) do trace(row,'UNSAFE') end
-for _,lane in ipairs(result.unresolved or {}) do log('UNRESOLVED member=%s feature_layer=%s Recipe=%s Group=%s',text(lane.member),lane.lane,desc(lane.row.recipe),desc(lane.row.group)) end
+local unresolved,unresolvedCount={},0
+for _,lane in ipairs(result.unresolved or {}) do
+ local row=lane.row; unresolved[row]=unresolved[row] or {}
+ local bucket=unresolved[row][lane.lane] or {}; unresolved[row][lane.lane]=bucket; bucket[lane.member]=true
+end
+for row,lanes in pairs(unresolved) do for lane,members in pairs(lanes) do
+ unresolvedCount=unresolvedCount+1
+ detail('UNRESOLVED Recipe=%s Group=%s feature_layer=%s member_count=%d member_sample=%s',desc(row.recipe),desc(row.group),lane,count(members),sample(members))
+end end
+log('UNSAFE_UNRESOLVED_SUMMARY unsafe_rows=%d unresolved_groups=%d symbolic_member_lanes=%d unknown_selection_rows=%d',#result.unsafe,unresolvedCount,#(result.unresolved or {}),result.unknownSelectionRows or 0)
 for _,row in ipairs(result.rejected) do
  trace(row,'OLDER_REJECTED_OVERLAP')
  local losses={}
@@ -1084,10 +1312,15 @@ for _,row in ipairs(result.rejected) do
   local bucket=losses[loss.newer][loss.lane] or {sample=loss.member,n=0,unsafe=loss.unsafe}; losses[loss.newer][loss.lane]=bucket; bucket.n=bucket.n+1
  end
  for newer,lanes in pairs(losses) do for lane,bucket in pairs(lanes) do
-  log('FIRST_NEWER member=%s overlapping_member_count=%d lane=%s older_Recipe=%s newer_Cue=%s newer_Part=%s newer_Recipe=%s newer_Group=%s unsafe_barrier=%s',text(bucket.sample),bucket.n,lane,desc(row.recipe),desc(newer.cue),desc(newer.part),desc(newer.recipe),desc(newer.group),text(bucket.unsafe==true))
+  detail('FIRST_NEWER member=%s overlapping_member_count=%d lane=%s older_Recipe=%s newer_Cue=%s newer_Part=%s newer_Recipe=%s newer_Group=%s unsafe_barrier=%s',text(bucket.sample),bucket.n,lane,desc(row.recipe),desc(newer.cue),desc(newer.part),desc(newer.recipe),desc(newer.group),text(bucket.unsafe==true))
  end end
 end
 phase='ORACLE'
+local oracleLogs=0
+oracleLogSink=function(line)
+ oracleLogs=oracleLogs+1
+ if oracleLogs<=40 then nativePrintf('%s','[CueRecipeReverseAB] ORACLE_TRACE '..line) end
+end
 local oracle,missing,extra={},{},{}
 local oracleOK,oracleError=pcall(function()
  assert(type(rawData)=='function','Oracle GetPresetData unavailable')
@@ -1103,6 +1336,8 @@ local oracleOK,oracleError=pcall(function()
  assert(completed,'Oracle advance limit exceeded')
  for _,entry in pairs(state.activeEffects or {}) do local rid=id(entry.object); assert(rid,'Oracle identity unavailable'); oracle[rid]=entry.object end
 end)
+oracleLogSink=nil
+identityOutput('ORACLE_FINAL',oracle)
 if oracleOK then
  for rid,ref in pairs(oracle) do if not final[rid] then missing[rid]=ref end end
  for rid,ref in pairs(final) do if not oracle[rid] then extra[rid]=ref end end
@@ -1112,7 +1347,7 @@ for _,row in ipairs(result.unsafe) do for _,reason in ipairs(row.unsafe) do clas
 -- Recipe-only authoring is the supported product contract. A reference with no
 -- Recipe source is unsupported/unsafe, never grounds for a production fallback.
 local stable=safe(_G.SelectedSequence)==sequence and safe(_G.GetCurrentCue)==cue
-if not ok or not oracleOK or not stable then classifications.UNVERIFIED=true
+if not ok or not oracleOK or not stable or fastCalls~=0 then classifications.UNVERIFIED=true
 elseif next(missing)==nil and next(extra)==nil then classifications.RECIPE_REVERSE_EXACT_MATCH=true
 else
  if next(missing) then classifications.RECIPE_REVERSE_MISSING_REFERENCE=true end
@@ -1123,12 +1358,22 @@ else
  end
 end
 for tag,set in pairs({MISSING=missing,EXTRA=extra}) do for rid,ref in pairs(set) do
- log('DIFF_%s ref=%s',tag,desc(ref))
+ detail('DIFF_%s ref=%s',tag,desc(ref))
  local found=false
- for _,row in ipairs(rows) do if row.refId==rid then found=true; trace(row,'DIFF_SOURCE'); for _,loss in ipairs(row.superseded or {}) do log('DIFF_LANE member=%s feature_layer=%s newer_Recipe=%s newer_Group=%s',text(loss.member),loss.lane,desc(loss.newer.recipe),desc(loss.newer.group)) end end end
- if not found then log('DIFF_SOURCE ref=%s Group/member/feature/layer=UNVERIFIED no_Recipe_source=true',desc(ref)) end
+ for _,row in ipairs(rows) do if row.refId==rid then
+  found=true; trace(row,'DIFF_SOURCE')
+  local buckets={}
+  for _,loss in ipairs(row.superseded or {}) do
+   buckets[loss.newer]=buckets[loss.newer] or {}; local lane=buckets[loss.newer][loss.lane] or {}; buckets[loss.newer][loss.lane]=lane; lane[loss.member]=true
+  end
+  for newer,lanes in pairs(buckets) do for lane,members in pairs(lanes) do detail('DIFF_LANE feature_layer=%s member_count=%d member_sample=%s older_Recipe=%s newer_Recipe=%s newer_Group=%s',lane,count(members),sample(members),desc(row.recipe),desc(newer.recipe),desc(newer.group)) end end
+ end end
+ if not found then detail('DIFF_SOURCE ref=%s Group/member/feature/layer=UNVERIFIED no_Recipe_source=true',desc(ref)) end
 end end
+identityOutput('DIFF_MISSING',missing); identityOutput('DIFF_EXTRA',extra)
+log('DIFF missing=%s extra=%s oracle_valid=%s details_suppressed=%d oracle_trace_suppressed=%d',oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',text(oracleOK),detailsSuppressed,math.max(0,oracleLogs-40))
+metrics()
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false',joined(classifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError))
 log('END production_untouched=true markers=false waits=false fallback_during_fast_path=false')
-return {fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows}
+return {fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end

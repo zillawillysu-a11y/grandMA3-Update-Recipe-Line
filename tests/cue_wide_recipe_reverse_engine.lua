@@ -38,4 +38,13 @@ local first=row('unsafe1',{1},true); first.features=nil; first.unsafe={'FAST_PAT
 local second=row('unsafe2',{1},true); second.layers=nil; second.unsafe={'FAST_PATH_UNSAFE_LAYER'}
 older=row('older',{1},true)
 r=resolve({first,second,older}); check(older.superseded[1].newer==first)
+-- Source-correlated lanes must not manufacture a cross product or publish a
+-- moving reference solely because its static lane survives.
+local mixed=row('mixed',{1,2},true)
+mixed.features={Dimmer=true,Position=true}; mixed.layers={abs=true,rel=true}
+mixed.lanes={['Dimmer|abs']={feature='Dimmer',layer='abs',moving=true},['Position|rel']={feature='Position',layer='rel',moving=false}}
+r=resolve({row('new',{1},false),mixed})
+check(r.lanesResolved==4 and r.refs.mixed.members[2] and not r.refs.mixed.members[1])
+check(mixed.movingSurvivors[2] and not mixed.movingSurvivors[1] and mixed.survivors[1])
+check(r.staticRows==2 and r.movingRows==1)
 print('PASS Recipe reverse engine '..checks..' semantic checks')

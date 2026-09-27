@@ -7,7 +7,7 @@ local function recipeReverseResolve(rows)
  local function checkpoint() work=work+1; assert(work<=1048576,'Recipe reverse lane work limit exceeded') end
  for reverseIndex,row in ipairs(rows) do
   row.reverseIndex=reverseIndex
-  row.survivors={}; row.superseded={}; row.effective=0
+  row.survivors={}; row.movingSurvivors={}; row.movingEffective=false; row.staticEffective=false; row.superseded={}; row.effective=0
   local reasons=row.unsafe or {}
   if #reasons>0 then
    result.unsafe[#result.unsafe+1]=row
@@ -22,11 +22,13 @@ local function recipeReverseResolve(rows)
     end end
    end end
   else
+   local rowLanes=row.lanes or {}
+   if not row.lanes then for feature in pairs(row.features) do for layer in pairs(row.layers) do rowLanes[feature..'|'..layer]={feature=feature,layer=layer,moving=row.moving} end end end
    for member in pairs(row.members) do
     decided[member]=decided[member] or {}
-    for feature in pairs(row.features) do for layer in pairs(row.layers) do
+    for lane,laneState in pairs(rowLanes) do
+     local feature,layer=laneState.feature,laneState.layer
      checkpoint()
-     local lane=feature..'|'..layer
      local old=decided[member][lane]
      local barrier=globalBlock[1]
      for _,key in ipairs({lane,feature..'|*','*'}) do
@@ -40,17 +42,21 @@ local function recipeReverseResolve(rows)
       decided[member][lane]=row; row.effective=row.effective+1; row.survivors[member]=true
       result.lanesResolved=result.lanesResolved+1
       result.assignments[#result.assignments+1]={member=member,lane=lane,row=row}
-      if row.moving then
+      if laneState.moving then
+       row.movingEffective=true
+       row.movingSurvivors[member]=true
        local entry=result.refs[row.refId] or {ref=row.ref,members={},sources={}}
        result.refs[row.refId]=entry; entry.members[member]=true
        entry.sources[row]=true
-      end
+      else row.staticEffective=true end
      end
-    end end
+    end
    end
    if row.effective==0 then result.rowsSkipped=result.rowsSkipped+1
-   elseif row.moving then result.movingRows=result.movingRows+1
-   else result.staticRows=result.staticRows+1 end
+   else
+    if row.movingEffective then result.movingRows=result.movingRows+1 end
+    if row.staticEffective then result.staticRows=result.staticRows+1 end
+   end
   end
   if row.moving and #row.superseded>0 then result.rejected[#result.rejected+1]=row end
  end
