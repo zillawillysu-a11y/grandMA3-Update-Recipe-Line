@@ -93,3 +93,9 @@ Actual isolated copy executed. Production Update Plugin snapshot unchanged; prod
 - Recall_View_Observer_2_5_0_3.lua: parse PASS; source/deployed SHA256 MATCH `4c02421f57b552fdafb484cf58f1d26ae7d318353c39e803d82ea872e80e0ebc`.
 
 Actual diagnostic-only copy executed. Production Update Plugin snapshot unchanged and production source unchanged. 31 observer assertions, 86 existing workflow assertions, XML/Lua parse and forbidden-call static check PASS. Final native retest of the same replacement scenario pending. Re-import XML and confirm revision=2-controlled-lookup before BEFORE/manual Recall/AFTER.
+
+## Final revision 2 native evidence
+
+User completed TWO controlled View replacements on grandMA3 2.5.0.3. Both returned OLD valid=false, OLD production_cache_accept=false, NEW grid found with Generator 103/104 buttons, database targets preserved, classification=LIFECYCLE_NOT_REPRODUCED and capped=false.
+
+This supersedes pending-retest statements above. Stale-valid cache is a downgraded, unconfirmed hypothesis; these controlled cases did not reproduce it. No global proof of lifecycle correctness and no production fix follows. Track A remains paused. The next isolated experiment is generic Pool child enumeration, documented separately.
