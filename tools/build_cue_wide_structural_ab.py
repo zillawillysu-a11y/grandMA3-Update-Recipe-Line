@@ -18,7 +18,7 @@ start=source.index('local function scanCueEffectPart(scan, part)')
 end=source.index('local function finishCueEffectScan(scan)',start)
 sparse=source[start:end].replace('local function scanCueEffectPart(', 'local function sparseScanCueEffectPart(',1)
 assert sparse.count('next(data, pending.key)')==1
-sparse=sparse.replace('next(data, pending.key)','sparseNext(scan, part, data)')
+sparse=sparse.replace('local index, phaser = next(data, pending.key)', 'local index, phaser, streamYield = sparseNext(scan, part, data)\n        if streamYield then return false end')
 sparse=sparse.replace('local recipes = pending.recipes or {}','pending.recipes = pending.recipes or sparseRecipes(part)\n    local recipes = pending.recipes or {}')
 sparse=sparse.replace('pending.recipes = recipes','pending.recipes = recipes\n    rememberSparseRecipes(part, recipes)')
 sparse=sparse.replace(origin_anchor,'local probePrevious = layers[layer[1]]\n                    '+origin_anchor+'\n                    captureOrigin(part, layers[layer[1]], scan, index, layer[1], phaser, probePrevious)')

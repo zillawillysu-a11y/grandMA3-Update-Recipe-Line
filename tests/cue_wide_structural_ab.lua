@@ -111,7 +111,7 @@ cue=append(seq,object('Cue','Sequence 1 Cue 2')); cue.No=2000; part=append(cue,o
 local rows={}; for i=1,4476 do rows[i]={[1]={absolute=50}} end; data[part]=rows
 r=run()
 check(r.profiles.BASELINE.records==4477 and r.profiles.BASELINE.advances==141,'large static baseline costs original advances')
-check(r.profiles.HYBRID.records==2 and r.profiles.HYBRID.advances==2,'sparse handles same scope in two records, cadence unchanged')
+check(r.profiles.HYBRID.records==2 and r.profiles.HYBRID.lookups==4477 and r.profiles.HYBRID.advances<40,'stream skips unmatched records with bounded advances')
 check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','large static pruning still correct')
 setup(1); addRecipe(preset); local other=append(pool,object('Preset','Preset 1.2')); other.Name='Same label'; preset.Name='Same label'
 local priorRT=env.GetRTChannel; local outside=object('Subfixture','Fixture 2'); outside.SubfixtureIndex=2
@@ -127,8 +127,8 @@ setup(1); addRecipe(preset); mappedChannels={}; r=run()
 check(r.hardBlocked and #r.profiles.HYBRID.reads==0,'empty mapping not assumed complete'); mappedChannels=nil
 setup(2050); addRecipe(preset); mappedChannels={}; for i=1,2050 do mappedChannels[i]=i end
 r=run(); check(not r.hardBlocked and #r.profiles.HYBRID.reads==1,'2050 keys executes one native Part read');
-check(#r.profiles.HYBRID.chunks==5 and r.profiles.HYBRID.lookups==2050,'2050 keys split into five bounded chunks')
-check(r.profiles.HYBRID.parts==1 and r.profiles.HYBRID.cacheReuses==4,'chunk cache prevents native rereads')
+check(#r.profiles.HYBRID.units==1 and r.profiles.HYBRID.lookups==2050,'2050 actual records stream through one Part')
+check(r.profiles.HYBRID.parts==1 and not r.profiles.HYBRID.cacheReuses,'Part stream prevents native rereads')
 check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','chunked sparse correctness'); mappedChannels=nil
 setup(1); addRecipe(preset); readSeconds=.2; r=run()
 check(near(r.profiles.HYBRID.nativeMs,200) and near(r.profiles.HYBRID.processingMs,0),'native timing split')
@@ -162,8 +162,8 @@ r=run(); local hp=r.profiles.HYBRID
 check(r.comparisons.STRUCTURAL.classification=='EXTRA_REFERENCE' and size(r.structural)==5,'Structural behavior unchanged with one extra')
 check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH' and size(r.hybrid)==4,'seeded extra removed with positive cooked witness')
 check(hp.executed and hp.resultValid and hp.parts==4,'3 current Parts plus explicit source witness only')
-check(#hp.reads==4 and hp.lookups==4662 and #hp.chunks==11,'bounded native-shaped plan executes all chunks')
-check(hp.units[#hp.units].last==2049 and #hp.units[#hp.units].keys==1,'2049th key processed, not truncated')
+check(#hp.reads==4 and hp.lookups==4477 and #hp.units==4,'bounded native-shaped plan streams actual records')
+check(hp.units[#hp.units].eligibleCount==2049 and hp.units[#hp.units].keys[2049],'2049th eligible key retained without lookup plan')
 check(hp.records==808 and hp.reads[2].returned==4476,'returned full table separate from sparse processing')
 local removed=0; for _,change in ipairs(hp.changes) do if change.action=='REMOVED' then removed=removed+1; check(change.ref==historicalRef and change.reasons.COOKED_STATIC_LAYER,'removal exact DB handle and reason') end end
 check(removed==1 and has('CANDIDATE_CHANGE action=REMOVED'),'auditable removal rather than oracle copy')
@@ -183,8 +183,31 @@ local absOnly=append(cue,object('Part','Sequence 1 Cue 2 Part 0')); absOnly.Part
 r=run(); check(size(r.hybrid)==1 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','relative tracking preserved')
 -- Genuine safety limits still block, with no false zero-ref comparison.
 setup(9000); addRecipe(preset); mappedChannels={}; for i=1,9000 do mappedChannels[i]=i end
-r=run(); check(not r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==0,'per-Part safety bound retained')
+r=run(); check(r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==1 and r.profiles.HYBRID.error:find('RECORD_LIMIT'),'actual processed safety bound retained')
 check(not r.comparisons.HYBRID.candidateValid and has('missing=UNAVAILABLE'),'unexecuted Hybrid not evaluated as empty correctness result'); mappedChannels=nil
+-- Projected >16384 positions must not block small actual returned tables.
+setup(1); phaser(); addRecipe(preset)
+mappedChannels={}; for i=1,5000 do mappedChannels[i]=i end
+cue=append(seq,object('Cue','Sequence 1 Cue 2')); cue.No=2000
+for i=0,2 do local pp=append(cue,object('Part','Current Part '..i)); pp.Part=i; data[pp]={} end
+r=run()
+check(r.profiles.HYBRID.executed and r.profiles.HYBRID.parts==4 and #r.profiles.HYBRID.reads==4,'20000 projected positions do not abort Part-first execution')
+check(r.profiles.HYBRID.lookups==1 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','only actual returned entries inspected')
+check(r.profiles.STRUCTURAL.familyAddressReads==1,'family native address once per row')
+check(has('stage=group_selection_membership_expansion') and has('stage=chunk_plan_construction'),'exclusive substage timings emitted')
+mappedChannels=nil
+-- Unmatched actual data still consumes bounded traversal budget.
+setup(17000); addRecipe(preset); r=run()
+check(r.profiles.HYBRID.error:find('ACTUAL_COOKED_RECORD_LIMIT') and not r.profiles.HYBRID.resultValid,'actual scanned safety bound enforced even for unmatched entries')
+check(r.profiles.HYBRID.records<=1 and #r.profiles.HYBRID.reads==1,'filtering does not bypass actual-data bound or reread Part')
+-- Selected native Part count remains bounded independently of scope size.
+setup(1); addRecipe(preset)
+for i=1,8 do local pp=append(cue,object('Part','Current Part '..i)); pp.Part=i; data[pp]={} end
+r=run()
+check(r.profiles.HYBRID.error:find('SELECTED_PART_LIMIT') and #r.profiles.HYBRID.reads==0,'nine selected Parts fail before native reads')
+-- Elapsed guard terminates after non-preemptible native read, never full fallback.
+setup(1); addRecipe(preset); readSeconds=21; r=run()
+check(r.profiles.HYBRID.error:find('ELAPSED_LIMIT') and not r.profiles.HYBRID.resultValid,'native elapsed overrun invalidates Hybrid')
 setup(1); env.BuildDetails=function() return {BigVersion='2.5.1.0'} end
 check(not pcall(run),'version target strict')
 check(forbidden==0,'no Show/Programmer/commands/UI mutation')

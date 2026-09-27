@@ -892,7 +892,8 @@ local function sparseScanCueEffectPart(scan, part)
     rememberSparseRecipes(part, recipes)
     end
     for batch = 1, 32 do
-        local index, phaser = sparseNext(scan, part, data)
+        local index, phaser, streamYield = sparseNext(scan, part, data)
+        if streamYield then return false end
         if index == nil then
             finishPartScanDiagnostic(scan, part, pending.diagnostic)
             scan.pendingPart = nil
@@ -1037,15 +1038,24 @@ local function setFrom(result)
  return list,bad
 end
 local function count(t) local n=0; for _ in pairs(t or {}) do n=n+1 end; return n end
-local LIMIT={channels=32768,mappingWork=262144,chunkKeys=512,partKeys=8192,
- lookups=16384,records=8192,hybridParts=8,chunks=128,returnedCount=131072,
+local LIMIT={channels=32768,mappingWork=262144,streamBatch=128,seconds=20,
+ lookups=16384,records=8192,hybridParts=8,
  reads=512,advances=8192,rows=2048}
 local phase,profiles={},{}
 local function profile(name)
- local p={name=name,reads={},nativeMs=0,records=0,featureRecords=0,lookups=0,advances=0,parts=0,started=now(),timingInvalid=false,dataCache={},chunks={},witnesses={},transitions={},returnedCountMs=0}
+ local p={name=name,reads={},nativeMs=0,records=0,featureRecords=0,lookups=0,advances=0,parts=0,started=now(),timingInvalid=false,dataCache={},chunks={},witnesses={},transitions={},returnedCountMs=0,stages={},partReads={}}
  profiles[name]=p; phase=p; return p
 end
+local function stage(p,name)
+ local t=now()
+ if p.stageName then
+  local ms=elapsed(p.stageStarted,t)
+  if ms then p.stages[p.stageName]=(p.stages[p.stageName] or 0)+ms else p.timingInvalid=true end
+ end
+ p.stageName=name; p.stageStarted=t
+end
 local function finishProfile(p)
+ stage(p,nil)
  p.totalMs=elapsed(p.started,now()); if not p.totalMs then p.timingInvalid=true end
  p.processingMs=p.totalMs and math.max(0,p.totalMs-p.nativeMs) or nil
 end
@@ -1081,12 +1091,8 @@ GetPresetData=function(target,phasers,fixtures)
  if ms then phase.nativeMs=phase.nativeMs+ms else phase.timingInvalid=true end
  local record={target=target,kind=phasers==false and 'PART_COOKED' or 'FEATURE_REFERENCE',ms=ms,ok=ok,flags=tostring(phasers)..','..tostring(fixtures)}
  phase.reads[#phase.reads+1]=record
- if phase.name=='HYBRID' and ok and type(data)=='table' then
-  local start=now(); local n=0
-  for _ in pairs(data) do n=n+1; if n>LIMIT.returnedCount then break end end
-  record.returned=n<=LIMIT.returnedCount and n or nil; record.countLimited=n>LIMIT.returnedCount
-  local cost=elapsed(start,now()); if cost then phase.returnedCountMs=phase.returnedCountMs+cost else phase.timingInvalid=true end
-  if phasers==false then phase.dataCache[target]=data end
+ if phase.name=='HYBRID' and ok and type(data)=='table' and phasers==false then
+  phase.dataCache[target]=data; phase.partReads[target]=record
  end
  if not ok then error(data,0) end
  return data
@@ -1135,9 +1141,10 @@ local function ambiguity(reason,row,detail,hard)
  if hard then hardBlocked=true end
 end
 -- B runs before C and A: no access to oracle records/results/prior globals.
-log('START target=2.5.0.3 diagnostic_revision=2_CHUNKED_SEEDED production_version=0.7.0.17 production_flag=false execution_order=B_STRUCTURAL,C_SPARSE_HYBRID,A_ORACLE oracle_not_available_to_candidates=true sequence={%s} cue={%s}',describe(sequence),describe(currentCue))
+log('START target=2.5.0.3 diagnostic_revision=3_PART_FIRST_STREAMING production_version=0.7.0.17 production_flag=false execution_order=B_STRUCTURAL,C_SPARSE_HYBRID,A_ORACLE oracle_not_available_to_candidates=true sequence={%s} cue={%s}',describe(sequence),describe(currentCue))
 local b=profile('STRUCTURAL')
 local okB,errorB=pcall(function()
+ stage(b,'Recipe_history_walk')
  local model=newCueEffectScan(sequence,currentCue)
  if #model.parts>512 then error('DIAGNOSTIC_STRUCTURAL_PART_LIMIT') end
  for i,part in ipairs(model.parts) do
@@ -1155,6 +1162,14 @@ local okB,errorB=pcall(function()
     candidateRows[#candidateRows+1]=row
     ambiguity('RECIPE_LAYER_AND_MANUAL_OVERRIDE_NOT_STRUCTURALLY_PROVEN',row,'abs/rel/release/overlap require cooked evidence',false)
     if not row.moving then ambiguity('ORDINARY_PRESET_MOVING_OR_STATIC_UNKNOWN',row,'do not assume static terminator',false) end
+   elseif row.enabled and tostring(rawRef or '')~='' and tostring(rawRef):lower()~='none' then
+    ambiguity('UNRESOLVED_RECIPE_REFERENCE',row,rawRef,true)
+   end
+  end end
+ end
+ stage(b,'group_selection_membership_expansion')
+ for _,row in ipairs(candidateRows) do
+ local group=row.group; local rawGroup=row.rawGroup
     local selection=safe(function() return group.Selection end)
     if not row.groupId or type(selection)~='table' then ambiguity('SELECTION_MEMBERSHIP_UNAVAILABLE',row,rawGroup,true)
     else
@@ -1166,11 +1181,8 @@ local okB,errorB=pcall(function()
       else members[sf]=true end
      end
     end
-   elseif row.enabled and tostring(rawRef or '')~='' and tostring(rawRef):lower()~='none' then
-    ambiguity('UNRESOLVED_RECIPE_REFERENCE',row,rawRef,true)
-   end
-  end end
  end
+ stage(b,'candidate_resolution')
  -- Provisional exact DB Group + feature lane decisions; layer unknown is explicit.
  table.sort(candidateRows,function(a,c) if a.position~=c.position then return a.position>c.position end; return a.index>c.index end)
  local lanes={}
@@ -1188,8 +1200,13 @@ local okB,errorB=pcall(function()
  for _,entry in pairs(direct) do structural[id(entry.object)]=entry.object end
  -- Scope all enabled Recipe rows, including older/static/overlapping candidates.
  -- Never prune solely because a newer same-Group row looks static.
+ stage(b,'eligible_key_set_construction')
  local mapped,channelFeatures={},{}; local scopedCount,mappingWork=0,0; local splitNoted=false
- for _,row in ipairs(candidateRows) do for sf in pairs(row.members or {}) do
+ for _,row in ipairs(candidateRows) do
+  local family=string.match(address(row.ref),'PresetPools%.([^%.]+)%.')
+  local definitiveFamily=family and RECIPE_FEATURE_SET[normalizeFeature(family)] and normalizeFeature(family)
+  b.familyAddressReads=(b.familyAddressReads or 0)+1
+  for sf in pairs(row.members or {}) do
   row.keys=row.keys or {}
   if not mapped[sf] then mapped[sf]=safe(GetUIChannels,sf,false) end
   local channels=mapped[sf]
@@ -1201,8 +1218,6 @@ local okB,errorB=pcall(function()
    else
     if channelFeatures[index]==nil then local attr=safe(GetAttributeByUIChannel,index); channelFeatures[index]=attr and normalizeFeature(label(attr)) or false end
     local feature=channelFeatures[index] or nil
-    local family=string.match(address(row.ref),'PresetPools%.([^%.]+)%.')
-    local definitiveFamily=family and RECIPE_FEATURE_SET[normalizeFeature(family)] and normalizeFeature(family)
     local keep=true
     if definitiveFamily and feature then keep=feature==definitiveFamily
     elseif row.moving and feature and row.explicitFeatures then
@@ -1213,7 +1228,7 @@ local okB,errorB=pcall(function()
      row.keys[index]=true
      if firstByChannel[index]==nil then scopedCount=scopedCount+1 end
      firstByChannel[index]=math.min(firstByChannel[index] or row.position,row.position)
-     if scopedCount>2048 and not splitNoted then splitNoted=true; ambiguity('CHANNEL_SCOPE_SPLIT_INTO_BOUNDED_CHUNKS',nil,scopedCount,false) end
+     if scopedCount>2048 and not splitNoted then splitNoted=true; ambiguity('CHANNEL_SCOPE_FILTERED_IN_BOUNDED_STREAMS',nil,scopedCount,false) end
      if scopedCount>LIMIT.channels then error('DIAGNOSTIC_TOTAL_CHANNEL_SCOPE_LIMIT') end
     end
    end
@@ -1229,6 +1244,7 @@ h.candidatesBefore=count(hybrid); h.changes={}; h.units={}; h.recipeCache={}
 sparseRecipes=function(part) return h.recipeCache[part] end
 rememberSparseRecipes=function(part,recipes) h.recipeCache[part]=recipes end
 local selectedParts,keysByPart,planned={}, {}, {}
+stage(h,'witness_Part_selection')
 local directSet=setFrom(currentCueRecipeEffects(currentCue))
 local historicalKeys={}
 local function plan(part,stage,keys)
@@ -1249,46 +1265,53 @@ for _,ctx in ipairs(contexts) do if ctx.cue==currentCue then
  end end
  if next(keys) then plan(ctx.part,'CURRENT_CUE_EVIDENCE',keys) end
 end end
+stage(h,'chunk_plan_construction') -- Part plans only: no per-key lookup operations.
 local planningError; local plannedLookups=0
 for _,ctx in ipairs(contexts) do local entry=planned[ctx.part]; if entry then
- local keys={}; for key in pairs(entry.keys) do keys[#keys+1]=key end; table.sort(keys)
- selectedParts[#selectedParts+1]=ctx.part; keysByPart[ctx.part]=keys
- plannedLookups=plannedLookups+#keys
- if #keys>LIMIT.partKeys or plannedLookups>LIMIT.lookups or #selectedParts>LIMIT.hybridParts then planningError='DIAGNOSTIC_HYBRID_PLAN_LIMIT' end
- for first=1,#keys,LIMIT.chunkKeys do
-  if #h.units>=LIMIT.chunks then planningError='DIAGNOSTIC_CHUNK_LIMIT'; break end
-  local chunk={part=ctx.part,stage=entry.stage,keys={},first=first,last=math.min(first+LIMIT.chunkKeys-1,#keys)}
-  for i=chunk.first,chunk.last do chunk.keys[#chunk.keys+1]=keys[i] end
-  h.units[#h.units+1]=chunk
- end
+ local n=count(entry.keys)
+ selectedParts[#selectedParts+1]=ctx.part; keysByPart[ctx.part]=entry.keys
+ plannedLookups=plannedLookups+n -- descriptive projected positions, never execution budget
+ if #selectedParts>LIMIT.hybridParts then planningError='DIAGNOSTIC_SELECTED_PART_LIMIT' end
+ h.units[#h.units+1]={part=ctx.part,stage=entry.stage,keys=entry.keys,eligibleCount=n}
 end end
 sparseNext=function(scan,part,data)
- local pending=scan.pendingPart; local unit=h.units[scan.index]; local keys=unit.keys
+ local pending=scan.pendingPart; local unit=h.units[scan.index]
  if not unit.started then unit.started=true; h.chunks[#h.chunks+1]=unit end
- while (pending.sparseOrdinal or 0)<#keys do
-  pending.sparseOrdinal=(pending.sparseOrdinal or 0)+1
+ while true do
+  if (h.advanceVisited or 0)>=LIMIT.streamBatch then return nil,nil,true end
+  local index,record=next(data,pending.streamKey)
+  if index==nil then
+   unit.completed=true
+   local read=h.partReads[part]; if read then read.returned=unit.inspected or 0; read.countComplete=true end
+   return nil
+  end
+  pending.streamKey=index
+  h.advanceVisited=(h.advanceVisited or 0)+1
   phase.lookups=phase.lookups+1; unit.inspected=(unit.inspected or 0)+1
-  if phase.lookups>LIMIT.lookups then error('DIAGNOSTIC_SPARSE_LOOKUP_LIMIT') end
-  local index=keys[pending.sparseOrdinal]; local record=data[index]
-  if record~=nil then
+  if phase.lookups>LIMIT.lookups then error('DIAGNOSTIC_ACTUAL_COOKED_RECORD_LIMIT') end
+  if type(index)=='number' and unit.keys[index] then
    phase.records=phase.records+1; unit.records=(unit.records or 0)+1
    if phase.records+phase.featureRecords>LIMIT.records then error('DIAGNOSTIC_SPARSE_RECORD_LIMIT') end
    return index,record
   end
  end
- unit.completed=true; return nil
 end
 local okH,errorH=pcall(function()
  if hardBlocked then error('AMBIGUOUS_SCOPE_REQUIRES_FULL_COOKED_NO_HYBRID_FALLBACK') end
  if planningError then error(planningError) end
+ stage(h,'cooked_stream_filtering')
  local scan=newCueEffectScan(sequence,currentCue); scan.parts={}; h.scan=scan
  for _,unit in ipairs(h.units) do scan.parts[#scan.parts+1]=unit.part end
  if #scan.parts==0 then scan.done=true; scan.result={} end
  while not scan.done do
   if scan.advanceCalls>=LIMIT.advances then error('DIAGNOSTIC_ADVANCE_LIMIT') end
+  if elapsed(h.started,now()) and elapsed(h.started,now())>LIMIT.seconds*1000 then error('DIAGNOSTIC_HYBRID_ELAPSED_LIMIT') end
+  h.advanceVisited=0
   sparseAdvanceCueEffectScan(scan)
+  if elapsed(h.started,now()) and elapsed(h.started,now())>LIMIT.seconds*1000 then error('DIAGNOSTIC_HYBRID_ELAPSED_LIMIT') end
  end
  h.advances=scan.advanceCalls
+ stage(h,'candidate_resolution')
  local cooked,bad=setFrom(addCurrentCueRecipeEffects(scan.result,currentCueRecipeEffects(currentCue)))
  if bad then error('HYBRID_INVALID_NON_STRING_RESULT_KEY') end
  for rid,ref in pairs(structural) do if not cooked[rid] then
@@ -1309,6 +1332,7 @@ local okH,errorH=pcall(function()
  for rid,ref in pairs(cooked) do if not hybrid[rid] then
   hybrid[rid]=ref; h.changes[#h.changes+1]={action='ADDED',ref=ref,reason=directSet[rid] and 'ORACLE_COMPATIBLE_CURRENT_RECIPE_DIRECT_MERGE' or 'MOVING_REFERENCE_SURVIVES_SELECTED_COOKED_SCOPES'}
  end end
+ if elapsed(h.started,now()) and elapsed(h.started,now())>LIMIT.seconds*1000 then error('DIAGNOSTIC_HYBRID_ELAPSED_LIMIT') end
 end)
 if h.scan then
  h.advances=h.scan.advanceCalls
@@ -1359,15 +1383,21 @@ for _,p in ipairs({b,h,a}) do
  for _,r in ipairs(p.reads) do if r.kind=='PART_COOKED' then cooked=cooked+1 else featureReads=featureReads+1 end end
  local metric=function(v) return p.timingInvalid and 'UNAVAILABLE' or text(v) end
  local waitTicks=p.name=='BASELINE' and (p.tick or 0) or p.advances
- log('METRICS phase=%s Recipe_rows_inspected_by_structural_scope=%d cooked_Parts_read=%d completed_Parts=%d cooked_records_processed=%d sparse_key_lookups=%d GetPresetData_calls=%d supplementary_feature_reads=%d GetPresetData_ms=%s Lua_processing_including_other_read_APIs_ms=%s total_elapsed_ms=%s advances=%d cadence_unchanged_seconds=%g actual_waits=false estimated_wait_ms=%g error=%s',p.name,#structuralRows,cooked,p.parts,p.records,p.lookups,#p.reads,featureReads,metric(p.nativeMs),metric(p.processingMs),metric(p.totalMs),p.advances,REFRESH_SECONDS,waitTicks*REFRESH_SECONDS*1000,text(p.error))
+ log('METRICS phase=%s Recipe_rows_inspected_by_structural_scope=%d cooked_Parts_read=%d completed_Parts=%d cooked_records_processed=%d actual_cooked_entries_inspected=%d GetPresetData_calls=%d supplementary_feature_reads=%d GetPresetData_ms=%s Lua_processing_including_other_read_APIs_ms=%s total_elapsed_ms=%s advances=%d cadence_unchanged_seconds=%g actual_waits=false estimated_wait_ms=%g error=%s',p.name,#structuralRows,cooked,p.parts,p.records,p.lookups,#p.reads,featureReads,metric(p.nativeMs),metric(p.processingMs),metric(p.totalMs),p.advances,REFRESH_SECONDS,waitTicks*REFRESH_SECONDS*1000,text(p.error))
  for _,r in ipairs(p.reads) do log('READ phase=%s kind=%s target={%s} source_cue={%s} flags=%s elapsed_ms=%s success=%s returned_record_count=%s count_limited=%s',p.name,r.kind,describe(r.target),describe(owners[r.target]),r.flags,text(r.ms),text(r.ok),text(r.returned),text(r.countLimited==true)) end
  log('FEATURE_WORK phase=%s supplementary_feature_records_processed=%d combined_Part_and_feature_records=%d',p.name,p.featureRecords,p.records+p.featureRecords)
 end
 local returned,returnedKnown=0,true
 for _,read in ipairs(h.reads) do if read.kind=='PART_COOKED' then if read.returned then returned=returned+read.returned else returnedKnown=false end end end
-log('HYBRID_EXECUTION executed=%s result_valid=%s candidates_before=%d candidates_after=%d selected_Parts=%d chunks_planned=%d chunks_used=%d sparse_keys_actually_inspected=%d cooked_records_returned=%s native_table_cache_reuses=%d returned_key_count_overhead_ms=%s chunk_key_limit=%d total_lookup_limit=%d total_processed_record_limit=%d',text(h.executed),text(h.resultValid),h.candidatesBefore,count(hybrid),#selectedParts,#h.units,#h.chunks,h.lookups,returnedKnown and text(returned) or 'UNAVAILABLE',h.cacheReuses or 0,text(h.returnedCountMs),LIMIT.chunkKeys,LIMIT.lookups,LIMIT.records)
+log('HYBRID_EXECUTION mode=PART_FIRST_STREAMING executed=%s result_valid=%s candidates_before=%d candidates_after=%d selected_Parts=%d Parts_started=%d stream_advances_used=%d projected_eligible_key_positions=%d actual_cooked_records_inspected=%d sparse_keys_actually_inspected=%d cooked_records_returned=%s actual_record_limit=%d total_processed_record_limit=%d stream_inspection_limit_per_advance=%d elapsed_limit_seconds=%d',text(h.executed),text(h.resultValid),h.candidatesBefore,count(hybrid),#selectedParts,#h.chunks,h.advances,plannedLookups,h.lookups,h.records,returnedKnown and text(returned) or 'UNAVAILABLE',LIMIT.lookups,LIMIT.records,LIMIT.streamBatch,LIMIT.seconds)
+for _,p in ipairs({b,h}) do
+ for _,name in ipairs({'Recipe_history_walk','group_selection_membership_expansion','eligible_key_set_construction','witness_Part_selection','chunk_plan_construction','candidate_resolution','cooked_stream_filtering'}) do
+  log('STAGE_TIMING phase=%s stage=%s elapsed_ms=%s ran=%s exclusive=true',p.name,name,p.timingInvalid and 'UNAVAILABLE' or text(p.stages[name] or 0),text(p.stages[name]~=nil))
+ end
+end
+log('SCOPE_WORK family_address_reads=%d projected_key_positions_are_not_lookup_plan=true',b.familyAddressReads or 0)
 log('SKIPPED_HISTORY planned_history_Parts=%d selected_Parts=%d unselected_history_Parts=%d candidate_support_projection_only=true intermediate_release_override_not_globally_excluded=true',#contexts,#selectedParts,#contexts-#selectedParts)
-for i,unit in ipairs(h.units) do log('CHUNK number=%d stage=%s cue={%s} part={%s} eligible_keys=%d first_key_position=%d last_key_position=%d inspected=%d processed_records=%d completed=%s',i,unit.stage,describe(owners[unit.part]),describe(unit.part),#unit.keys,unit.first,unit.last,unit.inspected or 0,unit.records or 0,text(unit.completed==true)) end
+for i,unit in ipairs(h.units) do log('PART_STREAM number=%d stage=%s cue={%s} part={%s} eligible_keys=%d actual_returned_entries_inspected=%d matching_records_processed=%d filtered_out=%d completed=%s',i,unit.stage,describe(owners[unit.part]),describe(unit.part),unit.eligibleCount,unit.inspected or 0,unit.records or 0,(unit.inspected or 0)-(unit.records or 0),text(unit.completed==true)) end
 for _,change in ipairs(h.changes) do
  local reasons={}; for reason,n in pairs(change.reasons or {}) do reasons[#reasons+1]=reason..':'..n end; table.sort(reasons)
  log('CANDIDATE_CHANGE action=%s reference={%s} reason=%s witnessed_layers=%s cooked_transition_reasons=%s applies_to_completed_hybrid=%s',change.action,describe(change.ref),change.reason,text(change.witnessLayers),table.concat(reasons,','),text(h.resultValid))
@@ -1378,7 +1408,7 @@ for _,row in ipairs(structuralRows) do
  local scoped={}; for feature in pairs(row.explicitFeatures or {}) do scoped[#scoped+1]=feature end; table.sort(scoped)
  log('SCOPE_FEATURES recipe={%s} explicit_value_source_or_generator_features=%s unknown_metadata_widens_scope=true Name_not_used_to_narrow=true',describe(row.recipe),#scoped>0 and table.concat(scoped,',') or 'UNKNOWN_OR_ALL')
 end
-for _,part in ipairs(selectedParts) do log('FALLBACK_SCOPE stage=%s cue={%s} part={%s} eligible_UI_keys=%d chunks=%d layers=ABS_AND_REL reason=explicit_ambiguous_current_scope_or_candidate_source_witness',planned[part].stage,describe(owners[part]),describe(part),#keysByPart[part],math.ceil(#keysByPart[part]/LIMIT.chunkKeys)) end
+for _,part in ipairs(selectedParts) do log('FALLBACK_SCOPE stage=%s cue={%s} part={%s} eligible_UI_keys=%d chunks=%d layers=ABS_AND_REL reason=explicit_ambiguous_current_scope_or_candidate_source_witness',planned[part].stage,describe(owners[part]),describe(part),count(keysByPart[part]),0) end
 for _,issue in ipairs(ambiguous) do local row=issue.row or {}; log('AMBIGUITY reason=%s cue={%s} part={%s} recipe={%s} detail=%s blocks_hybrid=%s',issue.reason,describe(row.cue),describe(row.part),describe(row.recipe),text(issue.detail),text(issue.hard==true)) end
 for _,pair in ipairs({{'BASELINE',baseline},{'STRUCTURAL',structural},{'HYBRID',hybrid}}) do for key,ref in pairs(pair[2]) do
  log('FINAL_SET phase=%s DB_identity_id=%d reference_type=%s reference={%s} candidate_result_valid=%s',pair[1],key,kind(ref),describe(ref),text(pair[1]~='HYBRID' or h.resultValid))
