@@ -65,7 +65,7 @@ end
 env.CompareHandle=function(a,b) return a==b end
 local mappedChannels
 local function run()
- env.GetUIChannels=function(sf,handles) check(handles==false,'index mapping requested'); return mappedChannels or {1} end
+ env.GetUIChannels=function(sf,handles) check(handles==false,'index mapping requested'); return type(mappedChannels)=='function' and mappedChannels(sf) or mappedChannels or {1} end
  return assert(loadfile('diagnostics/Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua','t',env))()()
 end
 local function addRecipe(ref)
@@ -126,7 +126,10 @@ check(r.comparisons.HYBRID.classification=='AMBIGUOUS_REQUIRES_FULL_COOKED','har
 setup(1); addRecipe(preset); mappedChannels={}; r=run()
 check(r.hardBlocked and #r.profiles.HYBRID.reads==0,'empty mapping not assumed complete'); mappedChannels=nil
 setup(2050); addRecipe(preset); mappedChannels={}; for i=1,2050 do mappedChannels[i]=i end
-r=run(); check(r.hardBlocked and #r.profiles.HYBRID.reads==0,'scope limit no full fallback'); mappedChannels=nil
+r=run(); check(not r.hardBlocked and #r.profiles.HYBRID.reads==1,'2050 keys executes one native Part read');
+check(#r.profiles.HYBRID.chunks==5 and r.profiles.HYBRID.lookups==2050,'2050 keys split into five bounded chunks')
+check(r.profiles.HYBRID.parts==1 and r.profiles.HYBRID.cacheReuses==4,'chunk cache prevents native rereads')
+check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','chunked sparse correctness'); mappedChannels=nil
 setup(1); addRecipe(preset); readSeconds=.2; r=run()
 check(near(r.profiles.HYBRID.nativeMs,200) and near(r.profiles.HYBRID.processingMs,0),'native timing split')
 setup(1); addRecipe(preset); processingSeconds=.01; r=run()
@@ -137,6 +140,51 @@ setup(1); addRecipe(preset); data[part]='ERROR'; r=run()
 check(r.comparisons.HYBRID.classification=='UNVERIFIED','failed oracle invalidates all equality claims')
 setup(1); addRecipe(preset); preset.ToAddr=function() return nil end; r=run()
 check(r.comparisons.HYBRID.classification=='UNVERIFIED','non-string oracle key invalid')
+-- Native-shaped regression: 807 / 999 / 2049 current-Cue key scopes, seeded extra.
+setup(1); phaser(); addRecipe(preset); group.Selection={{sf_index=11}}
+local historicalRef=preset; local sourcePart=part
+cue=append(seq,object('Cue','Sequence 1 Cue 8')); cue.No=8000
+local currentParts={}; local refs={}; local groups={}
+for i=1,3 do
+ currentParts[i]=append(cue,object('Part','Sequence 1 Cue 8 Part '..(i-1))); currentParts[i].Part=i-1
+ groups[i]=object('Group','Controlled Group '..i); groups[i].Selection={{sf_index=i+10}}
+ data[currentParts[i]]={}
+end
+for i=1,4 do
+ local ref=append(pool,object('Preset','Preset 25.'..(1000+i),'ShowData.DataPools.Default.PresetPools.Phaser.'..i)); ref.Name='Dimmer FX '..i
+ refs[i]=ref; local pr=append(ref,object('PhaserRecipe','Recipe')); local vs=append(pr,object('PhaserRecipeValueSource','Value')); vs.Attributes='Dimmer'
+ local pi=math.min(i,3); local rr=append(currentParts[pi],object('StandardRecipe','Controlled Recipe '..i)); rr.Index=i; rr.Enabled='Yes'; rr.Selection=groups[pi]; rr.Values=ref
+end
+for i=1,4476 do data[currentParts[1]][i]={[1]={absolute=50}} end
+local ranges={[11]={1,807},[12]={808,999},[13]={1000,2049}}
+mappedChannels=function(sf) local out={}; local range=ranges[sf]; for i=range[1],range[2] do out[#out+1]=i end; return out end
+r=run(); local hp=r.profiles.HYBRID
+check(r.comparisons.STRUCTURAL.classification=='EXTRA_REFERENCE' and size(r.structural)==5,'Structural behavior unchanged with one extra')
+check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH' and size(r.hybrid)==4,'seeded extra removed with positive cooked witness')
+check(hp.executed and hp.resultValid and hp.parts==4,'3 current Parts plus explicit source witness only')
+check(#hp.reads==4 and hp.lookups==4662 and #hp.chunks==11,'bounded native-shaped plan executes all chunks')
+check(hp.units[#hp.units].last==2049 and #hp.units[#hp.units].keys==1,'2049th key processed, not truncated')
+check(hp.records==808 and hp.reads[2].returned==4476,'returned full table separate from sparse processing')
+local removed=0; for _,change in ipairs(hp.changes) do if change.action=='REMOVED' then removed=removed+1; check(change.ref==historicalRef and change.reasons.COOKED_STATIC_LAYER,'removal exact DB handle and reason') end end
+check(removed==1 and has('CANDIDATE_CHANGE action=REMOVED'),'auditable removal rather than oracle copy')
+check(hp.dataCache[sourcePart]==data[sourcePart] and data[sourcePart][1].abs_preset==historicalRef,'native returned table is read-only')
+mappedChannels=nil
+-- No source witness: never remove a candidate merely because current scope lacks it.
+setup(0); phaser(); addRecipe(preset); local oldRef=preset
+cue=append(seq,object('Cue','Sequence 1 Cue 2')); cue.No=2000
+local emptyWitnessCurrent=append(cue,object('Part','Sequence 1 Cue 2 Part 0')); emptyWitnessCurrent.Part=0; data[emptyWitnessCurrent]={[1]={[1]={absolute=10}}}
+r=run(); check(size(r.hybrid)==1 and r.comparisons.HYBRID.classification=='EXTRA_REFERENCE','unsupported seeded candidate retained, not guessed absent')
+check(has('RETAINED_AMBIGUOUS'),'missing positive witness logged')
+-- Relative witness survives an absolute-only static override.
+setup(1); phaser(); addRecipe(preset)
+data[part][1].rel_preset=preset; data[part][1][1].relative=1; data[part][1][2].relative=2
+cue=append(seq,object('Cue','Sequence 1 Cue 2')); cue.No=2000
+local absOnly=append(cue,object('Part','Sequence 1 Cue 2 Part 0')); absOnly.Part=0; data[absOnly]={[1]={[1]={absolute=10}}}
+r=run(); check(size(r.hybrid)==1 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','relative tracking preserved')
+-- Genuine safety limits still block, with no false zero-ref comparison.
+setup(9000); addRecipe(preset); mappedChannels={}; for i=1,9000 do mappedChannels[i]=i end
+r=run(); check(not r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==0,'per-Part safety bound retained')
+check(not r.comparisons.HYBRID.candidateValid and has('missing=UNAVAILABLE'),'unexecuted Hybrid not evaluated as empty correctness result'); mappedChannels=nil
 setup(1); env.BuildDetails=function() return {BigVersion='2.5.1.0'} end
 check(not pcall(run),'version target strict')
 check(forbidden==0,'no Show/Programmer/commands/UI mutation')

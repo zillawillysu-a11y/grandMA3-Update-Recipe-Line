@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Track A: independent read-only Cue-wide Structural Resolver A/B, grandMA3 2.5.0.3. Exact dormant cooked resolver as oracle; test structural Recipe scope plus bounded sparse-key hybrid. No production/cadence changes. Track B paused; never merge main.
+Revise only independent Cue-wide Structural Resolver A/B on 2.5.0.3 so bounded seeded Hybrid executes. Preserve Structural logic/logging, oracle-after-B/C, production purple flag false. Track B paused; no main merge.
 
 ## Current Working State
-Production v0.7.0.17 unchanged, purple flag false. Candidate B/C run before oracle A to prevent evidence leakage. B has zero cooked calls; C only touches Group/feature UI indices in ambiguous suffix Parts, with original 32-record batching. Limits abort instead of full fallback. 87 A/B mock assertions and eleven original source sections verified; prior timing 93/workflow86 assertions PASS. REAL-WORLD VALIDATION PENDING.
+Revision2_CHUNKED_SEEDED: 512-key chunks, one native read/private Recipe cache per Part, 8 selected-Part cap, 16384 sparse lookups/8192 processed-record caps. C begins with Structural refs; current-Cue scoped evidence plus explicit historical candidate SOURCE_WITNESS. Remove only when witnessed layers clear/replace; retain ambiguous candidates. Unexecuted C has no meaningful missing/extra/speedup. 128 A/B assertions/source fidelity, timing93/workflow86, Lua5.4 parse PASS. REAL-WORLD RETEST PENDING.
 
 ## Latest Real-World User Test
-Sequence 3841 Cue 8:31/31 Parts,22764 records,731 advances,4 final refs/all4 visible,no source/tile misses. Warm native GetPresetData211.622ms, processing9193.526ms, core9405.148ms, modeled waits73100ms, estimate82505.148ms (88.6% wait). Native reads not main measured cost; no-wait still9.4sec. Static4476-record chunks/140advances waste processing.
+Revision1 Sequence3841/Cue8 oracle4 refs:25.9009/.9010/.9006/.9007,31 Parts,22764 records,37 calls,146.254ms native+5816.739ms processing=5962.993ms. Structural96 rows/0calls/341.732ms,5 candidates,only extra25.9004 Dimmer Strobe#4 fromCue2. Scope cap2049 interrupted; plannedCurrentParts0/1/2 keys807/999/2049. Hybrid0reads DID NOT EXECUTE; empty result is not correctness evidence.
 
 ## Verified Facts
-Selected-group Track B path healthy. No stable purple baseline historically. GetDependencies misses tracking-only references. Recipe structure cannot exclude manual stored channels/release or prove abs/rel layers. GetUIChannels mapping is documented/vendor-tested. C direct-key lookup still receives a complete selected Part table. Exact match means current oracle identity set only, scope_completeness_proven=false.
+Old2048 key cap globally blocked valid sparse plan. Structural candidate set/lane semantics preserved. Source cooked witness required to infer old layer support safely; unknown/uncleared support stays ambiguous. Intermediate history is unscanned and not globally excluded; exact match is current oracle snapshot only. GetDependencies not tracking truth. No reliable purple baseline; Track B path healthy and paused.
 
 ## Current Problem
-Need native B/C vs A exact missing/extra handles, data/advance reductions and wall timings. Full cooked walk exists only in A oracle. Unknown membership/limits fail C closed; out-of-scope manual refs produce misses. No production approval from one match.
+Native retest must confirm chunks execute, source witness exists, extra candidate removed only with static/release/superseding evidence, exact 4 DB refs vs oracle and timings/reductions. No production integration from one match.
 
 ## Known Failed Attempts
-Generic Track B hypotheses downgraded. Do not resume UI/Recall/cache probing, integrate CompareHandle into production, change cadence, or assume purple reliability. Ordinary Preset static/moving state cannot be guessed without cooked evidence.
+Revision1 globally aborted at2049keys; 0-ref Hybrid invalid. Do not enable production, change cadence, full-scan31Parts in Hybrid, hardcode expected refs or remove candidates merely for absent current evidence. Track B broad hypotheses remain downgraded.
 
 ## Important Files
-diagnostics/Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua; diagnostics/cue_wide_structural_resolver_ab_2_5_0_3.xml; tools/build_cue_wide_structural_ab.py; tools/templates/cue_wide_structural_ab_core.lua; tools/run_cue_wide_structural_ab.py; tools/deploy_cue_wide_structural_ab.py; tests/cue_wide_structural_ab.lua; docs/cue-wide-structural-resolver-ab-2.5.0.3.md; docs/cue-wide-trace-timing-2.5.0.3.md.
+diagnostics/Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua; tools/templates/cue_wide_structural_ab_core.lua; tools/build_cue_wide_structural_ab.py; tests/cue_wide_structural_ab.lua; tools/run_cue_wide_structural_ab.py; tools/deploy_cue_wide_structural_ab.py; docs/cue-wide-structural-resolver-ab-2.5.0.3.md.
 
 ## Current Branch / Commit
-qwen; checkpoint subject `test: compare structural sparse resolver against cooked oracle`. Preserve existing Shared Reference integration uncommitted changes.
+qwen; checkpoint subject `fix: execute bounded seeded Hybrid diagnostic`. Preserve pre-existing Reference integration uncommitted changes. Never merge main.
 
 ## Exact Next Action
-REAL-WORLD VALIDATION PENDING: import independent Cue-wide Structural Resolver AB 2.5.0.3 XML, select Sequence3841/Cue8, leave Show unchanged, run once, copy [CueStructAB] START-END with METRICS/FINAL_SET/DIFF/RESULT/REDUCTION/CANDIDATE_TOTAL/AMBIGUITY. Check context/output/oracle validity. Production flag stays false; no main merge.
+REAL-WORLD RETEST PENDING: re-import updated independent diagnostic XML, select3841/Cue8, leave Show unchanged, run once. START must show2_CHUNKED_SEEDED. Copy START-END including FALLBACK_SCOPE/HYBRID_EXECUTION/CHUNK/CANDIDATE_CHANGE/METRICS/FINAL_SET/DIFF/RESULT/REDUCTION/CANDIDATE_TOTAL. Verify hybrid_executed/result_valid, uncapped stable oracle. Production unchanged.

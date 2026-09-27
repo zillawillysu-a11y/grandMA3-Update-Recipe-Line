@@ -19,7 +19,9 @@ end=source.index('local function finishCueEffectScan(scan)',start)
 sparse=source[start:end].replace('local function scanCueEffectPart(', 'local function sparseScanCueEffectPart(',1)
 assert sparse.count('next(data, pending.key)')==1
 sparse=sparse.replace('next(data, pending.key)','sparseNext(scan, part, data)')
-sparse=sparse.replace(origin_anchor,origin_anchor+'\n                    captureOrigin(part, layers[layer[1]])')
+sparse=sparse.replace('local recipes = pending.recipes or {}','pending.recipes = pending.recipes or sparseRecipes(part)\n    local recipes = pending.recipes or {}')
+sparse=sparse.replace('pending.recipes = recipes','pending.recipes = recipes\n    rememberSparseRecipes(part, recipes)')
+sparse=sparse.replace(origin_anchor,'local probePrevious = layers[layer[1]]\n                    '+origin_anchor+'\n                    captureOrigin(part, layers[layer[1]], scan, index, layer[1], phaser, probePrevious)')
 start=source.index('local function advanceCueEffectScan(scan)')
 end=source.index('-- A Phaser Recipe or Generator stored directly',start)
 sparse+=source[start:end].replace('local function advanceCueEffectScan(', 'local function sparseAdvanceCueEffectScan(',1).replace('scanCueEffectPart(scan, part)','sparseScanCueEffectPart(scan, part)')
@@ -29,7 +31,7 @@ header=f'''-- Independent read-only structural/sparse vs exact dormant scanner o
 -- Production {version}; normalized-source SHA256 {hashlib.sha256(source.encode()).hexdigest()}.
 return function()
 local commandAddress, children, recipeNumber, generatorHasFeature
-local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, captureOrigin, captureFeatureRecord
+local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, sparseRecipes, rememberSparseRecipes, captureOrigin, captureFeatureRecord
 local MAX_CUES, MAX_RECIPES, REFRESH_SECONDS = 512, 2048, {cadence}
 local ENABLE_CUE_PHASER_MARKERS = true -- private copy only; production stays false
 '''
