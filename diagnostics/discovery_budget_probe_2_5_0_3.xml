@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<GMA3 DataVersion="0.8.84.0">
+ <UserPlugin Name="Discovery Budget Probe 2.5.0.3" Path="/Discovery Budget Probe 2.5.0.3">
+  <ComponentLua Name="discovery_budget_probe" FileName="Discovery_Budget_Probe_2_5_0_3.lua" />
+ </UserPlugin>
+</GMA3>
