@@ -2,7 +2,7 @@
 
 ## Scope / native instructions
 
-Track B only; production unchanged, Track A paused. Native validation pending. This tests generic Pool grid discovery, not tile contents or Generator ObjectIndex.
+Track B only; production unchanged, Track A paused. Native validation complete; see larger-Show evidence below. This tests generic Pool grid discovery, not tile contents or Generator ObjectIndex.
 
 1. On 2.5.0.3 keep the larger Show's usual Pool windows visible across displays.
 2. Import discovery_budget_probe_2_5_0_3.xml from C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins/Discovery Budget Probe 2.5.0.3.
@@ -48,7 +48,13 @@ Only local diagnostic tables and Printf output; read-only snapshot of exposed pr
 
 ## Deployment verification
 
-Actual independent Lua/XML copy completed. Source/deployed parse PASS and SHA256 MATCH; XML component exists. Forbidden-call check PASS; no ObjectIndex access. Production directory snapshot unchanged (3 files); production source equals HEAD after Git filtering. 22 probe mock assertions and 86 existing workflow assertions PASS. REAL-WORLD VALIDATION PENDING.
+Actual independent Lua/XML copy completed. Source/deployed parse PASS and SHA256 MATCH; XML component exists. Forbidden-call check PASS; no ObjectIndex access. Production directory snapshot unchanged (3 files); production source equals HEAD after Git filtering. 22 probe mock assertions and 86 existing workflow assertions PASS. Native evidence subsequently received below.
 
 - Discovery_Budget_Probe_2_5_0_3.lua: `e8fc32e92fe4af0f2a5a374ec053fd5254053c715a8406b67b0267e2ffc27390`.
 - discovery_budget_probe_2_5_0_3.xml: `8c255c95a4675c059540e2e0420debb0df4d9fc8babb99e8d6b374aa70e84546`.
+
+## Native evidence: larger multi-display Show
+
+User reports DISCOVERY_BUDGET_OK on grandMA3 2.5.0.3: visible_ground_truth=12 and production replay found all 12. Display 1 consumed 566 nodes, Display 2 426, Display 3 958; global_production_nodes=1950/6000. exhausted=false, budget_misses=0, logic_misses=0; no display starvation.
+
+Shared 6000-node discovery-budget hypothesis is downgraded: not reproduced in this Show, not a confirmed generic marker root cause. No production change. Broad generic UI-discovery probing stops here; the next isolated experiment traces one selected Group through its existing source/grid/tile/marker pipeline. Track A remains paused.

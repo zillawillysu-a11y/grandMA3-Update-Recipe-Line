@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Track B only: standalone read-only Discovery Budget Probe for grandMA3 2.5.0.3. Track A PAUSED. Production unchanged.
+Track B only: read-only selected-group Marker Pipeline Trace on grandMA3 2.5.0.3. Stop broad UI-discovery probing. Track A PAUSED; production unchanged.
 
 ## Current Working State
-Faithful cold production discovery prefix (6000 shared nodes) plus bounded same-algorithm continuation and separate typed per-Display visible grid inventory. Exposed production cache/window snapshot read only; cache branch logged separately. 22 mock assertions PASS. Deployment details in docs/discovery-budget-probe-2.5.0.3.md.
+Independent trace snapshots production v0.7.0.17 currentGroup/context and caches; traces source admission/fresh structural winners, exact production grid branch, actual UI index/Ptr targets and marker decision. No rendering or production mutation. 41 mock assertions and nine helper fidelity checks PASS. Native trace pending; deployment details in docs/marker-pipeline-trace-2.5.0.3.md.
 
 ## Latest Real-World User Test
-Larger Show: 12 visible grids all CHILD_PATHS_AGREE and production_would_miss=false (Preset/Group/Sequence/GeneratorRandom). Empty-UIChildren hypothesis downgraded. GeneratorRandom samples 4294967296 in another Show with 103/104 empty: possible empty/unassigned tile representation, not a bug/root cause; no index investigation.
+Discovery Budget PASS in larger multi-display Show: all 12 visible grids found; Displays 1/2/3 nodes 566/426/958, total 1950/6000, no exhaustion/misses/starvation; DISCOVERY_BUDGET_OK. Shared budget hypothesis downgraded in this Show.
 
 ## Verified Facts
-Two controlled Recall replacements LIFECYCLE_NOT_REPRODUCED/capped=false; stale-valid cache downgraded. Production shared discovery budget 6000 across Display 1-7, depth 20, stops at grids. No native budget evidence yet.
+Prior 12 child-path tests all agree; two Recall replacements invalidate/reject OLD. Empty-child fallback, stale-valid lifecycle and shared discovery budget are not confirmed causes. Generator empty-tile samples 4294967296 are not bug evidence and remain uninvestigated. No confirmed selected-group marker break point.
 
 ## Current Problem
-Determine whether earlier Displays exhaust shared budget and prevent reachable visible grids on later Displays from discovery.
+Identify the exact source/grid/tile/decision stage for a missing expected marker in one selected Group. Existing UI entry creation/paint cannot be proven by this read-only probe. Cross-plugin visibility of exposed production state must be confirmed natively; absent snapshot returns UNVERIFIED.
 
 ## Known Failed Attempts
-Stale-valid cache and empty-child fallback not reproduced in controlled native tests. No confirmed generic Pool-marker cause. Alias mismatch not reproduced.
+Broad generic hypotheses not reproduced by controlled native runs. Alias mismatch not reproduced. No CompareHandle production integration.
 
 ## Important Files
- diagnostics/Discovery_Budget_Probe_2_5_0_3.lua, diagnostics/discovery_budget_probe_2_5_0_3.xml, tests/discovery_budget_probe.lua, tools/run_discovery_budget_probe.py, docs/discovery-budget-probe-2.5.0.3.md, docs/child-enumeration-probe-2.5.0.3.md.
+ diagnostics/Marker_Pipeline_Trace_2_5_0_3.lua, diagnostics/marker_pipeline_trace_2_5_0_3.xml, tests/marker_pipeline_trace.lua, tools/run_marker_pipeline_trace.py, docs/marker-pipeline-trace-2.5.0.3.md, docs/discovery-budget-probe-2.5.0.3.md.
 
 ## Current Branch / Commit
-qwen; checkpoint subject `test: add read-only cross-display discovery budget probe`. Preserve earlier uncommitted Shared Reference integration. Never merge main.
+qwen; checkpoint subject `test: trace selected-group marker pipeline read only`. Preserve Shared Reference integration uncommitted changes. Never merge main.
 
 ## Exact Next Action
-REAL-WORLD VALIDATION PENDING: import independent Discovery Budget XML; retain normal multi-display Pool layout; press once; copy [DiscoveryBudget] START-END. No production change until native evidence; Track A paused.
+REAL-WORLD VALIDATION PENDING: retain existing inspector's selected Group/current context and visible pools; import independent Marker Pipeline Trace XML, run once, copy [MarkerTrace] START-END for missing marker ref. No production change, broad generic probing or Track A work.
