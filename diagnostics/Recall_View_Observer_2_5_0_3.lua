@@ -4,18 +4,21 @@ local STATE="DiDiDoRecallLifecycleObserver2503"
 local KNOWN="Display 3.5.3.1.5.1.4.4"
 return function(_,argument)
     local capped=false
+    local capReasons={}
+    local inventoryLimited=false
+    local controlledLimited=false
     local budget=24000
     local lines=0
     local function log(fmt,...)
         if lines>=400 then
-            capped=true
+            capped=true; capReasons.OUTPUT_LINES=true
             if fmt:find("END",1,true)==1 then Printf("[RecallLife] "..fmt,...) end
             return
         end
         lines=lines+1; Printf("[RecallLife] "..fmt,...)
     end
     local function read(fn,...)
-        if budget<=0 then capped=true; return nil,"READ_LIMIT" end
+        if budget<=0 then capped=true; capReasons.READ_LIMIT=true; return nil,"READ_LIMIT" end
         budget=budget-1
         if type(fn)~="function" then return nil,"UNAVAILABLE" end
         local ok,v=pcall(fn,...); if not ok then return nil,tostring(v) end; return v
@@ -82,7 +85,7 @@ return function(_,argument)
     if argument=="reset" then _G[STATE]=nil; log("RESET diagnostic memory only"); return end
     local saved=_G[STATE]
     local phase=saved and "AFTER" or "BEFORE"
-    log("START phase=%s target=%s revision=1 scope=GENERIC_POOL_UI_LIFECYCLE fixture=Generator103_104",phase,TARGET)
+    log("START phase=%s target=%s revision=2-controlled-lookup scope=GENERIC_POOL_UI_LIFECYCLE fixture=Generator103_104",phase,TARGET)
     -- Get every display root before any bounded local search.
     local roots={}
     for i=1,7 do roots[i]=read(GetDisplayByIndex,i); log("DISPLAY index=%d valid=%s",i,text(valid(roots[i]))) end
@@ -108,17 +111,17 @@ return function(_,argument)
             local t=path=="UIChildren" and ui(h,path) or method(h,path)
             if type(t)=="table" then
                 local n=0
-                for _,v in pairs(t) do n=n+1; if n>128 then capped=true; break end; add(v) end
+                for _,v in pairs(t) do n=n+1; if n>128 then inventoryLimited=true; break end; add(v) end
             end
         end
         local n=ui(h,"GetUIChildrenCount")
         if type(n)=="number" then
-            if n>128 then capped=true end
+            if n>128 then inventoryLimited=true end
             for i=1,math.min(n,128) do add(ui(h,"GetUIChild",i)) end
         end
         local count=method(h,"Count")
         if type(count)=="number" then
-            if count>128 then capped=true end
+            if count>128 then inventoryLimited=true end
             for i=1,math.min(count,128) do add(method(h,"Ptr",i)) end
         end
         return out
@@ -155,6 +158,52 @@ return function(_,argument)
         if complete then return false end
         return nil
     end
+    -- Lookup only controlled ObjectIndex values in direct native child lists.
+    -- Never assume child position equals ObjectIndex or invent a cell offset.
+    local function controlledButtons(h,pool)
+        local found={}
+        local inspected=0
+        local function done() return found[103]~=nil and found[104]~=nil end
+        local function inspect(button,path)
+            inspected=inspected+1
+            local idx=tonumber(field(button,"ObjectIndex"))
+            if (idx==103 or idx==104) and not found[idx] and isUI(button)
+                and method(button,"GetClass")=="AllPoolButton" then
+                local item=visibility(button); item.index=idx; item.lookup_path=path
+                item.target=metadata(valid(pool)==true and method(pool,"Ptr",idx) or nil)
+                found[idx]=item
+            end
+        end
+        local function scanList(list,path)
+            if type(list)~="table" then return end
+            local n=0
+            for _,button in pairs(list) do
+                if done() then return end
+                n=n+1
+                if n>512 then controlledLimited=true; return end
+                inspect(button,path)
+            end
+        end
+        scanList(ui(h,"UIChildren"),"UIChildren")
+        if not done() then scanList(method(h,"Children"),"Children") end
+        if not done() then
+            for _,spec in ipairs({{"GetUIChildrenCount","GetUIChild"},{"Count","Ptr"}}) do
+                if done() then break end
+                local n
+                if spec[1]=="GetUIChildrenCount" then n=ui(h,spec[1]) else n=method(h,spec[1]) end
+                if type(n)=="number" and n>=0 then
+                    for i=1,math.min(n,512) do
+                        if done() then break end
+                        local button
+                        if spec[2]=="GetUIChild" then button=ui(h,spec[2],i) else button=method(h,spec[2],i) end
+                        inspect(button,spec[2])
+                    end
+                    if n>512 and not done() then controlledLimited=true end
+                end
+            end
+        end
+        return found,inspected
+    end
     local function snapshot(h)
         local s=visibility(h); s.buttons={}; s.attached=attached(h)
         if not isUI(h) then
@@ -171,14 +220,7 @@ return function(_,argument)
         if s.attached~=true and s.current~=false then s.current=nil end
         local t=ui(h,"UIChildren"); s.ui_count=type(t)=="table" and #t or nil
         local pool=field(h,"PoolObject"); s.pool=metadata(pool)
-        for _,button in ipairs(children(h)) do
-            local idx=tonumber(field(button,"ObjectIndex"))
-            if method(button,"GetClass")=="AllPoolButton" and (idx==103 or idx==104) then
-                local b=visibility(button); b.index=idx
-                b.target=metadata(valid(pool)==true and method(pool,"Ptr",idx) or nil)
-                s.buttons[idx]=b
-            end
-        end
+        s.buttons,s.controlled_examined=controlledButtons(h,pool)
         return s
     end
     local function printObject(label,m)
@@ -189,9 +231,10 @@ return function(_,argument)
         printObject(label..":GRID",s)
         printObject(label..":PARENT",s.parent); printObject(label..":GRANDPARENT",s.grandparent)
         log("GRID role=%s attached_to_active_display=%s current_visible=%s production_cache_accept=%s UIChildren_count=%s parent_contains_grid=%s",label,text(s.attached),text(s.current),text(s.cache_accept),text(s.ui_count),text(s.parent_membership))
+        log("CONTROLLED_LOOKUP role=%s examined=%s",label,text(s.controlled_examined))
         for _,idx in ipairs({103,104}) do
             local b=s.buttons[idx]
-            log("BUTTON role=%s ObjectIndex=%d exists=%s",label,idx,text(b~=nil))
+            log("BUTTON role=%s ObjectIndex=%d exists=%s lookup_path=%s",label,idx,text(b~=nil),text(b and b.lookup_path))
             if b then printObject(label..":BUTTON:"..idx,b); printObject(label..":TARGET:"..idx,b.target) end
         end
     end
@@ -256,6 +299,9 @@ return function(_,argument)
     end
     _G[STATE]=nil
     if capped then result="UNVERIFIED" end
-    log("END phase=AFTER classification=%s capped=%s next_run=BEFORE",result,text(capped))
-    return {phase="AFTER",classification=result,old=old,new=new,equal=eq}
+    local reasons={}
+    for k in pairs(capReasons) do reasons[#reasons+1]=k end
+    table.sort(reasons)
+    log("END phase=AFTER classification=%s capped=%s cap_reasons=%s inventory_limited=%s controlled_lookup_limited=%s remaining_reads=%d lines=%d next_run=BEFORE",result,text(capped),#reasons>0 and table.concat(reasons,",") or "NONE",text(inventoryLimited),text(controlledLimited),budget,lines)
+    return {phase="AFTER",classification=result,old=old,new=new,equal=eq,capped=capped,inventory_limited=inventoryLimited,controlled_limited=controlledLimited}
 end

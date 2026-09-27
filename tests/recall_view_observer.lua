@@ -92,4 +92,28 @@ env.BuildDetails=function() return {BigVersion="2.5.0.3"} end
 setup(); run(); local reloaded=assert(loadfile("diagnostics/Recall_View_Observer_2_5_0_3.lua","t",env))()
 old.Visible=false; grid=makeGrid("NEW"); parent.contents={grid}; r=reloaded()
 check(r.phase=="AFTER" and r.classification=="LIFECYCLE_STALE_CACHE_CONFIRMED","same diagnostic memory must survive component re-evaluation")
+
+-- Exact reported replacement shape: NEW 211 children, controls beyond old 128 cap.
+setup(); run(); old.valid=false; grid=makeGrid("NEW211"); parent.contents={grid}
+local control103,control104=grid.contents[1],grid.contents[2]
+grid.contents={}
+for i=1,211 do
+ local b=object("AllPoolButton","Extra "..i,"extra"..i); b.ObjectIndex=i+200; b.parent=grid; grid.contents[i]=b
+end
+grid.contents[150]=control103; grid.contents[151]=control104
+r=run()
+check(r.old.valid==false and r.old.cache_accept==false and r.new.ui_count==211,"native replacement fixture incorrect")
+check(r.classification=="LIFECYCLE_NOT_REPRODUCED" and not r.capped,"211 children must not veto invalid OLD evidence")
+check(r.new.buttons[103] and r.new.buttons[104],"controls beyond 128 must be found by ObjectIndex")
+check(r.new.controlled_examined<211,"stop as soon as both controls found")
+check(r.new.buttons[103].target.object==pool:Ptr(103),"saved/new database target identity lost")
+-- Child position is deliberately not ObjectIndex; no fabricated Ptr offset.
+check(r.new.buttons[103].object==control103 and r.new.buttons[104].object==control104,"lookup guessed positional mapping")
+check(table.concat(logs,"\n"):find("cap_reasons=NONE",1,true),"cap reason metrics missing")
+-- Optional sibling inventory limit must not override a rejected OLD grid.
+setup(); run(); old.valid=false; grid=makeGrid("NEW_PARENT211"); parent.contents={grid}
+for i=2,211 do parent.contents[i]=object("Container","Sibling "..i,"sib"..i) end
+r=run()
+check(r.classification=="LIFECYCLE_NOT_REPRODUCED" and r.inventory_limited and not r.capped,"noncritical sibling inventory must not force UNVERIFIED")
+check(forbidden==0 and uiErrors==0,"diagnostic safety changed")
 print("PASS: "..count.." Recall lifecycle assertions (MOCK ONLY)")

@@ -4,25 +4,25 @@
 Track B only: generic Pool UI lifecycle / Recall View cache observer on 2.5.0.3. Generator 103/104 are controlled fixtures, not Generator-specific root-cause scope. Track A PAUSED; no scanner research/changes. Production unchanged.
 
 ## Current Working State
-Standalone Recall View Observer Lua/XML deployed independently; XML/Lua source/deployed parse PASS and SHA256 MATCH. Production Update Plugin snapshot unchanged. 22 observer mocks PASS. First press stores BEFORE; operator manually recalls View; second press logs OLD/NEW and classifies stale-cache/not-reproduced/unverified. Only diagnostic memory/Printf writes, no markers/cooked reads/commands. Production v0.7.0.17 and CompareHandle integration unchanged. Lifecycle REAL-WORLD VALIDATION PENDING.
+Revision 2 observer only: controlled ObjectIndex lookup stops after 103/104; NEW grid child count >128 no longer sets global lifecycle capped. Optional inventory limits separated from read/output caps, with reason counters logged. 31 mock assertions PASS including NEW 211-child replacement. Production and Track A untouched. Revision 2 redeployed independently; XML/Lua parse and source/deployed SHA256 MATCH, production directory unchanged. Final native retest pending.
 
 ## Latest Real-World User Test
-UI topology revision 2 native PASS: direct AllPoolButton 103/104, Visible and IsVisible true, IsActuallyVisible unavailable. Targets Random/Generator 103 #2BC0001F7 and 104 #2BC0001FF. Recipe 103 previously had same handle. Extraction valid; alias mismatch not reproduced; normal native children exist.
+Actual different View replacement completed: BEFORE OLD #21320018D9 valid/cache_accept true, 103/104 present; AFTER OLD invalid/cache_accept false, buttons absent; NEW #8632000D2F valid/current visible, both controls present, saved database targets equal NEW targets. This controlled case does NOT reproduce stale-valid-grid retention. Revision 1 output UNVERIFIED/capped=true was a diagnostic cap issue.
 
 ## Verified Facts
-Production IsActuallyVisible nil is accepted; strict CompareHandle probe rejected nil. Read-only in-memory audit reproduced retained old grid despite IsVisible=false and absent IsActuallyVisible. This is a lifecycle candidate, not Cue-wide latency cause. Actual Recall lifecycle still untested. Observer snapshots parent/grandparent visibility and copied production predicate without modifying it.
+Revision 1 children() set global capped above 128 entries; NEW 211 UI children necessarily triggered it, and AFTER forced UNVERIFIED. Offline exact-shaped replay reproduced this. Revision 2 separates inventory limits and checks only controlled pair for target metadata; same fixture returns LIFECYCLE_NOT_REPRODUCED. Other read/output cap triggers were not proven absent in the old native run; new counters identify them. No broader lifecycle conclusion.
 
 ## Current Problem
-Need controlled BEFORE/manual Recall/AFTER evidence of valid accepted OLD grid that is no longer current. Child fallback and display discovery costs are outside this classification.
+Need one final native retest of the SAME replacement scenario with revision 2, not a new investigation.
 
 ## Known Failed Attempts
-First topology run invalid (UI-only calls on database handles/global discovery starvation); revision 2 native retest passed. ObjectList identity controls never prove UI tile extraction. Alias matching not reproduced in successful native case.
+Revision 1 global child inventory cap incorrectly overrode decisive invalid/rejected OLD evidence. Stale-valid cache hypothesis not reproduced by this native case.
 
 ## Important Files
 diagnostics/Recall_View_Observer_2_5_0_3.lua, diagnostics/recall_view_observer_2_5_0_3.xml, tests/recall_view_observer.lua, tools/run_recall_view_observer.py, docs/recall-view-lifecycle-observer-2.5.0.3.md, RecipeTracking_Inspector.lua.
 
 ## Current Branch / Commit
-qwen; checkpoint subject `test: add read-only Recall View lifecycle observer`. Preserve earlier Shared Reference integration uncommitted changes. Never merge main automatically.
+qwen; checkpoint subject `fix: keep Recall lifecycle classification independent of child inventory`. Preserve earlier Shared Reference integration uncommitted changes. Never merge main automatically.
 
 ## Exact Next Action
-Import independent Recall View Observer XML, show one Generator Pool with 103/104, press BEFORE, manually Recall replacement View, press SAME Plugin AFTER; copy [RecallLife] START through END. Do not re-import/restart/change Show between phases. Lifecycle native validation pending; keep production and Track A untouched.
+Re-import updated independent observer XML. Confirm revision=2-controlled-lookup, run BEFORE, manually Recall the same replacement View, run AFTER and copy [RecallLife] output. Expected LIFECYCLE_NOT_REPRODUCED if OLD invalid/rejected again. No production changes or investigation expansion; Track A remains paused.
