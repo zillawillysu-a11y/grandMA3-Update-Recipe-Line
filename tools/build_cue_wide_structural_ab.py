@@ -18,7 +18,9 @@ start=source.index('local function scanCueEffectPart(scan, part)')
 end=source.index('local function finishCueEffectScan(scan)',start)
 sparse=source[start:end].replace('local function scanCueEffectPart(', 'local function sparseScanCueEffectPart(',1)
 assert sparse.count('next(data, pending.key)')==1
-sparse=sparse.replace('local index, phaser = next(data, pending.key)', 'local index, phaser, streamYield = sparseNext(scan, part, data)\n        if streamYield then return false end')
+sparse=sparse.replace('local index, phaser = next(data, pending.key)', 'local index, phaser = sparseNext(scan, part, data)')
+sparse=sparse.replace('for batch = 1, 32 do', 'while true do')
+sparse=sparse.replace('if touched then', 'captureNoEffect(part, scan, index, layer[1], touched)\n                if touched then',1)
 sparse=sparse.replace('local recipes = pending.recipes or {}','pending.recipes = pending.recipes or sparseRecipes(part)\n    local recipes = pending.recipes or {}')
 sparse=sparse.replace('pending.recipes = recipes','pending.recipes = recipes\n    rememberSparseRecipes(part, recipes)')
 sparse=sparse.replace(origin_anchor,'local probePrevious = layers[layer[1]]\n                    '+origin_anchor+'\n                    captureOrigin(part, layers[layer[1]], scan, index, layer[1], phaser, probePrevious)')
@@ -31,10 +33,10 @@ header=f'''-- Independent read-only structural/sparse vs exact dormant scanner o
 -- Production {version}; normalized-source SHA256 {hashlib.sha256(source.encode()).hexdigest()}.
 return function()
 local commandAddress, children, recipeNumber, generatorHasFeature
-local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, sparseRecipes, rememberSparseRecipes, captureOrigin, captureFeatureRecord
+local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, sparseRecipes, rememberSparseRecipes, captureOrigin, captureFeatureRecord, captureNoEffect
 local MAX_CUES, MAX_RECIPES, REFRESH_SECONDS = 512, 2048, {cadence}
 local ENABLE_CUE_PHASER_MARKERS = true -- private copy only; production stays false
 '''
 out=header+body+'\n'+sparse+'\n'+(root/'tools/templates/cue_wide_structural_ab_core.lua').read_text(encoding='utf-8')
 (root/'diagnostics/Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua').write_text(out,encoding='utf-8')
-print('Built standalone structural A/B; baseline copied verbatim, sparse differs only at key iterator')
+print('Built standalone structural A/B; baseline copied verbatim, Hybrid uses filtered iterator and unbatched copied semantics')

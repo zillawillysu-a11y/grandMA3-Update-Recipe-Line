@@ -36,12 +36,12 @@ local function setFrom(result)
  return list,bad
 end
 local function count(t) local n=0; for _ in pairs(t or {}) do n=n+1 end; return n end
-local LIMIT={channels=32768,mappingWork=262144,streamBatch=128,seconds=20,
- lookups=16384,records=8192,hybridParts=8,
+local LIMIT={channels=32768,mappingWork=262144,seconds=30,
+ lookups=131072,records=32768,hybridParts=512,
  reads=512,advances=8192,rows=2048}
 local phase,profiles={},{}
 local function profile(name)
- local p={name=name,reads={},nativeMs=0,records=0,featureRecords=0,lookups=0,advances=0,parts=0,started=now(),timingInvalid=false,dataCache={},chunks={},witnesses={},transitions={},returnedCountMs=0,stages={},partReads={}}
+ local p={name=name,reads={},nativeMs=0,records=0,featureRecords=0,lookups=0,advances=0,parts=0,started=now(),timingInvalid=false,dataCache={},chunks={},witnesses={},transitions={},returnedCountMs=0,stages={},partReads={},events={},eventRows={},decisive={},losses={},semanticMs=0,scopeStats={mappingCalls=0,mappingHits=0,attributeCalls=0,attributeHits=0,mappingMs=0,attributeMs=0,iterations=0}}
  profiles[name]=p; phase=p; return p
 end
 local function stage(p,name)
@@ -57,13 +57,27 @@ local function finishProfile(p)
  p.totalMs=elapsed(p.started,now()); if not p.totalMs then p.timingInvalid=true end
  p.processingMs=p.totalMs and math.max(0,p.totalMs-p.nativeMs) or nil
 end
+local function transition(p,rid,event,scan,part,index,prefix,source)
+ p.events[rid]=p.events[rid] or {}; p.events[rid][event]=(p.events[rid][event] or 0)+1
+ local key=rid..'|'..scan.index..'|'..prefix..'|'..event
+ local row=p.eventRows[key]
+ if not row then row={rid=rid,event=event,part=part,index=index,prefix=prefix,source=source,count=0}; p.eventRows[key]=row end
+ row.count=row.count+1
+end
 captureOrigin=function(part,item,scan,index,prefix,phaser,previous)
  if item then item.probePart=part end
  if phase.name~='HYBRID' or not scan then return end
  local unit=phase.units[scan.index]
- if unit.stage=='SOURCE_WITNESS' and item then for _,ref in ipairs(item.refs) do
+ if item then for _,ref in ipairs(item.refs) do
   local rid=id(ref); phase.witnesses[rid]=phase.witnesses[rid] or {}
   phase.witnesses[rid][index]=phase.witnesses[rid][index] or {}; phase.witnesses[rid][index][prefix]=true
+ end end
+ if item then for _,ref in ipairs(item.refs) do
+  local rid=id(ref); phase.events[rid]=phase.events[rid] or {}; local same=false
+  for _,old in ipairs(previous and previous.refs or {}) do if dbEqual(old,ref) then same=true end end
+  item.probeSources=item.probeSources or {}; item.probeSources[rid]=same and ((previous.probeSources or {})[rid] or previous.probePart) or part
+  if not same and phase.losses[rid] and phase.losses[rid][index] then phase.losses[rid][index][prefix]=nil end
+  local event=same and 'STILL_ACTIVE' or 'SOURCE'; transition(phase,rid,event,scan,part,index,prefix,item.probeSources[rid])
  end end
  if previous then for _,ref in ipairs(previous.refs) do
   local rid=id(ref); local retained=false
@@ -72,9 +86,19 @@ captureOrigin=function(part,item,scan,index,prefix,phaser,previous)
    local released=false
    for key,step in pairs(phaser) do if type(key)=='number' and type(step)=='table' and (step[prefix..'_release'] or step[prefix..'_remove']) then released=true end end
    local reason=item and 'SUPERSEDED_BY_COOKED_REFERENCE' or (released and 'COOKED_RELEASE_OR_REMOVE' or 'COOKED_STATIC_LAYER')
+   phase.losses[rid]=phase.losses[rid] or {}; phase.losses[rid][index]=phase.losses[rid][index] or {}
+   phase.losses[rid][index][prefix]={ref=ref,source=(previous.probeSources or {})[rid] or previous.probePart,part=part,position=scan.index,index=index,prefix=prefix,reason=reason,replacement=item and item.refs or {},released=released}
+   phase.events[rid]=phase.events[rid] or {}; local e=phase.events[rid]
+   local event=released and 'RELEASED' or (not item and 'STATIC_TERMINATOR' or 'SUPERSEDED')
+   transition(phase,rid,event,scan,part,index,prefix,(previous.probeSources or {})[rid] or previous.probePart)
    phase.transitions[rid]=phase.transitions[rid] or {}; phase.transitions[rid][reason]=(phase.transitions[rid][reason] or 0)+1
   end
  end end
+end
+captureNoEffect=function(part,scan,index,prefix,touched)
+ if phase.name~='HYBRID' or touched then return end
+ local old=(scan.tracked[index] or {})[prefix]
+ for _,ref in ipairs(old and old.refs or {}) do local rid=id(ref); phase.events[rid]=phase.events[rid] or {}; transition(phase,rid,'NO_EFFECT',scan,part,index,prefix,(old.probeSources or {})[rid] or old.probePart) end
 end
 captureFeatureRecord=function()
  phase.featureRecords=phase.featureRecords+1
@@ -139,7 +163,7 @@ local function ambiguity(reason,row,detail,hard)
  if hard then hardBlocked=true end
 end
 -- B runs before C and A: no access to oracle records/results/prior globals.
-log('START target=2.5.0.3 diagnostic_revision=3_PART_FIRST_STREAMING production_version=0.7.0.17 production_flag=false execution_order=B_STRUCTURAL,C_SPARSE_HYBRID,A_ORACLE oracle_not_available_to_candidates=true sequence={%s} cue={%s}',describe(sequence),describe(currentCue))
+log('START target=2.5.0.3 diagnostic_revision=4_FULL_HISTORY_SPARSE production_version=0.7.0.17 production_flag=false execution_order=B_STRUCTURAL,C_SPARSE_HYBRID,A_ORACLE oracle_not_available_to_candidates=true sequence={%s} cue={%s}',describe(sequence),describe(currentCue))
 local b=profile('STRUCTURAL')
 local okB,errorB=pcall(function()
  stage(b,'Recipe_history_walk')
@@ -206,15 +230,21 @@ local okB,errorB=pcall(function()
   b.familyAddressReads=(b.familyAddressReads or 0)+1
   for sf in pairs(row.members or {}) do
   row.keys=row.keys or {}
-  if not mapped[sf] then mapped[sf]=safe(GetUIChannels,sf,false) end
+  if not mapped[sf] then
+   local t=now(); mapped[sf]=safe(GetUIChannels,sf,false); local ms=elapsed(t,now())
+   b.scopeStats.mappingCalls=b.scopeStats.mappingCalls+1; if ms then b.scopeStats.mappingMs=b.scopeStats.mappingMs+ms end
+  else b.scopeStats.mappingHits=b.scopeStats.mappingHits+1 end
   local channels=mapped[sf]
   if type(channels)~='table' or #channels==0 then ambiguity('GETUICHANNELS_UNAVAILABLE_OR_EMPTY',row,sf,true)
   else for _,value in ipairs(channels) do
-   mappingWork=mappingWork+1; if mappingWork>LIMIT.mappingWork then error('DIAGNOSTIC_MAPPING_WORK_LIMIT') end
+   mappingWork=mappingWork+1; b.scopeStats.iterations=mappingWork; if mappingWork>LIMIT.mappingWork then error('DIAGNOSTIC_MAPPING_WORK_LIMIT') end
    local index=tonumber(value)
    if not index then ambiguity('NON_NUMERIC_UI_CHANNEL_MAPPING',row,text(value),true)
    else
-    if channelFeatures[index]==nil then local attr=safe(GetAttributeByUIChannel,index); channelFeatures[index]=attr and normalizeFeature(label(attr)) or false end
+    if channelFeatures[index]==nil then
+     local t=now(); local attr=safe(GetAttributeByUIChannel,index); channelFeatures[index]=attr and normalizeFeature(label(attr)) or false
+     local ms=elapsed(t,now()); b.scopeStats.attributeCalls=b.scopeStats.attributeCalls+1; if ms then b.scopeStats.attributeMs=b.scopeStats.attributeMs+ms end
+    else b.scopeStats.attributeHits=b.scopeStats.attributeHits+1 end
     local feature=channelFeatures[index] or nil
     local keep=true
     if definitiveFamily and feature then keep=feature==definitiveFamily
@@ -244,39 +274,25 @@ rememberSparseRecipes=function(part,recipes) h.recipeCache[part]=recipes end
 local selectedParts,keysByPart,planned={}, {}, {}
 stage(h,'witness_Part_selection')
 local directSet=setFrom(currentCueRecipeEffects(currentCue))
-local historicalKeys={}
-local function plan(part,stage,keys)
- local entry=planned[part] or {stage=stage,keys={}}; planned[part]=entry
- for key in pairs(keys or {}) do entry.keys[key]=true end
-end
-for _,row in ipairs(candidateRows) do
- local newest=false; for _,decision in pairs(row.lanes or {}) do if decision=='NEWEST_STRUCTURAL_LANE' then newest=true end end
- if row.cue~=currentCue and structural[row.refId] and not directSet[row.refId] and row.moving and newest then
-  plan(row.part,'SOURCE_WITNESS',row.keys)
-  for key in pairs(row.keys or {}) do historicalKeys[key]=true end
- end
-end
-for _,ctx in ipairs(contexts) do if ctx.cue==currentCue then
- local keys={}; for key in pairs(historicalKeys) do keys[key]=true end
- for _,row in ipairs(candidateRows) do if row.cue==currentCue and row.position<=order[ctx.part] then
-  for key in pairs(row.keys or {}) do keys[key]=true end
- end end
- if next(keys) then plan(ctx.part,'CURRENT_CUE_EVIDENCE',keys) end
-end end
-stage(h,'chunk_plan_construction') -- Part plans only: no per-key lookup operations.
+local candidateKeys={}
+local keyStart=now()
+for _,row in ipairs(candidateRows) do for key in pairs(row.keys or {}) do candidateKeys[key]=true end end
+h.keyConstructionMs=elapsed(keyStart,now())
+stage(h,'chunk_plan_construction') -- one plan per history Part, shared candidate key set.
 local planningError; local plannedLookups=0
-for _,ctx in ipairs(contexts) do local entry=planned[ctx.part]; if entry then
- local n=count(entry.keys)
- selectedParts[#selectedParts+1]=ctx.part; keysByPart[ctx.part]=entry.keys
- plannedLookups=plannedLookups+n -- descriptive projected positions, never execution budget
- if #selectedParts>LIMIT.hybridParts then planningError='DIAGNOSTIC_SELECTED_PART_LIMIT' end
- h.units[#h.units+1]={part=ctx.part,stage=entry.stage,keys=entry.keys,eligibleCount=n}
-end end
+if #contexts>LIMIT.hybridParts then planningError='DIAGNOSTIC_SELECTED_PART_LIMIT' end
+for _,ctx in ipairs(contexts) do
+ selectedParts[#selectedParts+1]=ctx.part; keysByPart[ctx.part]=candidateKeys
+ planned[ctx.part]={stage='FULL_HISTORY',keys=candidateKeys}
+ h.units[#h.units+1]={part=ctx.part,stage='FULL_HISTORY',keys=candidateKeys,eligibleCount=count(candidateKeys)}
+ plannedLookups=plannedLookups+count(candidateKeys)
+end
 sparseNext=function(scan,part,data)
  local pending=scan.pendingPart; local unit=h.units[scan.index]
+ if h.semanticStart then local ms=elapsed(h.semanticStart,now()); if ms then h.semanticMs=h.semanticMs+ms end; h.semanticStart=nil end
  if not unit.started then unit.started=true; h.chunks[#h.chunks+1]=unit end
  while true do
-  if (h.advanceVisited or 0)>=LIMIT.streamBatch then return nil,nil,true end
+  local ms=elapsed(h.started,now()); if ms and ms>LIMIT.seconds*1000 then error('DIAGNOSTIC_HYBRID_ELAPSED_LIMIT') end
   local index,record=next(data,pending.streamKey)
   if index==nil then
    unit.completed=true
@@ -290,7 +306,7 @@ sparseNext=function(scan,part,data)
   if type(index)=='number' and unit.keys[index] then
    phase.records=phase.records+1; unit.records=(unit.records or 0)+1
    if phase.records+phase.featureRecords>LIMIT.records then error('DIAGNOSTIC_SPARSE_RECORD_LIMIT') end
-   return index,record
+   h.semanticStart=now(); return index,record
   end
  end
 end
@@ -319,19 +335,23 @@ local okH,errorH=pcall(function()
    if final then for _,v in ipairs(final.refs) do if dbEqual(v,ref) then survives=true end end end
   end end
   if seen>0 and not survives and h.transitions[rid] then
+   for index,layers in pairs(h.losses[rid] or {}) do for _,d in pairs(layers) do
+    if not h.decisive[rid] or d.position<h.decisive[rid].position then h.decisive[rid]=d end
+   end end
    hybrid[rid]=nil; h.changes[#h.changes+1]={action='REMOVED',ref=ref,reason='ALL_SCOPED_SOURCE_WITNESS_LAYERS_REPLACED_OR_CLEARED',witnessLayers=seen,reasons=h.transitions[rid]}
   else
    ambiguity('STRUCTURAL_CANDIDATE_RETAINED_WITHOUT_CONCLUSIVE_COOKED_REMOVAL',nil,commandAddress(ref),false)
    h.changes[#h.changes+1]={action='RETAINED_AMBIGUOUS',ref=ref,reason='NO_POSITIVE_SOURCE_WITNESS_OR_UNCLEARED_LAYER',witnessLayers=seen}
   end
  else
-  h.changes[#h.changes+1]={action=directSet[rid] and 'RETAINED_DIRECT_MERGE' or 'RETAINED_SCOPED_COOKED',ref=ref,reason=directSet[rid] and 'EXISTING_ORACLE_CURRENT_RECIPE_MERGE' or 'SURVIVES_SELECTED_SCOPES_INTERMEDIATE_HISTORY_UNVERIFIED'}
+  h.changes[#h.changes+1]={action=directSet[rid] and 'RETAINED_DIRECT_MERGE' or 'RETAINED_SCOPED_COOKED',ref=ref,reason=directSet[rid] and 'PRE_ORACLE_CURRENT_CUE_DIRECT_RECIPE_MERGE' or 'SURVIVES_FULL_HISTORY_CANDIDATE_SCOPE'}
  end end
  for rid,ref in pairs(cooked) do if not hybrid[rid] then
-  hybrid[rid]=ref; h.changes[#h.changes+1]={action='ADDED',ref=ref,reason=directSet[rid] and 'ORACLE_COMPATIBLE_CURRENT_RECIPE_DIRECT_MERGE' or 'MOVING_REFERENCE_SURVIVES_SELECTED_COOKED_SCOPES'}
+  hybrid[rid]=ref; h.changes[#h.changes+1]={action='ADDED',ref=ref,reason=directSet[rid] and 'PRE_ORACLE_CURRENT_CUE_DIRECT_RECIPE_MERGE' or 'MOVING_REFERENCE_SURVIVES_FULL_HISTORY_CANDIDATE_SCOPE'}
  end end
  if elapsed(h.started,now()) and elapsed(h.started,now())>LIMIT.seconds*1000 then error('DIAGNOSTIC_HYBRID_ELAPSED_LIMIT') end
 end)
+if h.semanticStart then local ms=elapsed(h.semanticStart,now()); if ms then h.semanticMs=h.semanticMs+ms end; h.semanticStart=nil end
 if h.scan then
  h.advances=h.scan.advanceCalls
  local completed={}
@@ -387,19 +407,30 @@ for _,p in ipairs({b,h,a}) do
 end
 local returned,returnedKnown=0,true
 for _,read in ipairs(h.reads) do if read.kind=='PART_COOKED' then if read.returned then returned=returned+read.returned else returnedKnown=false end end end
-log('HYBRID_EXECUTION mode=PART_FIRST_STREAMING executed=%s result_valid=%s candidates_before=%d candidates_after=%d selected_Parts=%d Parts_started=%d stream_advances_used=%d projected_eligible_key_positions=%d actual_cooked_records_inspected=%d sparse_keys_actually_inspected=%d cooked_records_returned=%s actual_record_limit=%d total_processed_record_limit=%d stream_inspection_limit_per_advance=%d elapsed_limit_seconds=%d',text(h.executed),text(h.resultValid),h.candidatesBefore,count(hybrid),#selectedParts,#h.chunks,h.advances,plannedLookups,h.lookups,h.records,returnedKnown and text(returned) or 'UNAVAILABLE',LIMIT.lookups,LIMIT.records,LIMIT.streamBatch,LIMIT.seconds)
+log('HYBRID_EXECUTION mode=FULL_HISTORY_SPARSE executed=%s result_valid=%s candidates_before=%d candidates_after=%d selected_Parts=%d Parts_started=%d stream_advances_used=%d projected_eligible_key_positions=%d actual_cooked_records_inspected=%d sparse_keys_actually_inspected=%d cooked_records_returned=%s actual_record_limit=%d total_processed_record_limit=%d production_32_record_batching=false elapsed_limit_seconds=%d',text(h.executed),text(h.resultValid),h.candidatesBefore,count(hybrid),#selectedParts,#h.chunks,h.advances,plannedLookups,h.lookups,h.records,returnedKnown and text(returned) or 'UNAVAILABLE',LIMIT.lookups,LIMIT.records,LIMIT.seconds)
 for _,p in ipairs({b,h}) do
  for _,name in ipairs({'Recipe_history_walk','group_selection_membership_expansion','eligible_key_set_construction','witness_Part_selection','chunk_plan_construction','candidate_resolution','cooked_stream_filtering'}) do
   log('STAGE_TIMING phase=%s stage=%s elapsed_ms=%s ran=%s exclusive=true',p.name,name,p.timingInvalid and 'UNAVAILABLE' or text(p.stages[name] or 0),text(p.stages[name]~=nil))
  end
 end
-log('SCOPE_WORK family_address_reads=%d projected_key_positions_are_not_lookup_plan=true',b.familyAddressReads or 0)
-log('SKIPPED_HISTORY planned_history_Parts=%d selected_Parts=%d unselected_history_Parts=%d candidate_support_projection_only=true intermediate_release_override_not_globally_excluded=true',#contexts,#selectedParts,#contexts-#selectedParts)
+log('SCOPE_WORK family_address_reads=%d mapping_calls=%d mapping_cache_hits=%d mapping_native_ms=%s attribute_calls=%d attribute_cache_hits=%d attribute_read_and_label_ms=%s mapping_iterations=%d unique_candidate_keys=%d key_construction_ms=%s candidate_transition_processing_ms=%s unrelated_records_discarded=%d',b.familyAddressReads or 0,b.scopeStats.mappingCalls,b.scopeStats.mappingHits,b.timingInvalid and 'UNAVAILABLE' or text(b.scopeStats.mappingMs),b.scopeStats.attributeCalls,b.scopeStats.attributeHits,b.timingInvalid and 'UNAVAILABLE' or text(b.scopeStats.attributeMs),b.scopeStats.iterations,count(candidateKeys),text(h.keyConstructionMs),h.timingInvalid and 'UNAVAILABLE' or text(h.semanticMs),h.lookups-h.records)
+log('SKIPPED_HISTORY planned_history_Parts=%d selected_Parts=%d unselected_history_Parts=%d full_history_Part_coverage=true candidate_key_scope_completeness_unproven=true',#contexts,#selectedParts,#contexts-#selectedParts)
 for i,unit in ipairs(h.units) do log('PART_STREAM number=%d stage=%s cue={%s} part={%s} eligible_keys=%d actual_returned_entries_inspected=%d matching_records_processed=%d filtered_out=%d completed=%s',i,unit.stage,describe(owners[unit.part]),describe(unit.part),unit.eligibleCount,unit.inspected or 0,unit.records or 0,(unit.inspected or 0)-(unit.records or 0),text(unit.completed==true)) end
 for _,change in ipairs(h.changes) do
  local reasons={}; for reason,n in pairs(change.reasons or {}) do reasons[#reasons+1]=reason..':'..n end; table.sort(reasons)
  log('CANDIDATE_CHANGE action=%s reference={%s} reason=%s witnessed_layers=%s cooked_transition_reasons=%s applies_to_completed_hybrid=%s',change.action,describe(change.ref),change.reason,text(change.witnessLayers),table.concat(reasons,','),text(h.resultValid))
 end
+for rid,events in pairs(h.events) do for event,n in pairs(events) do log('TRANSITIONS candidate={%s} event=%s count=%d',describe(identities[rid]),event,n) end end
+for _,event in pairs(h.eventRows) do
+ log('TRANSITION_DETAIL candidate={%s} event=%s cue={%s} part={%s} source_cue={%s} source_part={%s} layer=%s UI_key_sample=%s matching_channels=%d feature={%s}',describe(identities[event.rid]),event.event,describe(owners[event.part]),describe(event.part),describe(owners[event.source]),describe(event.source),event.prefix,text(event.index),event.count,describe(safe(GetAttributeByUIChannel,event.index)))
+end
+for _,change in ipairs(h.changes) do if change.action=='REMOVED' then
+ local d=h.decisive[id(change.ref)]
+ if d then
+  local replacements={}; for _,ref in ipairs(d.replacement) do replacements[#replacements+1]=describe(ref) end
+  log('FIRST_DECISIVE candidate={%s} source_cue={%s} source_part={%s} decisive_cue={%s} decisive_part={%s} UI_key=%s layer=%s feature={%s} previous_reference={%s} replacement=%s released=%s exact_reason=%s first_decisive_loss_of_final_supported_layers=true all_witness_layers_cleared=true',describe(d.ref),describe(owners[d.source]),describe(d.source),describe(owners[d.part]),describe(d.part),text(d.index),d.prefix,describe(safe(GetAttributeByUIChannel,d.index)),describe(d.ref),table.concat(replacements,';'),text(d.released),d.reason)
+ end
+end end
 for _,row in ipairs(structuralRows) do
  log('RECIPE source_cue={%s} source_part={%s} recipe={%s} Enabled=%s selection_raw=%s selection={%s} reference_field=%s raw_reference=%s reference={%s} DB_group_id=%s features=%s candidate_moving_type=%s layer=UNKNOWN group_overlap_possible=true',describe(row.cue),describe(row.part),describe(row.recipe),text(row.enabled),text(row.rawGroup),describe(row.group),row.field,text(row.rawRef),describe(row.ref),text(row.groupId),table.concat(row.features or {},','),text(row.moving))
  for feature,decision in pairs(row.lanes or {}) do log('LANE recipe={%s} feature=%s decision=%s status=PROVISIONAL_LAYER_UNPROVEN',describe(row.recipe),feature,decision) end

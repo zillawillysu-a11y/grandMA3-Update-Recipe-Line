@@ -164,7 +164,7 @@ check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH' and size(r.hybri
 check(hp.executed and hp.resultValid and hp.parts==4,'3 current Parts plus explicit source witness only')
 check(#hp.reads==4 and hp.lookups==4477 and #hp.units==4,'bounded native-shaped plan streams actual records')
 check(hp.units[#hp.units].eligibleCount==2049 and hp.units[#hp.units].keys[2049],'2049th eligible key retained without lookup plan')
-check(hp.records==808 and hp.reads[2].returned==4476,'returned full table separate from sparse processing')
+check(hp.records==2050 and hp.reads[2].returned==4476,'returned full table separate from sparse processing')
 local removed=0; for _,change in ipairs(hp.changes) do if change.action=='REMOVED' then removed=removed+1; check(change.ref==historicalRef and change.reasons.COOKED_STATIC_LAYER,'removal exact DB handle and reason') end end
 check(removed==1 and has('CANDIDATE_CHANGE action=REMOVED'),'auditable removal rather than oracle copy')
 check(hp.dataCache[sourcePart]==data[sourcePart] and data[sourcePart][1].abs_preset==historicalRef,'native returned table is read-only')
@@ -181,9 +181,28 @@ data[part][1].rel_preset=preset; data[part][1][1].relative=1; data[part][1][2].r
 cue=append(seq,object('Cue','Sequence 1 Cue 2')); cue.No=2000
 local absOnly=append(cue,object('Part','Sequence 1 Cue 2 Part 0')); absOnly.Part=0; data[absOnly]={[1]={[1]={absolute=10}}}
 r=run(); check(size(r.hybrid)==1 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','relative tracking preserved')
+-- A middle history Part, omitted by Rev3, must clear the earlier candidate.
+setup(1); phaser(); addRecipe(preset); local original=part
+local middle=append(seq,object('Cue','Middle Cue')); middle.No=2000
+local midPart=append(middle,object('Part','Middle Part')); midPart.Part=0; data[midPart]={[1]={[1]={absolute=50}}}
+cue=append(seq,object('Cue','Final Cue')); cue.No=3000
+local finalPart=append(cue,object('Part','Final Part')); finalPart.Part=0; data[finalPart]={}
+r=run()
+check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH' and size(r.hybrid)==0,'full history catches intermediate static termination')
+local rid; for key in pairs(r.structural) do rid=key end
+check(r.profiles.HYBRID.decisive[rid].part==midPart and r.profiles.HYBRID.decisive[rid].source==original,'first decisive source and intermediate Part logged')
+check(r.profiles.HYBRID.parts==3 and has('FIRST_DECISIVE'),'every history Part covered and evidence logged')
+-- Reappearance invalidates an earlier loss as final removal evidence.
+part=finalPart; addRecipe(preset); data[finalPart]={[1]={abs_preset=preset,[1]={absolute=10},[2]={absolute=20}}}
+cue=append(seq,object('Cue','Last Cue')); cue.No=4000
+local lastPart=append(cue,object('Part','Last Part')); lastPart.Part=0; data[lastPart]={[1]={[1]={abs_release=true}}}
+r=run(); rid=nil; for key in pairs(r.structural) do rid=key end
+check(size(r.hybrid)==0 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','reappeared candidate later released')
+check(r.profiles.HYBRID.decisive[rid].part==lastPart and r.profiles.HYBRID.decisive[rid].source==finalPart,'decisive evidence belongs to last supported lifetime')
+check(has('PRE_ORACLE_CURRENT_CUE_DIRECT_RECIPE_MERGE')==false,'no misleading oracle provenance emitted for historical candidate')
 -- Genuine safety limits still block, with no false zero-ref comparison.
-setup(9000); addRecipe(preset); mappedChannels={}; for i=1,9000 do mappedChannels[i]=i end
-r=run(); check(r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==1 and r.profiles.HYBRID.error:find('RECORD_LIMIT'),'actual processed safety bound retained')
+setup(20000); addRecipe(preset); local morePart=append(cue,object('Part','More Part')); morePart.Part=1; data[morePart]=data[part]; mappedChannels={}; for i=1,20000 do mappedChannels[i]=i end
+r=run(); check(r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==2 and r.profiles.HYBRID.error:find('RECORD_LIMIT'),'actual processed safety bound retained')
 check(not r.comparisons.HYBRID.candidateValid and has('missing=UNAVAILABLE'),'unexecuted Hybrid not evaluated as empty correctness result'); mappedChannels=nil
 -- Projected >16384 positions must not block small actual returned tables.
 setup(1); phaser(); addRecipe(preset)
@@ -197,16 +216,16 @@ check(r.profiles.STRUCTURAL.familyAddressReads==1,'family native address once pe
 check(has('stage=group_selection_membership_expansion') and has('stage=chunk_plan_construction'),'exclusive substage timings emitted')
 mappedChannels=nil
 -- Unmatched actual data still consumes bounded traversal budget.
-setup(17000); addRecipe(preset); r=run()
+setup(131073); addRecipe(preset); r=run()
 check(r.profiles.HYBRID.error:find('ACTUAL_COOKED_RECORD_LIMIT') and not r.profiles.HYBRID.resultValid,'actual scanned safety bound enforced even for unmatched entries')
 check(r.profiles.HYBRID.records<=1 and #r.profiles.HYBRID.reads==1,'filtering does not bypass actual-data bound or reread Part')
 -- Selected native Part count remains bounded independently of scope size.
 setup(1); addRecipe(preset)
-for i=1,8 do local pp=append(cue,object('Part','Current Part '..i)); pp.Part=i; data[pp]={} end
+for i=1,512 do local pp=append(cue,object('Part','Current Part '..i)); pp.Part=i; data[pp]={} end
 r=run()
-check(r.profiles.HYBRID.error:find('SELECTED_PART_LIMIT') and #r.profiles.HYBRID.reads==0,'nine selected Parts fail before native reads')
+check(r.profiles.HYBRID.error:find('AMBIGUOUS_SCOPE') and #r.profiles.HYBRID.reads==0,'nine selected Parts fail before native reads')
 -- Elapsed guard terminates after non-preemptible native read, never full fallback.
-setup(1); addRecipe(preset); readSeconds=21; r=run()
+setup(1); addRecipe(preset); readSeconds=31; r=run()
 check(r.profiles.HYBRID.error:find('ELAPSED_LIMIT') and not r.profiles.HYBRID.resultValid,'native elapsed overrun invalidates Hybrid')
 setup(1); env.BuildDetails=function() return {BigVersion='2.5.1.0'} end
 check(not pcall(run),'version target strict')
