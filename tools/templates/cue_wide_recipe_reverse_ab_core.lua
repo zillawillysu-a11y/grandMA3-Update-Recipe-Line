@@ -53,7 +53,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=2_VALUE_SOURCE_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=3_REFERENCE_SEMANTICS_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -126,6 +126,38 @@ local function metrics()
 end
 metrics()
 local function path(h) return desc(h)..' native='..text(h and address(h)) end
+-- Separate native-only observation; immutable final and row proof gates stay unchanged.
+local semanticsAudit=newReferenceSemanticsAudit({safe=safe,class=class,isObject=isObjectReference,
+ desc=desc,metadata=auditor.metadata,joined=joined})
+local semanticsSeen,semanticsPatterns={},{}
+local semanticsStats={references=0,ordinary=0,moving=0,feature=0,layer=0,motion=0,static=0,unresolved=0}
+local function auditText(v) return tostring(v):gsub('[\r\n]',' '):sub(1,6000) end
+for _,row in ipairs(rows) do
+ if row.refId and row.structural and not semanticsSeen[row.refId] then
+  semanticsSeen[row.refId]=true
+  local a=semanticsAudit(row.ref,row.structural,row.recipe)
+  semanticsStats.references=semanticsStats.references+1
+  if row.structural.sourceCount==0 and class(row.ref):lower()=='preset' then semanticsStats.ordinary=semanticsStats.ordinary+1 end
+  if row.structural.sourceCount>0 then semanticsStats.moving=semanticsStats.moving+1 end
+  if a.feature then semanticsStats.feature=semanticsStats.feature+1 end
+  if a.layer then semanticsStats.layer=semanticsStats.layer+1 end
+  if a.motion=='MOTION_PROVEN' then semanticsStats.motion=semanticsStats.motion+1
+  elseif a.motion=='STATIC_PROVEN' then semanticsStats.static=semanticsStats.static+1 end
+  if not a.feature or not a.layer or a.motion=='MOTION_UNPROVEN' then semanticsStats.unresolved=semanticsStats.unresolved+1 end
+  if not semanticsPatterns[a.key] then
+   semanticsPatterns[a.key]=true
+   if count(semanticsPatterns)<=80 then
+   log('REFERENCE_SEMANTICS_AUDIT reference=%s Recipe=%s Group=%s pool=%s pool_class=%s classes=%s native_feature_proven=%s native_layer_proven=%s motion=%s step_count=%d truncated=%s unresolved=%s interpretation=OBSERVATION_ONLY_POOL_LINKS_NOT_COMPLETE_CONTENT_PROOF',desc(row.ref),desc(row.recipe),desc(row.group),desc(a.pool),class(a.pool),a.classes,text(a.feature),text(a.layer),a.motion,a.stepCount,text(a.truncated),text(a.reason))
+   log('REFERENCE_SEMANTICS_AUDIT_PROPERTIES reference=%s reference_properties=%s reference_links=%s probes=%s pool_properties=%s pool_links=%s pool_probes=%s',desc(row.ref),auditText(a.props),auditText(a.links),auditText(a.probes),auditText(a.poolProps),auditText(a.poolLinks),auditText(a.poolProbes))
+   log('REFERENCE_SEMANTICS_AUDIT_STRUCTURE reference=%s Attributes=%s Shape=%s dependencies=%s Recipe_properties=%s Recipe_probes=%s',desc(row.ref),auditText(a.attributes),auditText(a.shapes),auditText(a.dependencies),auditText(a.rowProps),auditText(a.rowProbes))
+   for i=1,math.min(8,#a.steps) do log('REFERENCE_SEMANTICS_AUDIT_STEP reference=%s evidence=%s',desc(row.ref),auditText(a.steps[i])) end
+   if #a.steps>8 then log('REFERENCE_SEMANTICS_AUDIT_STEP_LIMIT reference=%s omitted=%d',desc(row.ref),#a.steps-8) end
+   end
+  end
+ end
+end
+log('REFERENCE_SEMANTICS_SUMMARY distinct_references=%d distinct_patterns=%d native_only_Feature_proof=%d native_only_Layer_proof=%d MOTION_PROVEN=%d STATIC_PROVEN=%d unresolved_references=%d distinct_ordinary_Presets=%d distinct_ValueSource_references=%d metadata_GetPresetData_count=0 metadata_ms=0 metadata_comparison=NOT_RUN',semanticsStats.references,count(semanticsPatterns),semanticsStats.feature,semanticsStats.layer,semanticsStats.motion,semanticsStats.static,semanticsStats.unresolved,semanticsStats.ordinary,semanticsStats.moving)
+
 for i,p in ipairs(patternOrder) do
  if i<=120 then
   local a,row,data=p.audit,p.row,p.data

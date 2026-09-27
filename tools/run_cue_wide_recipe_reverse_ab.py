@@ -21,6 +21,6 @@ for a, b in sections:
 lua = LuaRuntime()
 lua.execute("assert(_VERSION=='Lua 5.4')")
 lua.eval('function(s) local f,e=load(s); assert(f,e) end')(before.decode())
-for test in ('cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua'):
+for test in ('cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua', 'cue_wide_recipe_reference_semantics.lua'):
     lua.execute((root / 'tests' / test).read_text(encoding='utf-8'))
 print('PASS Lua 5.4, deterministic generation, unchanged oracle fidelity, production disabled')

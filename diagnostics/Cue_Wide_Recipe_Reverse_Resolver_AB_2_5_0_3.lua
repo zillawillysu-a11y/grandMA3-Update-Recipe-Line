@@ -1141,6 +1141,71 @@ local function newRecipeValueSourceAuditor(api)
  return {inspect=inspect,metadata=meta,selectedMetadata=selectedMetadata}
 end
 
+-- Rev3 is observational: none of this evidence is fed into reverse tracking.
+local function newReferenceSemanticsAudit(api)
+ local function repr(v)
+  if api.isObject(v) then return api.class(v)..':'..api.desc(v) end
+  return type(v)..':'..tostring(v)
+ end
+ local function inspect(h)
+  local m=api.metadata(h); local keys={}; for k in pairs(m) do keys[#keys+1]=k end; table.sort(keys)
+  local values,links={},{}
+  for _,k in ipairs(keys) do
+   local p=m[k]; local v=p.raw
+   -- Enumerated property identity is retained separately from a getter result.
+   values[#values+1]=p.key..'{'..tostring(p.type)..'}='..repr(v)
+   if api.isObject(v) then links[#links+1]=p.key..'->'..repr(v) end
+  end
+  local probes={}
+  for _,k in ipairs({'Layer','ValueLayer','Mode','Relative','RawValueAbs','RawValueRel','ValueAbsolute','ValueRelative','Feature','FeatureGroup','PresetPoolType','OwnDataPresent'}) do
+   local direct=api.safe(function() return h[k] end)
+   local get=api.safe(function() return h:Get(k) end)
+   probes[#probes+1]=k..':enumerated='..tostring(m[k:lower()]~=nil)..',direct='..repr(direct)..',get='..repr(get)
+  end
+  return table.concat(values,';'),table.concat(links,';'),table.concat(probes,';')
+ end
+ return function(ref,data,recipe)
+  local pool=api.safe(function() return ref:Parent() end)
+  local props,links,probes=inspect(ref)
+  local poolProps,poolLinks,poolProbes=inspect(pool)
+  local rowProps,rowLinks,rowProbes=inspect(recipe)
+  local seen,classes,attributes,steps,shapes,dependencies={}, {},{},{},{},{}
+  local nodes,truncated=0,false
+  local function walk(h,depth)
+   if not api.isObject(h) or seen[h] then return end
+   if depth>8 or nodes>=512 then truncated=true; return end
+   seen[h]=true; nodes=nodes+1
+   local c=api.class(h); classes[c]=(classes[c] or 0)+1
+   local p,l,q=inspect(h)
+   if c:lower()=='phaserrecipestep' then steps[#steps+1]=api.desc(h)..' props='..p..' probes='..q end
+   local m=api.metadata(h)
+   for _,v in pairs(m) do
+    local a=v.raw
+    if api.isObject(a) and api.class(a):lower()=='attribute' then
+     local f=api.safe(function() return a.Feature end); local fg=api.safe(function() return f:Parent() end)
+     attributes[#attributes+1]=v.key..'->'..repr(a)..' Feature='..repr(f)..' FeatureGroup='..repr(fg)
+    end
+    if api.isObject(a) and (api.class(a):lower()=='shape' or v.key:lower()=='shape') then shapes[#shapes+1]=v.key..'->'..repr(a) end
+   end
+   if c:lower()=='phaserrecipevaluesource' then steps[#steps+1]='ValueSource='..api.desc(h)..' parent='..repr(api.safe(function() return h:Parent() end))..' props='..p..' probes='..q end
+   for _,child in ipairs(api.safe(function() return h:Children() end) or {}) do walk(child,depth+1) end
+  end
+  walk(ref,0)
+  local deps=api.safe(function() return ref:GetDependencies() end)
+  if type(deps)=='table' then for _,d in pairs(deps) do dependencies[#dependencies+1]=repr(d) end; table.sort(dependencies)
+  else dependencies[1]='UNAVAILABLE:'..type(deps) end
+  local motion=data.proven and (data.moving and 'MOTION_PROVEN' or 'STATIC_PROVEN') or 'MOTION_UNPROVEN'
+  local classPattern={}; for c,n in pairs(classes) do classPattern[#classPattern+1]=c..':'..n end; table.sort(classPattern)
+  -- Pattern includes exact evidence, so dissimilar values cannot be hidden by deduplication.
+  local key=table.concat({api.class(ref),api.class(pool),props,poolProps,table.concat(classPattern,','),motion},'|')
+  return {key=key,pool=pool,props=props,links=links,probes=probes,poolProps=poolProps,poolLinks=poolLinks,poolProbes=poolProbes,
+   rowProps=rowProps,rowLinks=rowLinks,rowProbes=rowProbes,classes=table.concat(classPattern,','),attributes=table.concat(attributes,';'),
+   steps=steps,shapes=table.concat(shapes,';'),dependencies=table.concat(dependencies,';'),truncated=truncated,
+   feature=data.featureProven==true,layer=data.layerProven==true,motion=motion,
+   reason=api.joined(data.reasons),stepCount=data.stepCount or 0}
+ end
+end
+
 local rawData=_G.GetPresetData
 assert((safe(BuildDetails) or {}).BigVersion=='2.5.0.3','Requires grandMA3 2.5.0.3')
 local sequence,cue=safe(_G.SelectedSequence),safe(_G.GetCurrentCue)
@@ -1196,7 +1261,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=2_VALUE_SOURCE_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=3_REFERENCE_SEMANTICS_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -1269,6 +1334,38 @@ local function metrics()
 end
 metrics()
 local function path(h) return desc(h)..' native='..text(h and address(h)) end
+-- Separate native-only observation; immutable final and row proof gates stay unchanged.
+local semanticsAudit=newReferenceSemanticsAudit({safe=safe,class=class,isObject=isObjectReference,
+ desc=desc,metadata=auditor.metadata,joined=joined})
+local semanticsSeen,semanticsPatterns={},{}
+local semanticsStats={references=0,ordinary=0,moving=0,feature=0,layer=0,motion=0,static=0,unresolved=0}
+local function auditText(v) return tostring(v):gsub('[\r\n]',' '):sub(1,6000) end
+for _,row in ipairs(rows) do
+ if row.refId and row.structural and not semanticsSeen[row.refId] then
+  semanticsSeen[row.refId]=true
+  local a=semanticsAudit(row.ref,row.structural,row.recipe)
+  semanticsStats.references=semanticsStats.references+1
+  if row.structural.sourceCount==0 and class(row.ref):lower()=='preset' then semanticsStats.ordinary=semanticsStats.ordinary+1 end
+  if row.structural.sourceCount>0 then semanticsStats.moving=semanticsStats.moving+1 end
+  if a.feature then semanticsStats.feature=semanticsStats.feature+1 end
+  if a.layer then semanticsStats.layer=semanticsStats.layer+1 end
+  if a.motion=='MOTION_PROVEN' then semanticsStats.motion=semanticsStats.motion+1
+  elseif a.motion=='STATIC_PROVEN' then semanticsStats.static=semanticsStats.static+1 end
+  if not a.feature or not a.layer or a.motion=='MOTION_UNPROVEN' then semanticsStats.unresolved=semanticsStats.unresolved+1 end
+  if not semanticsPatterns[a.key] then
+   semanticsPatterns[a.key]=true
+   if count(semanticsPatterns)<=80 then
+   log('REFERENCE_SEMANTICS_AUDIT reference=%s Recipe=%s Group=%s pool=%s pool_class=%s classes=%s native_feature_proven=%s native_layer_proven=%s motion=%s step_count=%d truncated=%s unresolved=%s interpretation=OBSERVATION_ONLY_POOL_LINKS_NOT_COMPLETE_CONTENT_PROOF',desc(row.ref),desc(row.recipe),desc(row.group),desc(a.pool),class(a.pool),a.classes,text(a.feature),text(a.layer),a.motion,a.stepCount,text(a.truncated),text(a.reason))
+   log('REFERENCE_SEMANTICS_AUDIT_PROPERTIES reference=%s reference_properties=%s reference_links=%s probes=%s pool_properties=%s pool_links=%s pool_probes=%s',desc(row.ref),auditText(a.props),auditText(a.links),auditText(a.probes),auditText(a.poolProps),auditText(a.poolLinks),auditText(a.poolProbes))
+   log('REFERENCE_SEMANTICS_AUDIT_STRUCTURE reference=%s Attributes=%s Shape=%s dependencies=%s Recipe_properties=%s Recipe_probes=%s',desc(row.ref),auditText(a.attributes),auditText(a.shapes),auditText(a.dependencies),auditText(a.rowProps),auditText(a.rowProbes))
+   for i=1,math.min(8,#a.steps) do log('REFERENCE_SEMANTICS_AUDIT_STEP reference=%s evidence=%s',desc(row.ref),auditText(a.steps[i])) end
+   if #a.steps>8 then log('REFERENCE_SEMANTICS_AUDIT_STEP_LIMIT reference=%s omitted=%d',desc(row.ref),#a.steps-8) end
+   end
+  end
+ end
+end
+log('REFERENCE_SEMANTICS_SUMMARY distinct_references=%d distinct_patterns=%d native_only_Feature_proof=%d native_only_Layer_proof=%d MOTION_PROVEN=%d STATIC_PROVEN=%d unresolved_references=%d distinct_ordinary_Presets=%d distinct_ValueSource_references=%d metadata_GetPresetData_count=0 metadata_ms=0 metadata_comparison=NOT_RUN',semanticsStats.references,count(semanticsPatterns),semanticsStats.feature,semanticsStats.layer,semanticsStats.motion,semanticsStats.static,semanticsStats.unresolved,semanticsStats.ordinary,semanticsStats.moving)
+
 for i,p in ipairs(patternOrder) do
  if i<=120 then
   local a,row,data=p.audit,p.row,p.data

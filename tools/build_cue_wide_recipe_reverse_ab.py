@@ -28,5 +28,5 @@ engine = (root / 'tools/templates/cue_wide_recipe_reverse_engine.lua').read_text
 adapter = (root / 'tools/templates/cue_wide_recipe_reverse_ab_core.lua').read_text(encoding='utf-8')
 auditor = (root / 'tools/templates/cue_wide_recipe_value_source.lua').read_text(encoding='utf-8')
 (root / 'diagnostics/Cue_Wide_Recipe_Reverse_Resolver_AB_2_5_0_3.lua').write_text(
-    header + body + '\n' + engine + '\n' + auditor + '\n' + adapter, encoding='utf-8')
-print('Built Recipe Reverse A/B Rev2 VALUE_SOURCE_AUDIT; oracle sections copied unchanged')
+    header + body + '\n' + engine + '\n' + auditor + '\n' + (root / 'tools/templates/cue_wide_recipe_reference_semantics.lua').read_text(encoding='utf-8') + '\n' + adapter, encoding='utf-8')
+print('Built Recipe Reverse A/B Rev3 REFERENCE_SEMANTICS_AUDIT; oracle sections copied unchanged')
