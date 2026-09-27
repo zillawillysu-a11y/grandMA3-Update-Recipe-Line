@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GMA3 DataVersion="0.8.84.0">
+ <UserPlugin Name="Cue-wide Recipe Reverse Resolver A/B 2.5.0.3" Path="/Cue-wide Recipe Reverse Resolver AB 2.5.0.3">
+  <ComponentLua Name="cue_wide_recipe_reverse_resolver_ab" FileName="Cue_Wide_Recipe_Reverse_Resolver_AB_2_5_0_3.lua" />
+ </UserPlugin>
+</GMA3>
