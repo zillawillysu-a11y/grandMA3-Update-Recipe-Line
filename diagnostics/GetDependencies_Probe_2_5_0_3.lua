@@ -1,5 +1,5 @@
 -- Standalone, read-only grandMA3 2.5.0.3 database dependency probe.
--- Load from an external file. Never import this as a production replacement.
+-- External file or independent test Plugin; never a production replacement.
 -- Only read APIs and Printf are used. No native calls in nested coroutines.
 
 local TARGET = "2.5.0.3"
@@ -338,7 +338,8 @@ return function(_,argument)
     local config
     if type(argument)=="table" then config=argument
     else
-        local id=type(argument)=="string" and argument or "direct_recipe"
+        local id=type(argument)=="string" and argument:match("^%s*(.-)%s*$") or "direct_recipe"
+        if id=="" then id="direct_recipe" end
         if not CASES[id] then error("Unknown case id: "..text(id)) end
         config=CASES[id]; config.id=id
     end

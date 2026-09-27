@@ -124,6 +124,7 @@ report,g=expectedReport("empty_part",{},{})
 check(g.cold.complete and #g.cold_checks.missing==0 and #g.cold_checks.false_positive==0,"explicit empty truth failed")
 local unconfigured=run(nil,"empty_part")
 check(find(unconfigured,"current:part:0").cold_checks.status=="UNVERIFIED","unconfigured empty truth falsely passes")
+check(run(nil,"").case=="direct_recipe","Pool click with empty argument must run the default case")
 
 part,preset=setup(); part.deps={preset,preset}; preset.deps={part}; cue.deps={preset}
 report,g=expectedReport("duplicate_reference",{"Preset 1.1"},{})

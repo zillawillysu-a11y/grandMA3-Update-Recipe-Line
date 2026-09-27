@@ -12,8 +12,8 @@
 
 - [獨立 probe](../diagnostics/GetDependencies_Probe_2_5_0_3.lua)：讀取 selected Sequence、Current Cue、Part 與 Recipe 的獨立 dependency graphs，回傳 Lua report 並使用 `[GDProbe]` 記錄。
 - [離線案例](../tests/getdependencies_probe.lua) 與 [runner](../tools/run_getdependencies_probe.py)：mock graphs 與失敗防護；沒有連接 grandMA3。
-- Production `RecipeTracking_Inspector.lua`、`RecipeUpdate_Diagnostic.lua`、manifest、版本、紫框邏輯與 GetPresetData implementation 不變。未部署；未建立 production replacement。
-- 不提供自動匯入 manifest，不寫入 Plugin Pool；probe 可從外部 Lua 檔載入。不執行 Cmd、Cook、Assign、Store、Go、Goto、Release、Clear、Off 或 selection/Programmer APIs；不註冊 hooks，不建立 UI，不改 Show、Recipe、Programmer 或 playback 狀態。
+- Production `RecipeTracking_Inspector.lua`、`RecipeUpdate_Diagnostic.lua`、manifest、版本、紫框邏輯與 GetPresetData implementation 不變；未建立 production replacement。
+- 已依後續部署要求提供 [獨立測試 Plugin XML](../diagnostics/getdependencies_probe_2_5_0_3.xml)。probe 本身不寫入 Plugin Pool；可由操作者匯入測試 Plugin 或從外部 Lua 檔載入。不執行 Cmd、Cook、Assign、Store、Go、Goto、Release、Clear、Off 或 selection/Programmer APIs；不註冊 hooks，不建立 UI，不改 Sequence、Cue、Recipe、Programmer 或 playback 狀態。
 - probe 不呼叫 `GetPresetData()` 或 `GetPresetDataFast()`。native reads 全在呼叫者的 host 執行流程，沒有 nested coroutine。
 - 禁止以 probe 自動建立測試 Show 或切換 Cue。測試用 Show 與 playback 操作由操作者準備；probe 只觀察。
 
@@ -50,6 +50,18 @@ Preset / Random / Generator / GeneratorRandom 分類為 Pool candidates；Phaser
 範圍上限：每 graph 128 nodes、256 edges、depth 6、8,000 traversal work；每 capture 24 roots、單層 128 children、最多 8 earlier Cues、每個 expected/excluded list 64 項；read wrapper 合計 25,000 API/受保護讀取 calls。超限或 cold/warm graph 改變時不能把結果視為完整 reference 集合。這些是保護性上限，不是 native latency 承諾。
 
 ## 執行方式與 ground truth
+
+### 獨立測試 Plugin 部署
+
+部署位置：`C:\ProgramData\MALightingTechnology\gma3_library\datapools\plugins\GetDependencies Probe 2.5.0.3`。只有 XML 與其 referenced Lua；正式 `Update Plugin` 資料夾不變。
+
+在 grandMA3 Plugin Pool 的空白位置開啟 Import，選擇 Internal 儲存來源，進入 `GetDependencies Probe 2.5.0.3` 資料夾，匯入 `getdependencies_probe_2_5_0_3.xml`。匯入後名稱為 **GetDependencies Probe 2.5.0.3**。選好要觀察的 Sequence／Current Cue 後，按這個測試 Plugin；無參數或空參數預設執行 `direct_recipe`，只讀目前物件，不會自行切換 Cue。檔案部署不等於已匯入 Show 的 Plugin Pool。
+
+在 **Command Line History** 查看 `[GDProbe]`；也可開啟 **System Monitor** 查 Lua error。複製完整 `[GDProbe] CASE=...` 至 `[GDProbe] END...` 區段，保留 NODE／EDGE／CHECK／ERROR 行。未填對照仍為 `UNVERIFIED`；出現 logs 不是 active-reference suitability 已通過。
+
+部署驗證：XML parse、Lua parse、所有 ComponentLua 檔案存在、source/deployed SHA256 一致；production source與正式部署目錄另行比對保持不變。native 匯入／執行與 graph 結果仍待使用者實測。
+
+### 外部 Lua 檔方式
 
 Windows onPC 2.5.0.3 可在 Command Line 使用 Lua 載入外部檔案；本 repo 路徑如下。此命令不匯入 Plugin Pool：
 
@@ -128,7 +140,7 @@ git diff --check
 
 本輪執行結果：**58 probe assertions PASS（MOCK ONLY）**、**86 production workflow assertions PASS**，兩份 production Lua 與 XML parse PASS；獨立 probe 另行 parse PASS。靜態檢查確認沒有上述 cooked/mutating API 呼叫，production Git content 與前一 checkpoint 相同，文件 links 與十案例表格結構通過檢查。
 
-mock 結果不驗證 MA native dependency 完整度、active filtering、速度、crash freedom 或 playback 無負載影響。production regression assertions 的結果也不是此新 API 的實測。
+mock 結果不驗證 MA native dependency 完整度、active filtering、速度、crash freedom 或 playback 無負載影響。production regression assertions 的結果也不是此新 API 的實測。獨立 Plugin 包裝新增 empty-argument Pool-click 回歸檢查後為 **59 probe assertions PASS**。
 
 ## 後續判定門檻
 
