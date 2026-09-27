@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Track A: independent read-only Cue-wide Marker Trace + Timing Probe, target grandMA3 2.5.0.3. Replay current disabled scanner; separate native/processing/modeled loop waits and conditionally match visible tiles. Track B paused. No production changes or main merge.
+Track A: independent read-only Cue-wide Structural Resolver A/B, grandMA3 2.5.0.3. Exact dormant cooked resolver as oracle; test structural Recipe scope plus bounded sparse-key hybrid. No production/cadence changes. Track B paused; never merge main.
 
 ## Current Working State
-Production v0.7.0.17 unchanged, ENABLE_CUE_PHASER_MARKERS=false. Standalone generated replay preserves order, 32-record batching, tracking/recovery/direct merge/cache and supplementary reads. 93 mock assertions, deterministic generation/source SHA/ten hook anchors and 86 workflow assertions PASS. Independent deployment folder/name: Cue-wide Marker Trace Timing 2.5.0.3. REAL-WORLD VALIDATION PENDING.
+Production v0.7.0.17 unchanged, purple flag false. Candidate B/C run before oracle A to prevent evidence leakage. B has zero cooked calls; C only touches Group/feature UI indices in ambiguous suffix Parts, with original 32-record batching. Limits abort instead of full fallback. 87 A/B mock assertions and eleven original source sections verified; prior timing 93/workflow86 assertions PASS. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-Selected-group Marker Pipeline healthy: discovery, visible AllPoolButton/ObjectIndex/Ptr and sameReference/identity work. Cue 8 TILE_MATCH_MISS disappeared when Preset 25.9009 became visible. Stop broad UI/Recall/cache probing. Cue-wide purple markers historically NOT reliably working and currently disabled; no working before/after baseline.
+Sequence 3841 Cue 8:31/31 Parts,22764 records,731 advances,4 final refs/all4 visible,no source/tile misses. Warm native GetPresetData211.622ms, processing9193.526ms, core9405.148ms, modeled waits73100ms, estimate82505.148ms (88.6% wait). Native reads not main measured cost; no-wait still9.4sec. Static4476-record chunks/140advances waste processing.
 
 ## Verified Facts
-GetDependencies misses tracking-only references. Two Recall replacements invalidate OLD; 12 child paths agree; discovery finds all 12 at 1950/6000 nodes. Generic hypotheses downgraded. refreshPoolMarkers consumes selected-group references, not activeEffects. FAST/MEDIUM execute on scanner host tick 0; cooked begins tick 1. Loop wait modeled only.
+Selected-group Track B path healthy. No stable purple baseline historically. GetDependencies misses tracking-only references. Recipe structure cannot exclude manual stored channels/release or prove abs/rel layers. GetUIChannels mapping is documented/vendor-tested. C direct-key lookup still receives a complete selected Part table. Exact match means current oracle identity set only, scope_completeness_proven=false.
 
 ## Current Problem
-Need native component timings and source/reference trace for one Current Cue, without assuming native reads dominate or purple behavior works. Other production render work excluded; processing residual includes other MA getters. Native cache not flushed; full-repeat replay differs from completed result-cache hit.
+Need native B/C vs A exact missing/extra handles, data/advance reductions and wall timings. Full cooked walk exists only in A oracle. Unknown membership/limits fail C closed; out-of-scope manual refs produce misses. No production approval from one match.
 
 ## Known Failed Attempts
-No proven alias mismatch, stale-valid grid, empty UIChildren or shared-budget root cause in tested Shows. No CompareHandle production integration. Empty Generator tile indices are not bug evidence and remain uninvestigated.
+Generic Track B hypotheses downgraded. Do not resume UI/Recall/cache probing, integrate CompareHandle into production, change cadence, or assume purple reliability. Ordinary Preset static/moving state cannot be guessed without cooked evidence.
 
 ## Important Files
-diagnostics/Cue_Wide_Trace_Timing_2_5_0_3.lua; diagnostics/cue_wide_trace_timing_2_5_0_3.xml; tools/build_cue_wide_trace.py; tools/templates/cue_wide_trace_core.lua; tests/cue_wide_trace_timing.lua; tools/run_cue_wide_trace_timing.py; docs/cue-wide-trace-timing-2.5.0.3.md.
+diagnostics/Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua; diagnostics/cue_wide_structural_resolver_ab_2_5_0_3.xml; tools/build_cue_wide_structural_ab.py; tools/templates/cue_wide_structural_ab_core.lua; tools/run_cue_wide_structural_ab.py; tools/deploy_cue_wide_structural_ab.py; tests/cue_wide_structural_ab.lua; docs/cue-wide-structural-resolver-ab-2.5.0.3.md; docs/cue-wide-trace-timing-2.5.0.3.md.
 
 ## Current Branch / Commit
-qwen; checkpoint subject `test: add read-only Cue-wide scanner timing replay`. Preserve pre-existing Shared Reference integration uncommitted changes. Never merge main.
+qwen; checkpoint subject `test: compare structural sparse resolver against cooked oracle`. Preserve existing Shared Reference integration uncommitted changes.
 
 ## Exact Next Action
-REAL-WORLD VALIDATION PENDING: select Sequence/Current Cue with relevant tiles visible, import independent cue_wide_trace_timing_2_5_0_3.xml, run once without changing context and copy [CueWideTrace] START-END. Compare both SUMMARY native/processing/wait totals, earliest publication vs final tick, source/tile results. Reject capped/unstable/unverified evidence. Do not enable production or claim purple restoration.
+REAL-WORLD VALIDATION PENDING: import independent Cue-wide Structural Resolver AB 2.5.0.3 XML, select Sequence3841/Cue8, leave Show unchanged, run once, copy [CueStructAB] START-END with METRICS/FINAL_SET/DIFF/RESULT/REDUCTION/CANDIDATE_TOTAL/AMBIGUITY. Check context/output/oracle validity. Production flag stays false; no main merge.

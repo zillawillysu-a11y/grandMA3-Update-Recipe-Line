@@ -2,7 +2,15 @@
 
 ## Scope and native operation
 
-REAL-WORLD VALIDATION PENDING. Independent read-only replay of production v0.7.0.17's dormant scanner. Production ENABLE_CUE_PHASER_MARKERS remains false. No rendering, flash, commands, Show/Recipe/Programmer writes, Pool/View changes, Recall experiment or CompareHandle integration.
+Native evidence received for Sequence 3841 Cue 8; production remains unchanged. Independent read-only replay of production v0.7.0.17's dormant scanner. Production ENABLE_CUE_PHASER_MARKERS remains false. No rendering, flash, commands, Show/Recipe/Programmer writes, Pool/View changes, Recall experiment or CompareHandle integration.
+
+## Native result: Sequence 3841 Cue 8
+
+User-reported grandMA3 2.5.0.3 evidence: 31/31 Parts completed, 22764 records processed, 731 advances, 4 final references and all 4 visible matches, no missing source/pool/tile. Functional classification CUE_WIDE_REFERENCE_PATH_COMPLETE.
+
+Warm full replay: native GetPresetData ~211.622 ms, processing including other MA read APIs ~9193.526 ms, corrected scanner ~9405.148 ms. Modeled cadence waits 73100 ms, Cue-to-final estimate ~82505.148 ms, batch-wait model dominant share ~88.6%; CUE_WIDE_PERFORMANCE_BOTTLENECK_BATCH_WAIT. The 82.5 sec is the additive cadence model, not observed production latency.
+
+GetPresetData is not the main measured native cost in this case. Removing waits alone leaves ~9.4 sec of algorithm processing. Some chunks contain ~4476 numeric records / 140 advances with moving=0, indicating substantial irrelevant-record processing. No batch-size/cadence change follows. Next independent experiment is structural Recipe-first plus sparse-key hybrid against this cooked resolver oracle, documented in cue-wide-structural-resolver-ab-2.5.0.3.md.
 
 Track B is paused: user's completed native Marker Pipeline confirms discovery, visible AllPoolButton → ObjectIndex → PoolObject:Ptr target and sameReference/identity. Cue 8 TILE_MATCH_MISS disappeared when Preset 25.9009 became visible. Purple Cue-wide markers historically were **not reliably working**. This probe does not establish or restore a purple baseline.
 
@@ -54,7 +62,7 @@ Bounds: original 512 Cues/131072 work units; diagnostic 8192 host calls, 1024 re
 
 `python tools/run_cue_wide_trace_timing.py`: 93 mock assertions plus deterministic generation, source SHA, disabled flag and ten hook anchors PASS. Covers independent layers, tracking/static/release, batch EOF/read reuse, Recipe recovery/direct Phaser/Generator merge, supplementary reads, timing components, missing source/clock/pool/tile, errors/context/version and forbidden calls/production mutation.
 
-`python tools/run_workflow.py`: 86 existing workflow assertions PASS. XML/Lua parse and source/deployed SHA256 verified at deployment. Offline checks do not prove Show-specific correctness, timings or purple behavior. Native evidence is pending.
+`python tools/run_workflow.py`: 86 existing workflow assertions PASS. XML/Lua parse and source/deployed SHA256 verified at deployment. Offline checks do not prove Show-specific correctness, timings or purple behavior. User-reported native evidence is recorded above; the new structural A/B experiment remains pending.
 
 `python tools/deploy_cue_wide_trace_timing.py` copied only the diagnostic XML/Lua, parsed both source and deployment, checked component existence and matching SHA256, and compared the complete production-folder snapshot before/after. Production source blobs still match HEAD. Deployment hashes:
 

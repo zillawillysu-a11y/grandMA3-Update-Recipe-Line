@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GMA3 DataVersion="0.8.84.0">
+ <UserPlugin Name="Cue-wide Structural Resolver A/B 2.5.0.3" Path="/Cue-wide Structural Resolver AB 2.5.0.3">
+  <ComponentLua Name="cue_wide_structural_resolver_ab" FileName="Cue_Wide_Structural_Resolver_AB_2_5_0_3.lua" />
+ </UserPlugin>
+</GMA3>
