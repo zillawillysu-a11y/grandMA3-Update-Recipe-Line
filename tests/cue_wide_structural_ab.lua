@@ -80,9 +80,9 @@ local function phaser()
 end
 setup(1); addRecipe(preset); local r=run()
 check(#r.profiles.STRUCTURAL.reads==0,'B no cooked reads')
-check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','ordinary moving Preset recovered in hybrid')
+check(r.comparisons.HYBRID.classification=='MISSING_REFERENCE' and size(r.structuralMissing)==1,'ordinary moving Preset outside final candidate set is explicitly missing')
 check(r.comparisons.STRUCTURAL.classification=='MISSING_REFERENCE','ordinary Preset not guessed structurally moving')
-check(r.profiles.HYBRID.records==1 and r.profiles.BASELINE.records==1,'record counters')
+check(r.profiles.HYBRID.records==0 and r.profiles.HYBRID.lookups==1 and r.profiles.BASELINE.records==1,'empty final footprint inspects but does not process ordinary reference')
 check(has('source_part={class=Part') and has('ORACLE_LAYER'),'oracle source metadata')
 check(has('NON_RECIPE_CHANNELS_AND_SCOPE_COMPLETENESS_UNKNOWN'),'no claim manual absence proven')
 check(next(env.RecipeTrackingInspectorState.poolMarkers)==nil,'production state unchanged')
@@ -113,7 +113,7 @@ r=run()
 check(r.profiles.BASELINE.records==4477 and r.profiles.BASELINE.advances==141,'large static baseline costs original advances')
 check(r.profiles.HYBRID.records==2 and r.profiles.HYBRID.lookups==4477 and r.profiles.HYBRID.advances<40,'stream skips unmatched records with bounded advances')
 check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','large static pruning still correct')
-setup(1); addRecipe(preset); local other=append(pool,object('Preset','Preset 1.2')); other.Name='Same label'; preset.Name='Same label'
+setup(1); phaser(); addRecipe(preset); local other=append(pool,object('Preset','Preset 1.2')); other.Name='Same label'; preset.Name='Same label'
 local priorRT=env.GetRTChannel; local outside=object('Subfixture','Fixture 2'); outside.SubfixtureIndex=2
 env.GetRTChannel=function(i) if i==2 then return {fixture=outside,subfixture=outside} end; return priorRT(i) end
 data[part][2]={abs_preset=other,[1]={absolute=5},[2]={absolute=10}}; r=run()
@@ -123,16 +123,16 @@ env.GetRTChannel=priorRT
 setup(1); phaser(); addRecipe(preset); group.Selection=nil; r=run()
 check(r.hardBlocked and #r.profiles.HYBRID.reads==0,'unknown selection fails closed no full fallback')
 check(r.comparisons.HYBRID.classification=='AMBIGUOUS_REQUIRES_FULL_COOKED','hard ambiguity explicit')
-setup(1); addRecipe(preset); mappedChannels={}; r=run()
+setup(1); phaser(); addRecipe(preset); mappedChannels={}; r=run()
 check(r.hardBlocked and #r.profiles.HYBRID.reads==0,'empty mapping not assumed complete'); mappedChannels=nil
-setup(2050); addRecipe(preset); mappedChannels={}; for i=1,2050 do mappedChannels[i]=i end
+setup(2050); phaser(); addRecipe(preset); mappedChannels={}; for i=1,2050 do mappedChannels[i]=i end
 r=run(); check(not r.hardBlocked and #r.profiles.HYBRID.reads==1,'2050 keys executes one native Part read');
 check(#r.profiles.HYBRID.units==1 and r.profiles.HYBRID.lookups==2050,'2050 actual records stream through one Part')
 check(r.profiles.HYBRID.parts==1 and not r.profiles.HYBRID.cacheReuses,'Part stream prevents native rereads')
 check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','chunked sparse correctness'); mappedChannels=nil
-setup(1); addRecipe(preset); readSeconds=.2; r=run()
+setup(1); phaser(); addRecipe(preset); readSeconds=.2; r=run()
 check(near(r.profiles.HYBRID.nativeMs,200) and near(r.profiles.HYBRID.processingMs,0),'native timing split')
-setup(1); addRecipe(preset); processingSeconds=.01; r=run()
+setup(1); phaser(); addRecipe(preset); processingSeconds=.01; r=run()
 check(r.profiles.HYBRID.processingMs>9.99,'other MA reads stay in processing residual')
 setup(1); env.Time=false; addRecipe(preset); r=run()
 check(r.profiles.HYBRID.timingInvalid and has('GetPresetData_ms=UNAVAILABLE'),'missing wall timer not fabricated')
@@ -200,8 +200,100 @@ r=run(); rid=nil; for key in pairs(r.structural) do rid=key end
 check(size(r.hybrid)==0 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','reappeared candidate later released')
 check(r.profiles.HYBRID.decisive[rid].part==lastPart and r.profiles.HYBRID.decisive[rid].source==finalPart,'decisive evidence belongs to last supported lifetime')
 check(has('PRE_ORACLE_CURRENT_CUE_DIRECT_RECIPE_MERGE')==false,'no misleading oracle provenance emitted for historical candidate')
+-- Historical moving/static rows that are not final must not widen the footprint.
+setup(1); phaser(); addRecipe(preset); local finalRef=preset
+local largeGroup=object('Group','Large historical Group'); largeGroup.Selection={{sf_index=2}}
+local historicalOnly=append(pool,object('Preset','Historical moving ref','ShowData.DataPools.Default.PresetPools.Phaser.77'))
+historicalOnly.Name='Dimmer historical'
+local histPr=append(historicalOnly,object('PhaserRecipe','Historical Phaser')); local histVs=append(histPr,object('PhaserRecipeValueSource','Historical Value')); histVs.Attributes='Dimmer'
+local oldRecipe=append(part,object('StandardRecipe','Historical-only Recipe')); oldRecipe.Index=2; oldRecipe.Selection=largeGroup; oldRecipe.Values=historicalOnly; oldRecipe.Enabled='Yes'
+for i=2,3000 do data[part][i]={abs_preset=historicalOnly,[1]={absolute=10},[2]={absolute=20}} end
+cue=append(seq,object('Cue','Current Cue')); cue.No=2000; part=append(cue,object('Part','Current Part')); part.Part=0; data[part]={}
+local static=append(pool,object('Preset','Historical static terminator','ShowData.DataPools.Default.PresetPools.Dimmer.88')); static.Name='Dimmer'
+local staticRow=append(part,object('StandardRecipe','Static historical Group row')); staticRow.Index=1; staticRow.Selection=largeGroup; staticRow.Values=static; staticRow.Enabled='Yes'
+for i=2,3000 do data[part][i]={[1]={absolute=50}} end
+mappedChannels=function(sf) local keys={}; if sf==1 then return {1} end; for i=2,3000 do keys[#keys+1]=i end; return keys end
+local originalRT=env.GetRTChannel; local largeSF=object('Subfixture','Large historical Subfixture'); largeSF.SubfixtureIndex=2
+env.GetRTChannel=function(i) if i>=2 then return {fixture=largeSF,subfixture=largeSF} end; return originalRT(i) end
+r=run(); local fp; for _,v in pairs(r.footprints) do fp=v end
+check(size(r.structural)==1 and fp.ref==finalRef and #fp.rows==1,'only final candidate source row generates footprint')
+check(size(r.reverseIndex)==1 and r.profiles.HYBRID.records==1 and r.profiles.HYBRID.lookups==5999,'5998 historical unrelated records discarded before semantics')
+check(r.profiles.STRUCTURAL.scopeStats.mappingCalls==1 and r.profiles.STRUCTURAL.scopeStats.groupMembershipReads==1,'nonfinal Group not expanded or mapped')
+check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','narrow final footprint retains full-history correctness')
+check(r.profiles.HYBRID.routeOperations==1 and r.profiles.HYBRID.transitionOperations==2,'record-to-candidate routes and layer operation counts distinct')
+env.GetRTChannel=originalRT; mappedChannels=nil
+-- Repeated source rows reuse Group membership, mapped keys and feature filter.
+setup(1); phaser(); addRecipe(preset)
+for i=2,6 do local rr=append(part,object('StandardRecipe','Repeated source '..i)); rr.Index=i; rr.Selection=group; rr.Values=preset; rr.Enabled='Yes' end
+r=run(); fp=nil; for _,v in pairs(r.footprints) do fp=v end
+check(#fp.rows==6 and size(fp.keys)==1,'all six source events retained separately from shared footprint')
+local stats=r.profiles.STRUCTURAL.scopeStats
+check(stats.groupMembershipReads==1 and stats.groupMembershipHits==5 and stats.groupKeyBuilds==1 and stats.groupKeyHits==5,'Group caches reuse identical source scope')
+check(stats.filteredScopeBuilds==1 and stats.filteredScopeHits==5 and r.profiles.STRUCTURAL.familyAddressReads==1,'feature/group filtering cached without skipping sources')
+-- Same candidate re-sourced through a different Group/key remains active.
+setup(1); phaser(); addRecipe(preset); local firstSource=part
+local midCue=append(seq,object('Cue','Clear original source')); midCue.No=2000
+local clearPart=append(midCue,object('Part','Clear original Part')); clearPart.Part=0; data[clearPart]={[1]={[1]={absolute=50}}}
+cue=append(seq,object('Cue','Later structural source')); cue.No=3000; part=append(cue,object('Part','Later source Part')); part.Part=0
+local laterGroup=object('Group','Later Group'); laterGroup.Selection={{sf_index=2}}
+addRecipe(preset); recipe.Selection=laterGroup; data[part]={[2]={abs_preset=preset,[1]={absolute=10},[2]={absolute=20}}}
+cue=append(seq,object('Cue','Tracked final Cue')); cue.No=4000; local trackedPart=append(cue,object('Part','Tracked final Part')); trackedPart.Part=0; data[trackedPart]={}
+mappedChannels=function(sf) return {sf} end
+local secondSF=object('Subfixture','Second source SF'); secondSF.SubfixtureIndex=2
+env.GetRTChannel=function(i) if i==2 then return {fixture=secondSF,subfixture=secondSF} end; return originalRT(i) end
+r=run(); fp=nil; for _,v in pairs(r.footprints) do fp=v end
+check(#fp.rows==2 and size(fp.keys)==2 and size(fp.groupIds)==2,'all structural re-source Group footprints retained')
+check(r.profiles.HYBRID.parts==4 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH' and size(r.hybrid)==1,'candidate resumes after earlier superseding/static transition')
+env.GetRTChannel=originalRT; mappedChannels=nil
+-- A final reference appearing only on another candidate's key must not leak across ownership.
+setup(1); phaser(); addRecipe(preset); local candidateA=preset
+local candidateB=append(pool,object('Preset','Other final candidate','ShowData.DataPools.Default.PresetPools.Phaser.19'))
+local otherPr=append(candidateB,object('PhaserRecipe','Other Recipe')); local otherVs=append(otherPr,object('PhaserRecipeValueSource','Other Value')); otherVs.Attributes='Dimmer'
+local otherGroup=object('Group','Other candidate Group'); otherGroup.Selection={{sf_index=2}}
+local otherRow=append(part,object('StandardRecipe','Other candidate source')); otherRow.Index=2; otherRow.Selection=otherGroup; otherRow.Values=candidateB; otherRow.Enabled='Yes'
+data[part][2]={abs_preset=candidateB,[1]={absolute=10},[2]={absolute=20}}
+cue=append(seq,object('Cue','Manual out-of-footprint Cue')); cue.No=2000; local manualPart=append(cue,object('Part','Manual out-of-footprint Part')); manualPart.Part=0
+data[manualPart]={[1]={[1]={abs_release=true}},[2]={abs_preset=candidateA,[1]={absolute=10},[2]={absolute=20}}}
+mappedChannels=function(sf) return {sf} end
+env.GetRTChannel=function(i) if i==2 then return {fixture=secondSF,subfixture=secondSF} end; return originalRT(i) end
+r=run(); check(size(r.structural)==2 and size(r.hybrid)==0,'shared key index cannot count candidate on another footprint')
+check(r.comparisons.HYBRID.classification=='MISSING_REFERENCE' and size(r.comparisons.HYBRID.missing)==1,'oracle detects manual out-of-footprint support limitation')
+check(has('OUTSIDE_CANDIDATE_FOOTPRINT'),'candidate footprint limitation surfaced before oracle comparison')
+env.GetRTChannel=originalRT; mappedChannels=nil
+-- Group key reuse must not reuse a different candidate's feature filter.
+setup(1); phaser(); addRecipe(preset); preset.Name='Dimmer source'; local dimRef=preset
+local colorRef=append(pool,object('Preset','Color source','ShowData.DataPools.Default.PresetPools.Phaser.31')); colorRef.Name='Color source'
+local colorPr=append(colorRef,object('PhaserRecipe','Color Recipe')); local colorVs=append(colorPr,object('PhaserRecipeValueSource','Color Value')); colorVs.Attributes='Color'
+local colorRow=append(part,object('StandardRecipe','Color source row')); colorRow.Index=2; colorRow.Selection=group; colorRow.Values=colorRef; colorRow.Enabled='Yes'
+data[part][2]={abs_preset=colorRef,[1]={absolute=10},[2]={absolute=20}}
+local originalAttribute=env.GetAttributeByUIChannel; local colorAttr=object('Attribute','Attribute Color'); colorAttr.Name='Color'
+env.GetAttributeByUIChannel=function(i) if i==2 then return colorAttr end; return originalAttribute(i) end
+mappedChannels={1,2}; r=run(); local dimFP,colorFP
+for _,v in pairs(r.footprints) do if v.ref==dimRef then dimFP=v elseif v.ref==colorRef then colorFP=v end end
+check(dimFP.keys[1] and not dimFP.keys[2] and colorFP.keys[2] and not colorFP.keys[1],'shared Group cache preserves distinct feature-specific footprints')
+check(r.profiles.STRUCTURAL.scopeStats.groupKeyBuilds==1 and r.profiles.STRUCTURAL.scopeStats.filteredScopeBuilds==2,'cache signature includes normalized feature scope')
+check(r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','feature-filter cache preserves oracle identity sets')
+-- Unknown attribute metadata is conservatively retained even in an explicit scope.
+env.GetAttributeByUIChannel=function(i) if i==2 then return nil end; return originalAttribute(i) end
+r=run(); dimFP=nil; for _,v in pairs(r.footprints) do if v.ref==dimRef then dimFP=v end end
+check(dimFP.keys[2] and has('ATTRIBUTE_MAPPING_UNKNOWN_INCLUDE_ALL'),'unknown attribute does not silently prune candidate keys')
+env.GetAttributeByUIChannel=originalAttribute; mappedChannels=nil
+-- A nonfinal replacement must still supersede a final candidate on its footprint.
+setup(1); phaser(); addRecipe(preset); local replacedCandidate=preset
+local replacement=append(pool,object('Preset','Nonfinal replacement','ShowData.DataPools.Default.PresetPools.Phaser.92')); replacement.Name='Dimmer replacement'
+local replacePr=append(replacement,object('PhaserRecipe','Replacement Recipe')); local replaceVs=append(replacePr,object('PhaserRecipeValueSource','Replacement Value')); replaceVs.Attributes='Dimmer'
+local replacementGroup=object('Group','Replacement Group'); replacementGroup.Selection={{sf_index=1}}
+cue=append(seq,object('Cue','Superseding Cue')); cue.No=2000; part=append(cue,object('Part','Superseding Part')); part.Part=0
+addRecipe(replacement); recipe.Selection=replacementGroup; data[part]={[1]={abs_preset=replacement,[1]={absolute=10},[2]={absolute=20}}}; local replacementPart=part
+cue=append(seq,object('Cue','Static final Cue')); cue.No=3000; part=append(cue,object('Part','Static final Part')); part.Part=0
+local staticReplacement=append(pool,object('Preset','Dimmer static','ShowData.DataPools.Default.PresetPools.Dimmer.93')); staticReplacement.Name='Dimmer static'
+addRecipe(staticReplacement); recipe.Selection=replacementGroup; data[part]={[1]={[1]={absolute=50}}}
+r=run(); local replacedId; for rid,ref in pairs(r.structural) do if ref==replacedCandidate then replacedId=rid end end
+check(size(r.structural)==1 and size(r.hybrid)==0 and r.comparisons.HYBRID.classification=='HYBRID_EXACT_MATCH','nonfinal Recipe replacement participates without widening final scope')
+check(r.profiles.HYBRID.decisive[replacedId].part==replacementPart and r.profiles.HYBRID.decisive[replacedId].replacement[1]==replacement,'FIRST_DECISIVE preserves nonfinal moving replacement reference')
+check(r.profiles.HYBRID.events[replacedId].SUPERSEDED==1 ,'superseding event belongs to final candidate')
 -- Genuine safety limits still block, with no false zero-ref comparison.
-setup(20000); addRecipe(preset); local morePart=append(cue,object('Part','More Part')); morePart.Part=1; data[morePart]=data[part]; mappedChannels={}; for i=1,20000 do mappedChannels[i]=i end
+setup(20000); phaser(); addRecipe(preset); local morePart=append(cue,object('Part','More Part')); morePart.Part=1; data[morePart]=data[part]; mappedChannels={}; for i=1,20000 do mappedChannels[i]=i end
 r=run(); check(r.profiles.HYBRID.executed and #r.profiles.HYBRID.reads==2 and r.profiles.HYBRID.error:find('RECORD_LIMIT'),'actual processed safety bound retained')
 check(not r.comparisons.HYBRID.candidateValid and has('missing=UNAVAILABLE'),'unexecuted Hybrid not evaluated as empty correctness result'); mappedChannels=nil
 -- Projected >16384 positions must not block small actual returned tables.
@@ -216,7 +308,7 @@ check(r.profiles.STRUCTURAL.familyAddressReads==1,'family native address once pe
 check(has('stage=group_selection_membership_expansion') and has('stage=chunk_plan_construction'),'exclusive substage timings emitted')
 mappedChannels=nil
 -- Unmatched actual data still consumes bounded traversal budget.
-setup(131073); addRecipe(preset); r=run()
+setup(131073); phaser(); addRecipe(preset); r=run()
 check(r.profiles.HYBRID.error:find('ACTUAL_COOKED_RECORD_LIMIT') and not r.profiles.HYBRID.resultValid,'actual scanned safety bound enforced even for unmatched entries')
 check(r.profiles.HYBRID.records<=1 and #r.profiles.HYBRID.reads==1,'filtering does not bypass actual-data bound or reread Part')
 -- Selected native Part count remains bounded independently of scope size.
@@ -225,7 +317,7 @@ for i=1,512 do local pp=append(cue,object('Part','Current Part '..i)); pp.Part=i
 r=run()
 check(r.profiles.HYBRID.error:find('AMBIGUOUS_SCOPE') and #r.profiles.HYBRID.reads==0,'nine selected Parts fail before native reads')
 -- Elapsed guard terminates after non-preemptible native read, never full fallback.
-setup(1); addRecipe(preset); readSeconds=31; r=run()
+setup(1); phaser(); addRecipe(preset); readSeconds=31; r=run()
 check(r.profiles.HYBRID.error:find('ELAPSED_LIMIT') and not r.profiles.HYBRID.resultValid,'native elapsed overrun invalidates Hybrid')
 setup(1); env.BuildDetails=function() return {BigVersion='2.5.1.0'} end
 check(not pcall(run),'version target strict')

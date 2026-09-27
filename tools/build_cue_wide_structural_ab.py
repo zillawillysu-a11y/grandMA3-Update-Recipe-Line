@@ -26,14 +26,14 @@ sparse=sparse.replace('pending.recipes = recipes','pending.recipes = recipes\n  
 sparse=sparse.replace(origin_anchor,'local probePrevious = layers[layer[1]]\n                    '+origin_anchor+'\n                    captureOrigin(part, layers[layer[1]], scan, index, layer[1], phaser, probePrevious)')
 start=source.index('local function advanceCueEffectScan(scan)')
 end=source.index('-- A Phaser Recipe or Generator stored directly',start)
-sparse+=source[start:end].replace('local function advanceCueEffectScan(', 'local function sparseAdvanceCueEffectScan(',1).replace('scanCueEffectPart(scan, part)','sparseScanCueEffectPart(scan, part)')
+sparse+=source[start:end].replace('local function advanceCueEffectScan(', 'local function sparseAdvanceCueEffectScan(',1).replace('scanCueEffectPart(scan, part)','sparseScanCueEffectPart(scan, part)').replace('return finishCueEffectScan(scan)', 'return finishFinalCandidateScan(scan)')
 version=re.search(r'local PLUGIN_VERSION = "([^"]+)"',source).group(1)
 cadence=re.search(r'local REFRESH_SECONDS = ([0-9.]+)',source).group(1)
 header=f'''-- Independent read-only structural/sparse vs exact dormant scanner oracle.
 -- Production {version}; normalized-source SHA256 {hashlib.sha256(source.encode()).hexdigest()}.
 return function()
 local commandAddress, children, recipeNumber, generatorHasFeature
-local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, sparseRecipes, rememberSparseRecipes, captureOrigin, captureFeatureRecord, captureNoEffect
+local GetPresetData, SelectedSequence, GetCurrentCue, sparseNext, sparseRecipes, rememberSparseRecipes, captureOrigin, captureFeatureRecord, captureNoEffect, finishFinalCandidateScan
 local MAX_CUES, MAX_RECIPES, REFRESH_SECONDS = 512, 2048, {cadence}
 local ENABLE_CUE_PHASER_MARKERS = true -- private copy only; production stays false
 '''
