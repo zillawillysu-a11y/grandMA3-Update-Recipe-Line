@@ -2,7 +2,9 @@
 
 ## Scope and native operation
 
-Track B only, selected-group marker pipeline. Native validation pending. Production stays v0.7.0.17 unchanged; Track A paused. Generic UI-discovery probing is stopped.
+Track B selected-group marker pipeline: native evidence received; Track B now paused. Production stays v0.7.0.17 unchanged. Generic UI-discovery probing is stopped. Track A resumes only through the independent Cue-wide scanner timing trace.
+
+User's completed native Marker Pipeline run confirms pool discovery, visible AllPoolButton → ObjectIndex → database target and sameReference/identity matching. Previous Cue 8 TILE_MATCH_MISS entries disappeared when Preset 25.9009 became visible. The selected-group path is healthy in this case. No production changes follow. This does not establish a purple baseline: production Cue-wide markers remain disabled and historically were not reliably working.
 
 1. Keep the existing Update Plugin inspector open in the normal state showing the ONE Group whose markers you want to examine. Keep its selected Sequence/Cue and relevant Pool windows unchanged. The diagnostic does not start or operate production.
 2. Import marker_pipeline_trace_2_5_0_3.xml from C:/ProgramData/MALightingTechnology/gma3_library/datapools/plugins/Marker Pipeline Trace 2.5.0.3.

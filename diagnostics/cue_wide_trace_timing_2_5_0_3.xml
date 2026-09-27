@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<GMA3 DataVersion="0.8.84.0">
+ <UserPlugin Name="Cue-wide Marker Trace Timing 2.5.0.3" Path="/Cue-wide Marker Trace Timing 2.5.0.3">
+  <ComponentLua Name="cue_wide_trace_timing" FileName="Cue_Wide_Trace_Timing_2_5_0_3.lua" />
+ </UserPlugin>
+</GMA3>

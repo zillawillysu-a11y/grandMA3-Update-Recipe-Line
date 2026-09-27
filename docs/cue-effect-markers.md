@@ -2,6 +2,8 @@
 
 ## Live-safe status (v0.7.0.17)
 
+Native-evidence correction: Cue-wide purple markers historically were **not reliably working**; no established baseline exists for a Recall View comparison. Track B selected-group matching is healthy in the completed native Marker Pipeline run and is paused. Track A uses the independent read-only trace in `cue-wide-trace-timing-2.5.0.3.md`. Current `refreshPoolMarkers` does not merge `activeEffects`, so scanner-to-tile success cannot prove purple rendering. Historical descriptions below are intended/dormant behavior, not native acceptance.
+
 Automatic current-Cue Phaser markers are temporarily disabled. The runtime does
 not enter the FAST/MEDIUM/SLOW Cue effect resolver, does not call its cooked-data
 scan, and does not create purple Pool frames. A separate Recipe-object-only pass
