@@ -1,5 +1,8 @@
 # UI topology probe - grandMA3 2.5.0.3
 
+Latest native follow-up: UI Topology revision 2 PASS. Direct AllPoolButton 103/104 exist and PoolObject:Ptr(ObjectIndex) returns real Random/Generator targets; 103 target handle #2BC0001F7 equals the earlier Recipe reference handle. No alias mismatch reproduced. Earlier invalid run remains invalid historically, but retest now succeeded. Current experiment is [generic Pool Recall View lifecycle](recall-view-lifecycle-observer-2.5.0.3.md); 103/104 are fixtures only. Production matching unchanged; Track A PAUSED.
+
+
 **Previous native run: PROBE INVALID / RETEST REQUIRED.** Revision 2 is a standalone read-only repair. Production matching/tracking/markers/version unchanged; CompareHandle production integration remains STOPPED.
 
 ## Native failure and interpretation

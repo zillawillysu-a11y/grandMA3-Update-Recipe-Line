@@ -1,5 +1,8 @@
 # Generator / Random CompareHandle probe - 2.5.0.3
 
+Latest native follow-up: UI Topology revision 2 PASS. Direct AllPoolButton 103/104 exist and PoolObject:Ptr(ObjectIndex) returns real Random/Generator targets; 103 target handle #2BC0001F7 equals the earlier Recipe reference handle. No alias mismatch reproduced. Earlier invalid run remains invalid historically, but retest now succeeded. Current experiment is [generic Pool Recall View lifecycle](recall-view-lifecycle-observer-2.5.0.3.md); 103/104 are fixtures only. Production matching unchanged; Track A PAUSED.
+
+
 UI topology follow-up: **PROBE INVALID / RETEST REQUIRED**. Native UI-only calls on database handles and discovery-budget starvation invalidated the previous topology run (914 discovery nodes, 5 grids, truncated). Actual Generator grid was already observed at Display 3.5.3.1.5.1.4.4. No absence or virtualization conclusion is valid. Revision 2 type-gates UI APIs and locates that grid before bounded inspection; see [retest](ui-topology-probe-2.5.0.3.md). CompareHandle production integration remains stopped.
 
 
