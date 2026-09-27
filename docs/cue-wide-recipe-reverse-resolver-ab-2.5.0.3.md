@@ -1,4 +1,6 @@
-﻿# Cue-wide Recipe Reverse Resolver A/B 2.5.0.3
+Current revision: `4_REFERENCE_METADATA_CACHE`; see [Rev4 cache/reverse architecture](cue-wide-recipe-reference-metadata-rev4.md). Native validation pending; production unchanged. Earlier design below is historical.
+
+# Cue-wide Recipe Reverse Resolver A/B 2.5.0.3
 
 Current diagnostic revision: **2_VALUE_SOURCE_AUDIT**. See [Rev2 evidence and proof gates](cue-wide-recipe-value-source-rev2.md) for the native failure, verified MA 2.5 source semantics, supported subset and compact output.
 

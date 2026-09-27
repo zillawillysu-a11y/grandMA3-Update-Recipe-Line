@@ -3,6 +3,7 @@ import ast
 import hashlib
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from lupa.lua54 import LuaRuntime
 
 root = Path(__file__).resolve().parents[1]
@@ -21,6 +22,11 @@ for a, b in sections:
 lua = LuaRuntime()
 lua.execute("assert(_VERSION=='Lua 5.4')")
 lua.eval('function(s) local f,e=load(s); assert(f,e) end')(before.decode())
-for test in ('cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua', 'cue_wide_recipe_reference_semantics.lua'):
+for test in ('cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua', 'cue_wide_recipe_reference_semantics.lua', 'cue_wide_recipe_reference_metadata.lua'):
     lua.execute((root / 'tests' / test).read_text(encoding='utf-8'))
 print('PASS Lua 5.4, deterministic generation, unchanged oracle fidelity, production disabled')
+
+manifest = ET.parse(root / 'diagnostics/cue_wide_recipe_reverse_resolver_ab_2_5_0_3.xml')
+for component in manifest.getroot().find('UserPlugin').findall('ComponentLua'):
+    assert (root / 'diagnostics' / component.attrib['FileName']).is_file()
+print('PASS XML manifest and all referenced runtime files')

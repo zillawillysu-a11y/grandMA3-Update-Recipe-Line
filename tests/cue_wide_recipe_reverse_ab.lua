@@ -164,11 +164,83 @@ r=run(); check(next(r.final)==nil and has('SHAPE_VALUESOURCE_LINK_UNVERIFIED'),'
 p=setup(); local members={}; for i=1,8000 do members[i]=i end
 row(p,group(90,members),phaser(117,nil)); r=run()
 local n=0; for _,line in ipairs(logs) do if line:find('UNRESOLVED Recipe=',1,true) then n=n+1 end end
-check(n==1 and #logs<35 and has('member_count=8000'),'bounded aggregate native output')
+check(n==1 and #logs<60 and has('member_count=8000'),'bounded aggregate native output')
 check(logs[1]:find('START',1,true) and logs[#logs]:find('END',1,true) and has('RESULT classification='),'summary survives large member count')
 -- Detail floods are capped independently from mandatory summaries.
 p=setup(); g=group(1,{1})
 for i=1,600 do local v=phaser(2000+i,nil); row(p,g,v,i) end
 r=run(); check(r.detailsSuppressed>0 and #logs<1200 and has('FAST_PATH_METRICS') and logs[#logs]:find('END',1,true),'detail cap reserves summary')
+-- Rev4 end-to-end: opaque native Presets become readable only in metadata phase.
+local oldRead,oldAttribute,oldCompare=env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle
+local metadataReads,oracleReads=0,0
+local references={}
+local metaFG=obj('FeatureGroup','FeatureGroup native'); metaFG.db=90001
+local metaF=add(metaFG,obj('Feature','Feature native'))
+local metaA=obj('Attribute','Attribute native'); metaA.Feature=metaF
+local intFunction=function(h) return h.db end
+env.HandleToInt=intFunction
+env.CompareHandle=function(x,y) return x==y or (x.db~=nil and x.db==y.db) end
+env.GetAttributeByUIChannel=function() return metaA end
+env.GetPresetData=function(target,phasersOnly,byFixtures)
+ if target.kind=='Preset' and not has('ORACLE_START') then
+  check(has('NATIVE_ONLY_FINALIZED') and not has('METADATA_REVERSE_FINALIZED'),'metadata only after native finalize and before oracle')
+  check(phasersOnly==false and byFixtures==false,'reference call flags')
+  metadataReads=metadataReads+1; return references[target.db]
+ end
+ check(has('METADATA_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until metadata finalized')
+ oracleReads=oracleReads+1; calls=calls+1; return data[target] or {}
+end
+p=setup(); g=group(701,{11,12}); a=obj('Preset','Preset arbitrary'); a.db=91001
+references[a.db]={[1]={[1]={absolute=0},[2]={absolute=100}}}
+for i=1,100 do row(p,g,a,i) end
+data[p]={[1]={abs_preset=a,[1]={absolute=0},[2]={absolute=100}}}
+r=run()
+check(metadataReads==1 and r.metadataStats.calls==1 and r.metadataStats.cache_hits==99,'100 Recipe rows one metadata native read')
+check(next(r.final)==nil and next(r.metadataFinal)~=nil,'native final immutable and independent from metadata')
+check(r.metadataClassifications.METADATA_REVERSE_EXACT_MATCH,'metadata reverse exact oracle validation')
+check(r.metadataStats.COMPLETE==1 and r.metadata.staticRows==0 and r.metadata.movingRows==1,'complete moving cached result')
+check(oracleReads>0 and r.oracleCalls==oracleReads,'oracle counters exclude metadata')
+local joinedLogs=table.concat(logs,'\n')
+local nativePos=assert(joinedLogs:find('NATIVE_ONLY_FINALIZED',1,true))
+local cachePos=assert(joinedLogs:find('REFERENCE_METADATA_GETPRESETDATA',1,true))
+local finalizedPos=assert(joinedLogs:find('METADATA_REVERSE_FINALIZED',1,true))
+local oraclePos=assert(joinedLogs:find('ORACLE_START',1,true))
+check(nativePos<cachePos and cachePos<finalizedPos and finalizedPos<oraclePos,'strict three-path finalization order')
+-- Aliases across Cues read once, resolve memberships before ref identity collapse.
+p=setup(); metadataReads=0; oracleReads=0
+row(p,group(702,{11,12}),a)
+cue=add(seq,obj('Cue','Sequence 7 Cue 2')); cue.No=2000
+local secondPart=add(cue,obj('Part','Sequence 7 Cue 2 Part 0'))
+local alias=obj('Preset','Preset alias'); alias.db=a.db
+row(secondPart,group(703,{12}),alias)
+r=run(); local entry=select(2,next(r.metadata.refs))
+check(metadataReads==1 and r.metadataStats.distinct_references==1,'DB aliases across Cues share cache')
+check(entry.members[11] and entry.members[12] and r.metadata.movingRows==2,'same reference reused / re-source retains older uncovered member')
+-- Static opaque reference terminates only its overlapping subfixture.
+local stop=obj('Preset','Preset static'); stop.db=91002
+references[stop.db]={[1]={[1]={absolute=100}}}
+row(secondPart,group(704,{12}),stop,2)
+metadataReads=0; oracleReads=0; logs={}; calls=0; r=run(); entry=select(2,next(r.metadata.refs))
+check(entry and entry.members[11] and not entry.members[12] and r.metadata.staticRows==1,'ordinary static metadata terminates partial overlap')
+check(r.fastCalls==0 and has('revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
+-- A second run must issue a new metadata read for each distinct reference.
+metadataReads=0; oracleReads=0; logs={}; calls=0; r=run()
+check(metadataReads==2 and r.metadataStats.calls==2,'run-local cache lifetime')
+-- Incomplete metadata stays unsafe; oracle cannot repair either finalized set.
+p=setup(); metadataReads=0; oracleReads=0
+local unreadable=obj('Preset','Preset unreadable'); unreadable.db=91003
+references[unreadable.db]={future_container={steps={1,2}}}; row(p,group(705,{11}),unreadable)
+data[p]={[1]={abs_preset=unreadable,[1]={absolute=1},[2]={absolute=2}}}
+r=run()
+check(r.metadataStats.UNKNOWN==1 and #r.metadata.unsafe==1 and next(r.metadataFinal)==nil,'incomplete metadata does not produce an active ref')
+check(r.metadataClassifications.METADATA_REFERENCE_UNSAFE and r.metadataClassifications.METADATA_REVERSE_MISSING_REFERENCE,'unsafe and missing classifications remain separate')
+check(metadataReads==1 and r.fastCalls==0 and next(r.final)==nil,'oracle never repairs metadata or native snapshots')
+data[p]={}; logs={}; calls=0; metadataReads=0; oracleReads=0; r=run()
+check(r.metadataClassifications.METADATA_REVERSE_EXACT_MATCH and r.metadataClassifications.METADATA_REFERENCE_UNSAFE,'exact identity match does not hide unknown completeness')
+references[unreadable.db]={[1]={[1]={absolute=0},[2]={absolute=100}}}
+logs={}; calls=0; metadataReads=0; oracleReads=0; r=run()
+check(r.metadataClassifications.METADATA_REVERSE_EXTRA_REFERENCE and next(r.metadataExtra)~=nil,'extra metadata refs compared after oracle independently')
+env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle=oldRead,oldAttribute,oldCompare
+env.HandleToInt=nil
 check(forbidden==0,'no mutation, channel expansion, UI, programmer or marker APIs')
 print('PASS Recipe reverse A/B '..checks..' integration checks')

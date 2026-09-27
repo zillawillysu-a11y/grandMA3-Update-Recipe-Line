@@ -27,6 +27,8 @@ local function id(h)
  if not isObjectReference(h) then return nil end
  for i,v in ipairs(identities) do
   if h==v or safe(CompareHandle,h,v)==true then return i end
+  local hi,vi=safe(_G.HandleToInt,h),safe(_G.HandleToInt,v)
+  if type(hi)=='number' and math.type(hi)=='integer' and type(vi)=='number' and math.type(vi)=='integer' and hi~=0 and hi==vi then return i end
   local a,b=safe(HandleToStr,h),safe(HandleToStr,v)
   if a and b and a==b then return i end
  end
@@ -35,7 +37,7 @@ end
 local phase,fastCalls,oracleCalls='FAST',0,0
 GetPresetData=function(...)
  if phase=='FAST' then fastCalls=fastCalls+1; error('FAST_PATH_FORBIDDEN_GetPresetData') end
- oracleCalls=oracleCalls+1; return rawData(...)
+ assert(phase=='ORACLE','GETPRESETDATA_OUTSIDE_ORACLE'); oracleCalls=oracleCalls+1; return rawData(...)
 end
 local function joined(t) local a={}; for k in pairs(t or {}) do a[#a+1]=tostring(k) end; table.sort(a); return table.concat(a,',') end
 local function sample(members)
@@ -53,7 +55,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=3_REFERENCE_SEMANTICS_AUDIT target=2.5.0.3 sequence=%s cue=%s order=RECIPE_ONLY_FINALIZE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=4_REFERENCE_METADATA_CACHE target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_REFERENCE_METADATA_REVERSE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -120,6 +122,7 @@ local fastElapsed=ms(start,now())
 result=result or {refs={},unsafe={},rejected={},assignments={}}
 -- Immutable snapshot finalized before the oracle is even constructed.
 local final={}; for rid,entry in pairs(result.refs) do final[rid]=entry.ref end
+log('NATIVE_ONLY_FINALIZED valid=%s refs=%d GetPresetData_calls=%d',text(ok),count(final),fastCalls)
 log('FAST_FINALIZED valid=%s refs=%d GetPresetData_calls=%d elapsed_ms=%s error=%s',text(ok),count(final),fastCalls,text(fastElapsed),text(err))
 local function metrics()
  log('FAST_PATH_METRICS Cues=%d Parts=%d Recipe_rows=%d Stored_Groups=%d group_member_expansion=%d member_feature_lanes_resolved=%d empty_effective_rows=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d unresolved_symbolic_lanes=%d unknown_selection_rows=%d GetPresetData_calls=%d elapsed_ms=%s history_exhausted=%s',count(cues),stats.parts,stats.rows,stats.groups,stats.expansions,result.lanesResolved or 0,result.rowsSkipped or 0,result.staticRows or 0,result.movingRows or 0,#result.unsafe,#(result.unresolved or {}),result.unknownSelectionRows or 0,fastCalls,text(fastElapsed),text(ok))
@@ -177,7 +180,8 @@ local function identityOutput(tag,set)
  for i=1,math.min(128,#refs) do log('%s_REF reference=%s',tag,desc(refs[i])) end
  if #refs>128 then log('%s_DETAIL_LIMIT suppressed=%d exact_set_preserved_in_comparison=true',tag,#refs-128) end
 end
-identityOutput('RECIPE_ONLY_FINAL',final)
+identityOutput('NATIVE_ONLY_FINAL',final)
+log('RECIPE_ONLY_FINAL count=%d alias=NATIVE_ONLY_FINAL',count(final))
 for rid,entry in pairs(result.refs) do
  detail('ACTIVE ref=%s surviving_member_count=%d surviving_sample=%s',desc(entry.ref),count(entry.members),sample(entry.members))
  for row in pairs(entry.sources) do trace(row,'SOURCE') end
@@ -204,7 +208,78 @@ for _,row in ipairs(result.rejected) do
   detail('FIRST_NEWER member=%s overlapping_member_count=%d lane=%s older_Recipe=%s newer_Cue=%s newer_Part=%s newer_Recipe=%s newer_Group=%s unsafe_barrier=%s',text(bucket.sample),bucket.n,lane,desc(row.recipe),desc(newer.cue),desc(newer.part),desc(newer.recipe),desc(newer.group),text(bucket.unsafe==true))
  end end
 end
+-- New run-local path starts after audit logging; audit overhead is excluded.
+phase='METADATA'
+local metadataStart=now()
+local recipeTargets={}
+local metadataCache
+metadataCache=newReferenceMetadataCache({safe=safe,class=class,isObject=isObjectReference,
+ handleToInt=_G.HandleToInt,handleToStr=_G.HandleToStr,attributeByUIChannel=_G.GetAttributeByUIChannel,
+ now=now,log=log,desc=path,validateTarget=function(target,key)
+  assert(phase=='METADATA','METADATA_READ_PHASE_VIOLATION')
+  local c=class(target):lower()
+  assert(c~='cue' and c~='part' and c~='cuepart' and c~='sequence','METADATA_FORBIDDEN_TARGET_'..c)
+  assert(key==metadataCache.identity(target) and recipeTargets[key],'METADATA_TARGET_NOT_RECIPE_REFERENCE')
+ end,read=function(target,phasersOnly,byFixtures)
+  assert(phase=='METADATA','METADATA_READ_PHASE_VIOLATION')
+  return rawData(target,phasersOnly,byFixtures)
+ end})
+local metadataRows,metadataResult,metadataFinal={},{},{}
+local metadataOK,metadataError=pcall(function()
+ for _,row in ipairs(rows) do if row.ref then
+  local key=metadataCache.register(row.ref); if key then recipeTargets[key]=true end
+ end end
+ -- Requests for reused references prove cache hits instead of re-reading.
+ for _,row in ipairs(rows) do
+  local m=row.ref and metadataCache.get(row.ref) or {completeness='UNKNOWN',motion='UNSAFE',evidence='RECIPE_REFERENCE_UNRESOLVED'}
+  local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,members=row.members,ref=row.ref,
+   refId=row.refId,features=m.features,layers=m.layers,lanes=m.lanes,moving=m.motion=='MOVING' or m.motion=='GENERATOR',
+   evidence=m.evidence,metadata=m,unsafe={}}
+  if not copy.members then copy.unsafe[#copy.unsafe+1]='FAST_PATH_UNSAFE_SELECTION' end
+  if m.completeness~='COMPLETE' or m.motion=='UNSAFE' then
+   copy.unsafe[#copy.unsafe+1]='METADATA_REFERENCE_UNSAFE'
+   -- Unknown scope blocks all lanes for these members. Partial scope is known.
+   if not m.featureScopeKnown or not next(m.features or {}) then copy.features=nil end
+   if not m.layerScopeKnown or not next(m.layers or {}) then copy.layers=nil end
+  end
+  metadataRows[#metadataRows+1]=copy
+ end
+end)
+local cacheElapsed=ms(metadataStart,now())
+local reverseStart=now()
+if metadataOK then metadataOK,metadataError=pcall(function() metadataResult=recipeReverseResolve(metadataRows) end) end
+local reverseElapsed=ms(reverseStart,now())
+metadataResult=metadataResult or {refs={},unsafe={}}
+for rid,entry in pairs(metadataResult.refs) do metadataFinal[rid]=entry.ref end
+local totalMetadataElapsed=ms(metadataStart,now())
+log('METADATA_REVERSE_FINALIZED valid=%s refs=%d error=%s',text(metadataOK),count(metadataFinal),text(metadataError))
+local cs=metadataCache.stats
+local function metadataMetrics()
+ log('REFERENCE_METADATA_CACHE distinct_references=%d metadata_GetPresetData_calls=%d cache_hits=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d total_GetPresetData_native_ms=%s average_GetPresetData_ms=%s max_GetPresetData_ms=%s metadata_normalization_ms=%s cache_build_elapsed_ms=%s lifetime=SINGLE_RUN',cs.distinct_references,cs.calls,cs.cache_hits,cs.COMPLETE,cs.PARTIAL,cs.UNKNOWN,text(cs.timing_valid and cs.native_ms or 'UNVERIFIED'),text(cs.timing_valid and (cs.calls>0 and cs.native_ms/cs.calls or 0) or 'UNVERIFIED'),text(cs.timing_valid and cs.max_ms or 'UNVERIFIED'),text(cs.timing_valid and cs.normalization_ms or 'UNVERIFIED'),text(cacheElapsed))
+ log('METADATA_REVERSE Recipe_rows_inspected=%d Stored_Groups=%d group_member_expansion=%d member_feature_lanes_resolved=%d rows_skipped_empty=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d final_refs=%d reverse_elapsed_ms=%s',#metadataRows,stats.groups,stats.expansions,metadataResult.lanesResolved or 0,metadataResult.rowsSkipped or 0,metadataResult.staticRows or 0,metadataResult.movingRows or 0,#metadataResult.unsafe,count(metadataFinal),text(reverseElapsed))
+ log('TOTAL_METADATA_PATH_ELAPSED_MS value=%s excludes_Rev3_audit=true',text(totalMetadataElapsed))
+end
+metadataMetrics()
+identityOutput('METADATA_REVERSE_FINAL',metadataFinal)
+local metadataDetails=0
+local function metadataDetail(fmt,...)
+ if metadataDetails>=80 then detailsSuppressed=detailsSuppressed+1; return end
+ metadataDetails=metadataDetails+1; log(fmt,...)
+end
+local printedMetadata={}
+for _,row in ipairs(metadataRows) do
+ local key=row.ref and metadataCache.identity(row.ref)
+ if not printedMetadata[key or row.refId or row] then
+  printedMetadata[key or row.refId or row]=true
+  metadataDetail('REFERENCE_METADATA_NORMALIZED reference=%s identity=%s completeness=%s motion=%s features=%s layers=%s evidence=%s raw_shape=%s Attribute_chain=%s layer_evidence=%s',desc(row.ref),text(key),text(row.metadata.completeness),text(row.metadata.motion),joined(row.features),joined(row.layers),text(row.evidence),text(row.metadata.raw_shape),text(table.concat(row.metadata.attributeEvidence or {},';')),text(table.concat(row.metadata.layerEvidence or {},';')))
+ end
+end
+for _,entry in pairs(metadataResult.refs) do
+ metadataDetail('METADATA_ACTIVE reference=%s surviving_member_count=%d member_sample=%s',desc(entry.ref),count(entry.members),sample(entry.members))
+ for row in pairs(entry.sources) do metadataDetail('METADATA_SOURCE reference=%s Cue=%s Part=%s Recipe=%s Group=%s features=%s layers=%s surviving_member_count=%d member_sample=%s',desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(row.movingSurvivors),sample(row.movingSurvivors)) end
+end
 phase='ORACLE'
+log('ORACLE_START native_finalized=true metadata_finalized=true')
 local oracleLogs=0
 oracleLogSink=function(line)
  oracleLogs=oracleLogs+1
@@ -262,7 +337,31 @@ end end
 identityOutput('DIFF_MISSING',missing); identityOutput('DIFF_EXTRA',extra)
 log('DIFF missing=%s extra=%s oracle_valid=%s details_suppressed=%d oracle_trace_suppressed=%d',oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',text(oracleOK),detailsSuppressed,math.max(0,oracleLogs-40))
 metrics()
-log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false',joined(classifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError))
+local metadataMissing,metadataExtra,metadataClassifications={},{},{}
+if not ok or fastCalls~=0 or not metadataOK or not oracleOK or not stable then metadataClassifications.UNVERIFIED=true
+else
+ for rid,ref in pairs(oracle) do if not metadataFinal[rid] then metadataMissing[rid]=ref end end
+ for rid,ref in pairs(metadataFinal) do if not oracle[rid] then metadataExtra[rid]=ref end end
+ if not next(metadataMissing) and not next(metadataExtra) then metadataClassifications.METADATA_REVERSE_EXACT_MATCH=true end
+ if next(metadataMissing) then metadataClassifications.METADATA_REVERSE_MISSING_REFERENCE=true end
+ if next(metadataExtra) then metadataClassifications.METADATA_REVERSE_EXTRA_REFERENCE=true end
+end
+if #metadataResult.unsafe>0 or cs.PARTIAL>0 or cs.UNKNOWN>0 then metadataClassifications.METADATA_REFERENCE_UNSAFE=true end
+identityOutput('METADATA_DIFF_MISSING',metadataMissing); identityOutput('METADATA_DIFF_EXTRA',metadataExtra)
+for _,row in ipairs(metadataRows) do
+ if metadataMissing[row.refId] or metadataExtra[row.refId] then
+  detail('DIFF_METADATA_SOURCE reference=%s Recipe=%s Group=%s member_count=%d member_sample=%s features=%s layers=%s completeness=%s evidence=%s',desc(row.ref),desc(row.recipe),desc(row.group),count(row.members),sample(row.members),joined(row.features),joined(row.layers),text(row.metadata.completeness),text(row.evidence))
+  local losses={}
+  for _,loss in ipairs(row.superseded or {}) do
+   losses[loss.newer]=losses[loss.newer] or {}; local members=losses[loss.newer][loss.lane] or {}; losses[loss.newer][loss.lane]=members; members[loss.member]=true
+  end
+  for newer,lanes in pairs(losses) do for lane,members in pairs(lanes) do detail('DIFF_METADATA_LANE older_Recipe=%s newer_Recipe=%s newer_Group=%s feature_layer=%s member_count=%d member_sample=%s unsafe=%s',desc(row.recipe),desc(newer.recipe),desc(newer.group),lane,count(members),sample(members),table.concat(newer.unsafe,',')) end end
+ end
+end
+metadataMetrics()
+log('METADATA_DIFF missing=%s extra=%s classification=%s',oracleOK and count(metadataMissing) or 'UNVERIFIED',oracleOK and count(metadataExtra) or 'UNVERIFIED',joined(metadataClassifications))
+log('METADATA_RESULT classification=%s native_refs=%d metadata_refs=%d oracle_refs=%d unsafe_rows=%d completeness_COMPLETE=%d completeness_PARTIAL=%d completeness_UNKNOWN=%d safe_integration=false',joined(metadataClassifications),count(final),count(metadataFinal),count(oracle),#metadataResult.unsafe,cs.COMPLETE,cs.PARTIAL,cs.UNKNOWN)
+log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError))
 log('END production_untouched=true markers=false waits=false fallback_during_fast_path=false')
-return {fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
+return {metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end
