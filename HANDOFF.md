@@ -1,28 +1,28 @@
 # Project Handoff
 
 ## Current Goal
-Validate the isolated Generator/Random CompareHandle probe on grandMA3 2.5.0.3. Do not change production identity, tracking or marker logic.
+Bounded native UI topology research on grandMA3 2.5.0.3. CompareHandle production integration STOPPED; do not change production matching/tracking/markers.
 
 ## Current Working State
-Production v0.7.0.17 and ENABLE_CUE_PHASER_MARKERS=false unchanged. Extended CompareHandle source is independently deployed in CompareHandle Probe 2.5.0.3; XML/Lua parse and source/deployed SHA256 match. Production Update Plugin three-file snapshot unchanged. Probe separately logs UI widget and production Ptr target, requires visible positive/negative tiles, and distinguishes ObjectList controls. 60 mock assertions PASS. UI alias REAL-WORLD VALIDATION PENDING; database control native PASS.
+Independent UI Topology Probe Lua/XML deployed to library plugins/UI Topology Probe 2.5.0.3; source/deployed parse PASS and SHA256 MATCH, production Update Plugin snapshot unchanged. 15 topology mock assertions PASS. Inspects discovered Generator Pool grid, ancestors, siblings, depth-5 descendants, multiple child paths and exposed properties. No ObjectList/cooked reads/writes. Production v0.7.0.17 with Cue-wide markers disabled unchanged. UI topology REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-CompareHandle database control PASS on 2.5.0.3: Recipe Generator 103 class Random/address Generator 103; ObjectList Generator 103 forward/reverse true; Generator 104 false; cost ~0.001 ms. Origin explicitly ObjectList (not UI tile evidence), command_equal/native_equal both true. Does not establish production alias reliability. Earlier GetDependencies native test misses tracking-only Cue/Part references.
+CompareHandle database control PASS: Recipe Random/Generator 103 vs ObjectList 103 forward/reverse true, 104 false, ~0.001 ms. Native UI-target extraction failed: AllPoolLayoutGrid/Generators/GeneratorRandom discovered but visible=UNAVAILABLE, buttons=0, targets=0; other grids similar. ui_status NO_VISIBLE_UI_TARGET_HANDLE, ui_targets=0, alias_status NOT_OBSERVED.
 
 ## Verified Facts
-User native evidence proves GetDependencies is insufficient playback provenance; it must not replace tracking scans. Production source is unchanged. GetDependencies probe was deployed independently previously. CompareHandle mock validation does not establish native reliability. Both probes issue no Show/Recipe/Programmer/playback commands and call no cooked-data API; unspecified controls remain UNVERIFIED.
+Prior probe returned before button enumeration on unavailable IsActuallyVisible; zero counts do not prove virtualization. MA 2.5 vendor Pool scrolling test reads grid:Ptr(5).ObjectIndex. GetUIChild/GetUIChildrenCount, Ptr/Count and IsVisible are documented reads. Database identity is not UI alias evidence. GetDependencies remains unsuitable for final tracking references.
 
 ## Current Problem
-Need CompareHandle native pairs from Recipe and actual visible Generator Pool tiles, including different address representations, a distinct Generator negative control, and fresh targets after Recall View. No production replacement is approved by mock success.
+Need actual native hierarchy/cell-target evidence for visible Generator 103/104; topology and virtualization unverified.
 
 ## Known Failed Attempts
-GetDependencies Current Cue/Part graph misses inherited Recipe/Preset references. v0.7.0.16 used validity-only UI caching and exact command-address matching; hidden grids and Generator aliases caused missing flashes. Do not restore Cue-wide scanning or treat dependency absence as no active effect.
+UIChildren plus strict IsActuallyVisible filtering yielded no UI targets. ObjectList control is not tile extraction proof. GetDependencies tracking-only Cue misses inherited Recipe/Preset references.
 
 ## Important Files
-diagnostics/CompareHandle_Probe_2_5_0_3.lua, diagnostics/comparehandle_probe_2_5_0_3.xml, tests/comparehandle_probe.lua, tools/run_comparehandle_probe.py, docs/comparehandle-probe-2.5.0.3.md, docs/getdependencies-probe-2.5.0.3.md, docs/ma3-2.5-capability-audit.md. Production: RecipeTracking_Inspector.lua, recipe_update_diagnostic.xml.
+diagnostics/UI_Topology_Probe_2_5_0_3.lua, diagnostics/ui_topology_probe_2_5_0_3.xml, tests/ui_topology_probe.lua, tools/run_ui_topology_probe.py, docs/ui-topology-probe-2.5.0.3.md, docs/comparehandle-probe-2.5.0.3.md, RecipeTracking_Inspector.lua.
 
 ## Current Branch / Commit
-qwen. Current experiment subject: `test: separate visible Generator tile and target identity`. Identity experiment subject: `test: add isolated Generator CompareHandle probe`. Native evidence subject: `docs: record native GetDependencies tracking limits`. Earlier Shared Reference integration changes remain uncommitted and must be preserved. Never merge to main without explicit user approval.
+qwen; checkpoint subject `test: add bounded grandMA3 UI topology diagnostic`. Earlier Shared Reference integration changes remain uncommitted and must be preserved. Never merge main automatically.
 
 ## Exact Next Action
-Re-import independent XML to refresh cached Lua, or run latest source command, with visible Generator 103 and 104 tiles and Recipe 103, using expected_generator/other_generator. See source launch in docs/comparehandle-probe-2.5.0.3.md. Copy START through END including GRID, UI_TILE, POOL and PAIR; ui_evidence=true required. Missing Ptr or unknown visibility is not success. Seek an actual same-identity pair with different text; ObjectList and same-text UI pairs cannot prove alias solved.
+Import UI Topology Probe XML into a separate slot, show Generator 103/104 and optionally Group/Preset Pool, press diagnostic once and copy [UITopo] START through END. Native topology validation pending; do not integrate CompareHandle into production.

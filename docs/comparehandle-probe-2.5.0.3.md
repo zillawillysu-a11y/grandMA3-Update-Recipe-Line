@@ -1,5 +1,8 @@
 # Generator / Random CompareHandle probe - 2.5.0.3
 
+Latest native UI-target result: AllPoolLayoutGrid / Generators / GeneratorRandom found; IsActuallyVisible unavailable, buttons=0 and targets=0 across discovered pools. END NO_VISIBLE_UI_TARGET_HANDLE, ui_targets=0, alias_status=NOT_OBSERVED. **Production integration STOPPED.** Previous early visibility return means these zero counts do not prove virtualization or a childless native grid. Database identity PASS remains valid. Next experiment: [bounded UI topology](ui-topology-probe-2.5.0.3.md).
+
+
 **DATABASE IDENTITY NATIVE PASS / VISIBLE UI ALIAS VALIDATION PENDING**.
 Production matching, tracking, markers and version remain unchanged. The extended source is deployed in the independent Plugin folder. Native UI alias validation remains pending.
 
