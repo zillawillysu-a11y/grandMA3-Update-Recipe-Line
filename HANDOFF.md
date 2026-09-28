@@ -6,11 +6,11 @@ Native validate the independent Global Grid Applicability A/B probe on grandMA3 
 
 ## Current Working State
 
-The independent Plugin reads Group 85/86, Sequence 3858 Cue 1/2, and Preset 4.4 without changing showfile state. The CID patch accepts only nil, numeric 0, and exact string `None` as parent-fixture NO_CID; other representations fail closed. Five focused CID cases, Lua 5.4, deterministic build, and XML validation pass. It is deployed to its own `Global Grid Applicability AB 2.5.0.3` folder with matching source/deployed SHA256; production is unchanged. CID PATCH NATIVE RETEST PENDING.
+The independent Plugin reads Group 85/86, Sequence 3858 Cue 1/2, and Preset 4.4 without changing showfile state. Cooked comparison treats an Attribute absent on both sides as non-comparable while requiring at least one comparable Preset-linked Attribute per member. Focused tests, Lua 5.4, deterministic build, and XML validation pass. Production is unchanged. PATCH NATIVE RETEST PENDING.
 
 ## Latest Real-World User Test
 
-First native Global Grid A/B run: `GLOBAL_AB_PRECHECK pass=false` with `COOKED_SUBFIXTURE_KEY_UNPROVEN`, `GROUP_GRID_NOT_PROVEN_DIFFERENT`, and `GROUP_MEMBER_SET_DIFFERENT_OR_UNPROVEN`. Native parent fixture CID was exact string `None`. User will make Group 86 members equal Group 85 Fixtures 101–107, changing only grid positions.
+Latest native Global Grid A/B run: Group A/B have the same seven canonical members (FID 101–107), different grid hashes, and Preset 4.4 cooked Color attributes present and linked on both sides. CID normalization works. `GLOBAL_AB_PRECHECK` failed solely because CRI, CTO, and ColorRGB_W were absent on both sides for this fixture type.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ First native Global Grid A/B run: `GLOBAL_AB_PRECHECK pass=false` with `COOKED_S
 
 ## Current Problem
 
-Repeat native A/B after user corrects Group 86. The CID representation blocker is patched locally; no A/B conclusion exists yet.
+Rerun native A/B after the absent-both comparison patch. No final A/B conclusion exists yet.
 
 ## Known Failed Attempts
 
@@ -38,8 +38,8 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Current Branch / Commit
 
-`origin/qwen`, diagnostic checkpoint atop commit subject `test: separate ordinary Preset motion and member proof`. The older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `71f1789`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-After Group 86 matches Group 85 Fixtures 101–107 with different Selection Grid positions, rerun the deployed independent Plugin on grandMA3 2.5.0.3 and review native `GLOBAL_AB_PRECHECK`, Group/cooked member lines, `GLOBAL_AB_DIFF`, and result. Do not infer a Rev13 rule from local validation.
+Rerun the independent Plugin on grandMA3 2.5.0.3 and review `GLOBAL_AB_PRECHECK`, comparable/absent-both counts, `GLOBAL_AB_DIFF`, and result. Do not infer a Rev13 rule from local validation.

@@ -15,6 +15,7 @@ local partA,partB=obj('Part',4),obj('Part',5)
 local cueA,cueB=obj('Cue',7),obj('Cue',8)
 cueA.children={partA}; cueB.children={partB}
 local attr=obj('Attribute',6); attr.Name='Dimmer'
+local optionalAttr=obj('Attribute',16); optionalAttr.Name='Optional'
 local f1,f2=obj('Subfixture',11),obj('Subfixture',12)
 f1.FID=1; f2.FID=2
 local g1={sf_index=11,grid={x=0,y=0,z=0}}
@@ -39,7 +40,7 @@ local api={
  getSubfixture=function(i) return i==11 and f1 or (i==12 and f2 or nil) end,
  attributeByUI=function() return attr end,
  getPresetData=function(h)
-  if h==preset then return {[1]={attribute=attr,preset_store_mode=2,selective=false,mask_individual=64,mask_active_phaser=64,gridpos={x=1},gridposmatr={x=1}}} end
+  if h==preset then return {[1]={attribute=attr,preset_store_mode=2,selective=false,mask_individual=64,mask_active_phaser=64,gridpos={x=1},gridposmatr={x=1}},[2]={attribute=optionalAttr,preset_store_mode=2,selective=false}} end
   if h==partA then return {by_fixtures=cookedA} end
   if h==partB then return {by_fixtures=cookedB} end
  end,
@@ -57,6 +58,14 @@ local r=probe(api,cfg)
 assert(r.precheck and r.sameMembers and r.gridChanged and r.classification=='GRID_NO_OBSERVED_MEMBER_EFFECT')
 assert(table.concat(logs,'\n'):find('GLOBAL_AB_GROUP_MEMBER side=A',1,true))
 assert(table.concat(logs,'\n'):find('GLOBAL_AB_PRECHECK pass=true',1,true))
+assert(table.concat(logs,'\n'):find('absent_both_attributes=2',1,true))
+assert(table.concat(logs,'\n'):find('members_with_comparable_preset_link=2',1,true))
+reset(); cookedA['2']={}; cookedB['2']={}
+r=probe(api,cfg)
+assert(not r.precheck and r.classification=='INCONCLUSIVE' and r.reasons.COOKED_MEMBER_NO_COMPARABLE_PRESET_ATTRIBUTE)
+reset(); cookedA['2'].Optional={[1]={absolute=40},abs_preset=preset}; cookedB['2'].Optional={[1]={absolute=40},abs_preset=preset}; cookedB['2'].Dimmer.abs_preset=nil
+r=probe(api,cfg)
+assert(r.precheck and r.classification=='GRID_OBSERVED_MEMBER_EFFECT' and not r.mappingSame)
 for _,case in ipairs({
  {label='nil',raw=nil,accepted=true},
  {label='numeric_zero',raw=0,accepted=true},
@@ -72,7 +81,7 @@ for _,case in ipairs({
  if case.label=='native_none' then assert(table.concat(logs,'\n'):find('cid_raw=None cid_normalized=NO_CID',1,true)) end
 end
 f1.CID=nil
-reset(); cookedB['2']={}
+reset(); cookedA['2'].Optional={[1]={absolute=40},abs_preset=preset}; cookedB['2'].Optional={[1]={absolute=40},abs_preset=preset}; cookedB['2'].Dimmer=nil
 r=probe(api,cfg)
 assert(r.precheck and r.classification=='GRID_OBSERVED_MEMBER_EFFECT' and not r.presenceSame)
 reset(); groupB.Selection={g3,{sf_index=12,grid={x=1,y=0,z=0}}}

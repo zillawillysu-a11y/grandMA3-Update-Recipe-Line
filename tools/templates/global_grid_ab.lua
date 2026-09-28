@@ -186,16 +186,26 @@ local function probe(api, config)
  end
  local cookedA,cookedB=cooked(ca,'A',a),cooked(cb,'B',b)
  local presenceSame,mappingSame,changed=true,true,{}
- if sameMembers then for _,sf in ipairs(a.ids) do for _,attr in ipairs(ordered(attrs)) do
+ local comparableAttributes,absentBothAttributes,membersWithComparablePresetLink=0,0,0
+ if sameMembers then for _,sf in ipairs(a.ids) do
+  local memberComparable=0
+  for _,attr in ipairs(ordered(attrs)) do
   local x,y=cookedA[sf] and cookedA[sf][attr],cookedB[sf] and cookedB[sf][attr]
   if not x or not y then fail('COOKED_MAPPING_UNPROVEN')
   else
    if x.present~=y.present then presenceSame=false; changed[sf]=true end
    if x.matches~=y.matches then mappingSame=false; changed[sf]=true end
    if x.present and y.present and not x.matches and not y.matches then fail('COOKED_PRESET_LINK_UNPROVEN') end
-   if not x.present and not y.present then fail('COOKED_ATTRIBUTE_ABSENT_BOTH') end
+   if not x.present and not y.present then absentBothAttributes=absentBothAttributes+1 end
+   if x.present and y.present then
+    comparableAttributes=comparableAttributes+1
+    if x.matches and y.matches then memberComparable=memberComparable+1 end
+   end
   end
- end end end
+  end
+  if memberComparable==0 then fail('COOKED_MEMBER_NO_COMPARABLE_PRESET_ATTRIBUTE')
+  else membersWithComparablePresetLink=membersWithComparablePresetLink+1 end
+ end end
  local passed=next(reasons)==nil
  local names=ordered(reasons)
  emit('PRECHECK pass=%s preset=%s group_a=%s group_b=%s cue_part_a=%s cue_part_b=%s same_members=%s grid_changed=%s reasons=%s',tostring(passed),tostring(preset~=nil),tostring(ga~=nil),tostring(gb~=nil),tostring(ca~=nil),tostring(cb~=nil),tostring(sameMembers==true),tostring(gridChanged==true),table.concat(names,','))
@@ -205,7 +215,7 @@ local function probe(api, config)
   else classification='GRID_OBSERVED_MEMBER_EFFECT' end
   emit('RESULT classification=%s preset=%s scope=CONTROLLED_PRESET_AND_FIXTURE_TYPE_ONLY',classification,val(config.preset))
  end
- emit('DIFF same_members=%s grid_changed=%s cooked_member_presence_same=%s abs_preset_mapping_same=%s changed_members=%s classification=%s',tostring(sameMembers==true),tostring(gridChanged==true),tostring(presenceSame),tostring(mappingSame),table.concat(ordered(changed),','),classification)
+ emit('DIFF same_members=%s grid_changed=%s cooked_member_presence_same=%s abs_preset_mapping_same=%s changed_members=%s comparable_attributes=%d absent_both_attributes=%d members_with_comparable_preset_link=%d classification=%s',tostring(sameMembers==true),tostring(gridChanged==true),tostring(presenceSame),tostring(mappingSame),table.concat(ordered(changed),','),comparableAttributes,absentBothAttributes,membersWithComparablePresetLink,classification)
  local finish=api.time and api.time()
  emit('TIMING total_ms=%s',type(t0)=='number' and type(finish)=='number' and finish>=t0 and tostring((finish-t0)*1000) or 'UNVERIFIED')
  return {classification=classification,precheck=passed,sameMembers=sameMembers,gridChanged=gridChanged,presenceSame=presenceSame,mappingSame=mappingSame,reasons=reasons}
