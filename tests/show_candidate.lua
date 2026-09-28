@@ -92,112 +92,321 @@ local compatState = { currentGroup = parentGroup, provenEnabled = true }
 functions.recipePoolReferences(compatState)
 check(compatState.currentGroup == parentGroup, "currentGroup compatibility must not be overwritten")
 
--- Resolver fixtures: one cue, one part, standard recipes.
-local showPreset = object("Preset", "Preset 1.1 Dimmer", {Name = "Show"})
-local showPhaser = object("PhaserRecipe", "Preset 25.2 Dimmer", {Name = "Mover"})
-local genChannels = object("RandomChannels", "Generator 1 Channels", {},
-    { object("Channel", "Generator 1 Channel 1") })
-local showGenerator = object("Generator", "Generator 1", {Name = "Gen"}, { genChannels })
-local showGroup = object("Group", "Group 6", {Name = "Show", Selection = {{sf_index = 101}}})
-groupPool.Children = function() return { mixedGroup, parentGroup, cellGroup, showGroup } end
-local function showTree(recipes)
-    local showPart = object("Part", "Part 0", {Part = 0}, recipes)
-    local showCue = object("Cue", "Cue 1", {No = 1000, Name = "One"}, {showPart})
-    return object("Sequence", "Sequence 9", {}, {showCue}), showCue
+-- Structural Track A release fixtures. Names are display only; metadata and
+-- native Attribute -> Feature -> FeatureGroup handles carry semantics.
+local fgD=object("FeatureGroup","FeatureGroup 1")
+local fgP=object("FeatureGroup","FeatureGroup 2")
+local fgC=object("FeatureGroup","FeatureGroup 3")
+local fgB=object("FeatureGroup","FeatureGroup 4")
+local function feature(id,fg)
+ local f=object("Feature","Feature "..id)
+ f.Parent=function() return fg end
+ return f
 end
-local function showRecipe(ref, values, index)
-    return object("Recipe", "R" .. index, {Index = index, Selection = ref, Values = values})
+local function attribute(id,fg)
+ local a=object("Attribute","Attribute "..id)
+ a.Feature=feature(id,fg)
+ return a
 end
-local showSeq, showCue = showTree({ showRecipe(showGroup, showPreset, 1) })
-local showInfo = { feature = "Dimmer" }
-local showFixtures = { selectedFixture(101) }
-local function markerState(seq, cue, groups, fixtures)
-    return { currentSequence = seq, currentCue = cue, currentGroups = groups,
-        lastFixtures = fixtures, lastFeature = "Dimmer", provenEnabled = true }
+local attrs={
+ [0]=attribute(1,fgD),[1]=attribute(2,fgD),
+ [2]=attribute(3,fgP),[3]=attribute(4,fgC),[4]=attribute(5,fgB)
+}
+local uiByHandle={
+ [subfixtureByIndex[101]]={0,2,3},
+ [subfixtureByIndex[201]]={0,2,3},
+ [subfixtureByIndex[202]]={1,2,3},
+ [subfixtureByIndex[203]]={1,2,3,4}
+}
+local uiCalls=0
+_G.GetUIChannels=function(h)
+ uiCalls=uiCalls+1
+ local list={}
+ for _,ui in ipairs(uiByHandle[h] or {}) do list[#list+1]={INDEX=ui+1} end
+ return list
 end
-
--- 17. Global ordinary proven path.
-local proven = provenApi.sources(showSeq, showCue, showFixtures, showInfo)
-check(proven.classification == "PROVEN" and proven.refs["Preset 1.1 Dimmer"] == showPreset,
-    "ordinary Preset row must resolve")
-
--- 11-14. marker sources include Group, Preset, Phaser and Generator tiles.
-local markerRefs = functions.recipePoolReferences(markerState(showSeq, showCue, { showGroup }, showFixtures))
-check(markerRefs["Group 6"] == showGroup, "matched Group tile must pulse")
-check(markerRefs["Preset 1.1 Dimmer"] == showPreset, "surviving Preset tile must pulse")
-local secondPreset = object("Preset", "Preset 1.2 Dimmer", {Name = "Second"})
-local multiSeq, multiCue = showTree({
-    showRecipe(showGroup, showPreset, 1), showRecipe(cellGroup, secondPreset, 2)
-})
-local multiFixtures = {selectedFixture(101), selectedFixture(203)}
-local multiRefs = functions.recipePoolReferences(markerState(multiSeq, multiCue,
-    {showGroup, cellGroup}, multiFixtures))
-check(multiRefs["Group 6"] == showGroup and multiRefs["Group 3"] == cellGroup
-        and multiRefs["Preset 1.1 Dimmer"] == showPreset
-        and multiRefs["Preset 1.2 Dimmer"] == secondPreset,
-    "two complete Groups must keep both surviving Recipe sources")
-local positionPreset = object("Preset", "Preset 2.2 Position", {Name = "Pan"})
-local featureSeq, featureCue = showTree({
-    showRecipe(showGroup, showPreset, 1), showRecipe(showGroup, positionPreset, 2)
-})
-local featureRefs = functions.recipePoolReferences(markerState(featureSeq, featureCue,
-    {showGroup}, showFixtures))
-check(featureRefs["Preset 1.1 Dimmer"] == showPreset
-        and featureRefs["Preset 2.2 Position"] == positionPreset,
-    "surviving Recipe sources must not depend on the Programmer-selected Feature")
-local editedState = markerState(showSeq, showCue, {showGroup}, showFixtures)
-editedState.currentRecipe = showCue:Children()[1]:Children()[1]
-editedState.currentOldPreset = showPreset
-check(functions.recipePoolReferences(editedState)["Preset 1.1 Dimmer"] == showPreset,
-    "initial Recipe reference must be cached")
-showCue:Children()[1].Children = function() return {} end
-editedState.currentRecipe, editedState.currentOldPreset = nil, nil
-check(functions.recipePoolReferences(editedState)["Preset 1.1 Dimmer"] == nil,
-    "deleting a Recipe must invalidate the marker source cache")
-local phaserSeq, phaserCue = showTree({ showRecipe(showGroup, showPhaser, 1) })
-local phaserRefs = functions.recipePoolReferences(markerState(phaserSeq, phaserCue, { showGroup }, showFixtures))
-check(phaserRefs["Preset 25.2 Dimmer"] == showPhaser, "surviving Phaser tile must pulse")
-local genSeq, genCue = showTree({ showRecipe(showGroup, showGenerator, 1) })
-local genRefs = functions.recipePoolReferences(markerState(genSeq, genCue, { showGroup }, showFixtures))
-check(genRefs["Generator 1"] == showGenerator, "surviving Generator tile must pulse")
-
--- 15. newer static Preset overrides older moving Phaser for the same lane.
-local overSeq, overCue = showTree({ showRecipe(showGroup, showPreset, 5), showRecipe(showGroup, showPhaser, 1) })
-local overRefs = functions.recipePoolReferences(markerState(overSeq, overCue, { showGroup }, showFixtures))
-check(overRefs["Preset 1.1 Dimmer"] == showPreset and overRefs["Preset 25.2 Dimmer"] == nil,
-    "overridden older Phaser must not pulse")
-
--- 16+19. unknown semantics fail closed; REL lanes are never invented.
-local unknownSeq, unknownCue = showTree({ object("Recipe", "Rx", {Index = 1, Selection = showGroup}) })
-local unknownResult = provenApi.sources(unknownSeq, unknownCue, showFixtures, showInfo)
-check(unknownResult.classification == "INCONCLUSIVE", "unreadable row must fail closed")
-local unknownRefs = functions.recipePoolReferences(markerState(unknownSeq, unknownCue, { showGroup }, showFixtures))
-check(unknownRefs["Group 6"] == showGroup and unknownRefs["Preset 1.1 Dimmer"] == nil,
-    "inconclusive resolver keeps Group tiles without inventing refs")
-
--- 18. selective-flagged rows still resolve through the same lane logic.
-local selectiveValues = object("Preset", "Preset 3.1 Dimmer", {Name = "Sel", selective = true})
-local selSeq, selCue = showTree({ showRecipe(showGroup, selectiveValues, 1) })
-local selResult = provenApi.sources(selSeq, selCue, showFixtures, showInfo)
-check(selResult.classification == "PROVEN" and selResult.refs["Preset 3.1 Dimmer"] == selectiveValues,
-    "selective row must resolve, not drop")
-
--- 20+23. marker source deduplication and freshness across source changes.
-local dupSeq, dupCue = showTree({ showRecipe(showGroup, showPreset, 5), showRecipe(showGroup, showPreset, 1) })
-local dupRefs, dupCount = functions.recipePoolReferences(markerState(dupSeq, dupCue, { showGroup }, showFixtures)), 0
-for _ in pairs(dupRefs) do dupCount = dupCount + 1 end
-check(dupCount == 2, "duplicate surviving refs must deduplicate to Group plus Preset")
-local freshRefs = functions.recipePoolReferences(markerState(showSeq, showCue, { cellGroup }, { selectedFixture(203) }))
-check(freshRefs["Group 3"] == cellGroup and freshRefs["Group 6"] == nil,
-    "source sets must not accumulate across changes")
-
--- 25. steady marker pulse performs zero diagnostic GetPresetData reads.
-local presetReads = 0
-_G.GetPresetData = function() presetReads = presetReads + 1 end
-functions.recipePoolReferences(markerState(showSeq, showCue, { showGroup }, showFixtures))
-functions.recipePoolReferences(markerState(showSeq, showCue, { showGroup }, showFixtures))
-provenApi.sources(showSeq, showCue, showFixtures, showInfo)
-check(presetReads == 0, "marker pulse must not scan cooked history")
-_G.GetPresetData = nil
-
-print("PASS: show candidate canonical Groups, multi-match, proven resolver, marker sources (" .. count .. " checks)")
+_G.GetAttributeByUIChannel=function(ui) return attrs[ui] end
+local referenceData,referenceReads={},{count=0,part=0}
+_G.GetPresetData=function(ref,selected,cooked)
+ if ref:GetClass()=="Part" or ref:GetClass()=="Cue" then
+  referenceReads.part=referenceReads.part+1
+  error("production resolver must not read cooked Cue history")
+ end
+ check(selected==false and cooked==true,"reference metadata read shape must be false,true")
+ referenceReads.count=referenceReads.count+1
+ return referenceData[ref]
+end
+local function preset(id,ui,mode,moving)
+ local p=object("Preset",id,{PresetMode=mode==1 and "Selective" or "Global"})
+ local channel={attribute=attrs[ui],pm=mode,preset_store_mode=mode,selective=mode==1,
+  mask_active_phaser=moving and 4 or 64,mask_active_value=2,mask_cooked=0,
+  ui_channel_index=ui,[1]={absolute=10}}
+ if moving then channel[2]={absolute=20} end
+ referenceData[p]={[ui]=channel,count=1,by_fixtures=false}
+ return p
+end
+local static=preset("Preset 1.1",0,2,false)
+local moving=preset("Preset 1.2",0,2,true)
+local selective=preset("Preset 1.3",0,1,false)
+local selectiveMoving=preset("Preset 1.5",0,1,true)
+local secondDimmer=preset("Preset 1.6",1,2,true)
+local linked=preset("Preset 1.4",0,2,false)
+local position=preset("Preset 2.1",2,2,true)
+local beam=preset("Preset 5.1",4,2,true)
+local function valueSource(id,attr,abs,rel,link)
+ local props={Attributes=attr,RawValueAbs=abs,ValueAbsolute=abs,
+  RawValueRel=rel,ValueRelative=rel,Preset=link}
+ local names={"Attributes","RawValueAbs","ValueAbsolute","RawValueRel","ValueRelative","Preset"}
+ local v=object("PhaserRecipeValueSource","ValueSource "..id,props)
+ v.PropertyCount=function() return #names end
+ v.PropertyName=function(_,i) return names[i+1] end
+ v.Get=function(_,name)
+  if name=="ValueRelative" and rel==0 then return "" end
+  return props[name]
+ end
+ return v
+end
+_G.Enums={Roles={Display=1}}
+local function phaser(id,attr,absA,absB,relA,relB,link)
+ local a=object("PhaserRecipeStep",id.." Step 1",{},
+  {valueSource(id.." A",attr,absA,relA,link)})
+ local b=object("PhaserRecipeStep",id.." Step 2",{},
+  {valueSource(id.." B",attr,absB,relB,link)})
+ return object("Preset",id,{}, {object("PhaserRecipe",id.." Recipe",{}, {a,b})})
+end
+local movingPhaser=phaser("Preset 25.A",attrs[2],10,20,nil,nil,nil)
+local splitPhaser=phaser("Preset 25.B",attrs[0],10,20,0,0,linked)
+local relPhaser=phaser("Preset 25.C",attrs[0],nil,nil,5,10,nil)
+local genChannel=object("RandomChannel","Generator Channel",{Attribute=attrs[3]})
+local generator=object("Generator","Generator 1",
+ {RandomChannels=object("RandomChannels","Generator Channels",{}, {genChannel})})
+local gOne=object("Group","Group 6",{Selection={{sf_index=101}}})
+local gCell=object("Group","Group 7",{Selection={{sf_index=203}}})
+local gBoth=object("Group","Group 8",{Selection={{sf_index=101},{sf_index=203}}})
+groupPool.Children=function() return {mixedGroup,parentGroup,cellGroup,gOne,gCell,gBoth} end
+local function recipe(group,ref,index)
+ return object("StandardRecipe","Recipe "..index,{Index=index,Selection=group,Values=ref,Enabled="Yes"})
+end
+local function tree(rows)
+ local part=object("Part","Part 0",{Part=0},rows)
+ local cue=object("Cue","Cue 1",{No=1000},{part})
+ return object("Sequence","Sequence 9",{}, {cue}),cue,part
+end
+local function state(seq,cue,fixtures)
+ return {currentSequence=seq,currentCue=cue,lastFixtures=fixtures,
+  currentGroups=provenApi.completeGroups(fixtures),lastFeature="Dimmer",provenEnabled=true}
+end
+local fOne={selectedFixture(101)}
+local fBoth={selectedFixture(101),selectedFixture(203)}
+local function result(rows,fixtures)
+ local seq,cue=tree(rows)
+ return provenApi.sources(seq,cue,fixtures,{feature="Dimmer"}),seq,cue
+end
+-- Static ordinary reference terminates without publishing itself.
+local staticResult=result({recipe(gOne,static,1)},fOne)
+check(staticResult.classification=="PROVEN" and next(staticResult.refs)==nil,
+ "ordinary static terminator must not become moving source")
+local movingResult=result({recipe(gOne,moving,1)},fOne)
+check(movingResult.classification=="PROVEN" and movingResult.refs["Preset 1.2"]==moving,
+ "ordinary structural moving reference must survive")
+local stopResult=result({recipe(gOne,moving,1),recipe(gOne,static,2)},fOne)
+check(stopResult.classification=="PROVEN" and next(stopResult.refs)==nil,
+ "newer static ABS must terminate older moving ABS")
+local phaseResult=result({recipe(gOne,movingPhaser,1)},fOne)
+check(phaseResult.classification=="PROVEN" and phaseResult.refs["Preset 25.A"]==movingPhaser,
+ "Phaser effective ABS step differences must prove motion")
+local selectiveResult=result({recipe(gBoth,selective,1)},fBoth)
+check(selectiveResult.classification=="PROVEN" and next(selectiveResult.refs)==nil,
+ "Selective static reference must remain a terminator")
+local selectiveScope=result({recipe(gBoth,secondDimmer,1),
+ recipe(gBoth,selectiveMoving,2)},fBoth)
+check(selectiveScope.classification=="PROVEN"
+ and selectiveScope.refs["Preset 1.5"]==selectiveMoving
+ and selectiveScope.refs["Preset 1.6"]==secondDimmer
+ and selectiveScope.refMembers["Preset 1.5"]["101"]
+ and not selectiveScope.refMembers["Preset 1.5"]["201.1.1"]
+ and selectiveScope.refMembers["Preset 1.6"]["201.1.1"],
+ "Selective UI ownership must include stored member and exclude nonstored member")
+local globalScope=result({recipe(gBoth,moving,1)},fBoth)
+check(globalScope.classification=="PROVEN" and globalScope.refMembers["Preset 1.2"]["101"]
+ and globalScope.refMembers["Preset 1.2"]["201.1.1"],
+ "Global capability must admit both members when they have the FeatureGroup")
+local savedUI=uiByHandle[subfixtureByIndex[203]]
+uiByHandle[subfixtureByIndex[203]]={2,3,4}
+hookState.memberUICache={}
+local globalExcluded=result({recipe(gBoth,moving,1)},fBoth)
+check(globalExcluded.classification=="PROVEN"
+ and globalExcluded.refMembers["Preset 1.2"]["101"]
+ and not globalExcluded.refMembers["Preset 1.2"]["201.1.1"],
+ "Global applicability must exclude a member without target FeatureGroup")
+uiByHandle[subfixtureByIndex[203]]=savedUI
+hookState.memberUICache={}
+local genResult=result({recipe(gOne,generator,1)},fOne)
+check(genResult.classification=="PROVEN" and genResult.refs["Generator 1"]==generator,
+ "Generator must survive from structural Attribute ownership")
+local splitResult=result({recipe(gOne,splitPhaser,1)},fOne)
+check(splitResult.classification=="PROVEN" and splitResult.refs["Preset 25.B"]==splitPhaser
+ and splitResult.barriers==1,"known ABS with noncontributing unknown REL must publish ABS")
+local zeroAbsent=phaser("Preset 25.E",attrs[0],10,20,0,0,linked)
+for _,step in ipairs(zeroAbsent:Children()[1]:Children()) do
+ local node=step:Children()[1]; node.ValueRelative=nil
+end
+local absentResult=result({recipe(gOne,zeroAbsent,1)},fOne)
+check(absentResult.classification=="PROVEN" and absentResult.barriers==0,
+ "RawValueRel zero with all ValueRelative views empty proves REL absent")
+local zeroAuthored=phaser("Preset 25.F",attrs[0],10,20,0,0,linked)
+for _,step in ipairs(zeroAuthored:Children()[1]:Children()) do
+ local node=step:Children()[1]
+ node.Get=function(_,name) if name=="ValueRelative" then return 0 end end
+end
+local authoredResult=result({recipe(gOne,zeroAuthored,1)},fOne)
+check(authoredResult.classification=="PROVEN" and authoredResult.barriers==0
+ and authoredResult.refs["Preset 25.F"]==zeroAuthored,
+ "RawValueRel zero with numeric zero ValueRelative is authored REL")
+local blockResult=result({recipe(gOne,relPhaser,1),recipe(gOne,splitPhaser,2)},fOne)
+check(blockResult.classification=="INCONCLUSIVE" and blockResult.reason=="REL_BARRIER_BLOCKS_HISTORY",
+ "unknown REL barrier that blocks older moving REL must fail closed")
+local separate=result({recipe(gOne,relPhaser,1),recipe(gOne,static,2)},fOne)
+check(separate.classification=="PROVEN" and separate.refs["Preset 25.C"]==relPhaser,
+ "newer static ABS must not erase older moving REL")
+local badLinked=preset("Preset 1.7",0,2,true)
+local badSplit=phaser("Preset 25.D",attrs[0],10,20,0,0,badLinked)
+local linkedFailure=result({recipe(gOne,badSplit,1)},fOne)
+check(linkedFailure.classification=="INCONCLUSIVE",
+ "linked moving Preset metadata must fail the static bridge gate")
+local unknown=object("Preset","Preset X")
+local unknownResult=result({recipe(gOne,unknown,1)},fOne)
+check(unknownResult.classification=="INCONCLUSIVE","unknown reference metadata must fail closed")
+-- Unsafe history is retained as a lane barrier until reverse attribution.
+local unsafe=preset("Preset Unsafe",0,2,false)
+referenceData[unsafe][0].unrecognized_active_field=1
+local function attr(resultValue)
+ return resultValue.unsafeAttribution or {finalSurviving={},fullySuperseded={},unknown={}}
+end
+local supersededStatic=result({recipe(gOne,unsafe,1),recipe(gOne,static,2)},fOne)
+check(supersededStatic.classification=="PROVEN"
+ and #attr(supersededStatic).fullySuperseded==1
+ and #attr(supersededStatic).finalSurviving==0
+ and supersededStatic.remainingSemanticBlockers==0,
+ "newer static lane must fully supersede older unsafe history")
+local supersededMoving=result({recipe(gOne,unsafe,1),recipe(gOne,moving,2)},fOne)
+check(supersededMoving.classification=="PROVEN"
+ and #attr(supersededMoving).fullySuperseded==1
+ and supersededMoving.refs["Preset 1.2"]==moving,
+ "newer moving lane must fully supersede older unsafe history")
+local unsafeSurvives=result({recipe(gOne,unsafe,1)},fOne)
+check(unsafeSurvives.classification=="INCONCLUSIVE"
+ and #attr(unsafeSurvives).finalSurviving==1,
+ "surviving unsafe lane must fail closed")
+local unsafeVictim=result({recipe(gOne,moving,1),recipe(gOne,unsafe,2)},fOne)
+check(unsafeVictim.classification=="INCONCLUSIVE"
+ and #attr(unsafeVictim).finalSurviving==1,
+ "unsafe row blocking older moving lane must fail even without final ref")
+local partialUnsafe=result({recipe(gBoth,unsafe,1),recipe(gOne,static,2)},fBoth)
+check(partialUnsafe.classification=="INCONCLUSIVE"
+ and #attr(partialUnsafe).finalSurviving==1
+ and #attr(partialUnsafe).fullySuperseded==0,
+ "one surviving member lane blocks full supersession")
+local tenSelection,nineSelection,tenFixtures={},{},{}
+for i=301,310 do
+ local handle=object("SubFixture","Fixture "..i)
+ subfixtureByIndex[i]=handle; uiByHandle[handle]={0}
+ tenSelection[#tenSelection+1]={sf_index=i}
+ tenFixtures[#tenFixtures+1]=selectedFixture(i)
+ if i<310 then nineSelection[#nineSelection+1]={sf_index=i} end
+end
+local gTen=object("Group","Group 10",{Selection=tenSelection})
+local gNine=object("Group","Group 11",{Selection=nineSelection})
+local previousChildren=groupPool.Children
+groupPool.Children=function() local all=previousChildren(); all[#all+1]=gTen; all[#all+1]=gNine; return all end
+local nineOfTen=result({recipe(gTen,unsafe,1),recipe(gNine,static,2)},tenFixtures)
+check(nineOfTen.classification=="INCONCLUSIVE"
+ and #attr(nineOfTen).finalSurviving==1
+ and #attr(nineOfTen).fullySuperseded==0,
+ "nine superseded lanes plus one unresolved lane must remain unsafe")
+local unknownHistory=result({recipe(gOne,unknown,1),recipe(gOne,static,2)},fOne)
+check(unknownHistory.classification=="INCONCLUSIVE"
+ and #attr(unknownHistory).unknown==0
+ and #attr(unknownHistory).finalSurviving==1,
+ "wildcard unsafe scope cannot be neutralized by one exact static lane")
+local selectiveClosure=result({recipe(gOne,unsafe,1),recipe(gOne,selective,2)},fOne)
+check(selectiveClosure.classification=="PROVEN"
+ and #attr(selectiveClosure).fullySuperseded==1,
+ "Selective static closure must still neutralize an older exact unsafe lane")
+local unsafeRelative=preset("Preset Unsafe Relative",0,2,false)
+referenceData[unsafeRelative][0].mask_active_value=2|4
+referenceData[unsafeRelative][0][1].relative=1
+referenceData[unsafeRelative][0].unrecognized_active_field=1
+local residualClosure=result({recipe(gOne,unsafeRelative,1),recipe(gOne,splitPhaser,2)},fOne)
+check(residualClosure.classification=="INCONCLUSIVE",
+ "residual REL overlapping older unsafe history must fail closed")
+local residualUnrelated=result({recipe(gCell,beam,1),recipe(gOne,splitPhaser,2)},fBoth)
+check(residualUnrelated.classification=="PROVEN" and residualUnrelated.barriers==1,
+ "residual REL with no older same-member lane stays noncontributing")
+local staticBoth=preset("Preset Static Both",0,2,false)
+referenceData[staticBoth][0].mask_active_value=2|4
+referenceData[staticBoth][0][1].relative=1
+local phaserHistory=result({recipe(gOne,badSplit,1),recipe(gOne,staticBoth,2)},fOne)
+check(phaserHistory.classification=="PROVEN"
+ and #attr(phaserHistory).fullySuperseded==1,
+ "structurally scoped unsafe Phaser history can be fully superseded")
+local multiResult=result({recipe(gOne,moving,1),recipe(gCell,beam,2)},fBoth)
+check(multiResult.classification=="PROVEN" and multiResult.refs["Preset 1.2"]==moving
+ and multiResult.refs["Preset 5.1"]==beam,"two complete Groups must retain separate moving refs")
+local duplicate=result({recipe(gOne,moving,1),recipe(gBoth,moving,2)},fBoth)
+local duplicateCount=0; for _ in pairs(duplicate.refs or {}) do duplicateCount=duplicateCount+1 end
+check(duplicate.classification=="PROVEN" and duplicateCount==1,
+ "duplicate surviving reference identities must deduplicate at final source set")
+local partialGroup=result({recipe(gBoth,beam,1),recipe(gOne,moving,2)},fOne)
+check(partialGroup.classification=="PROVEN" and partialGroup.refs["Preset 1.2"]==moving
+ and partialGroup.refs["Preset 5.1"]==nil,"partial Stored Group must be excluded")
+local finalResult,finalSeq,finalCue=result({
+ recipe(gOne,unsafe,1),recipe(gOne,static,2),recipe(gOne,moving,3),
+ recipe(gOne,position,4),recipe(gOne,generator,5),recipe(gCell,beam,6)
+},fBoth)
+local expected={["Preset 1.2"]=true,["Preset 2.1"]=true,
+ ["Generator 1"]=true,["Preset 5.1"]=true}
+local final,missing,extra=0,0,0
+for key in pairs(finalResult.refs or {}) do final=final+1; if not expected[key] then extra=extra+1 end end
+for key in pairs(expected) do if not (finalResult.refs or {})[key] then missing=missing+1 end end
+check(finalResult.classification=="PROVEN" and final==4 and missing==0 and extra==0,
+ "synthetic Cue-8-equivalent with unsafe history must have final_refs=4 missing=0 extra=0")
+check(#attr(finalResult).fullySuperseded==1 and finalResult.remainingSemanticBlockers==0,
+ "synthetic four-reference result must exclude fully superseded unsafe history")
+local cached=state(finalSeq,finalCue,fBoth)
+local first=functions.recipePoolReferences(cached)
+local reads=referenceReads.count
+functions.recipePoolReferences(cached)
+check(referenceReads.count==reads and referenceReads.part==0,
+ "steady marker pulse must reuse reference metadata and never read cooked Cue history")
+local unknownSeq,unknownCue=tree({recipe(gOne,unknown,1)})
+local failedState=state(unknownSeq,unknownCue,fOne)
+failedState.currentGroup=parentGroup
+local groupOnly=functions.recipePoolReferences(failedState)
+check(groupOnly["Group 6"]==gOne and groupOnly["Group 4"]==nil
+ and groupOnly["Preset X"]==nil,
+ "failed resolver may publish complete Groups but not stale Group or guessed Recipe refs")
+check(first["Group 6"]==gOne and first["Group 7"]==gCell
+ and first["Preset 1.2"]==moving and first["Generator 1"]==generator,
+ "Group and surviving Recipe Pool marker sources must be present")
+local editRecipe=recipe(gOne,moving,1)
+local editSeq,editCue=tree({editRecipe})
+local editState=state(editSeq,editCue,fOne)
+editState.currentRecipe=editRecipe; editState.currentOldPreset=moving
+check(functions.recipePoolReferences(editState)["Preset 1.2"]==moving,
+ "initial Recipe source must publish")
+editRecipe.Values=position
+editState.currentOldPreset=position
+local edited=functions.recipePoolReferences(editState)
+check(edited["Preset 1.2"]==nil and edited["Preset 2.1"]==position,
+ "Recipe source change must invalidate the cached final refs")
+editCue:Children()[1].Children=function() return {} end
+editState.currentRecipe=nil; editState.currentOldPreset=nil
+local deleted=functions.recipePoolReferences(editState)
+check(deleted["Preset 2.1"]==nil,
+ "Recipe deletion must invalidate the source cache")
+local unrelated=object("Preset","Preset Unknown")
+local unrelatedResult=result({recipe(gOne,unrelated,1),recipe(gCell,beam,2)},fBoth)
+check(unrelatedResult.classification=="INCONCLUSIVE",
+ "unresolved reference semantics anywhere in admitted scope must fail closed")
+print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

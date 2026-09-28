@@ -1,6 +1,14 @@
 -- Offline regression checks; grandMA3 visual/cooking behavior still needs on-console testing.
 local signals = {}
-local main = assert(loadfile("RecipeTracking_Inspector.lua"))(nil, nil, signals, {})
+-- Legacy workflow mocks have no native reference metadata. Keep this suite on
+-- its original marker/UI path; show_candidate.lua tests the enabled resolver.
+local sourceFile = assert(io.open("RecipeTracking_Inspector.lua", "rb"))
+local source = sourceFile:read("*a")
+sourceFile:close()
+local patched, flagCount = source:gsub("local ENABLE_TRACK_A_SHOW_CANDIDATE = true",
+    "local ENABLE_TRACK_A_SHOW_CANDIDATE = false")
+assert(flagCount == 1, "expected one enabled Track A feature flag")
+local main = assert(load(patched, "@RecipeTracking_Inspector.lua"))(nil, nil, signals, {})
 local functions, seen = {}, {}
 local function collect(fn)
     if seen[fn] then return end
