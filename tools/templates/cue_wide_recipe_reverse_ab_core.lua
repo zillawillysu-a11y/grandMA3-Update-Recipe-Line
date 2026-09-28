@@ -732,6 +732,74 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
  return {totals=totals,proofs=proofs,alternate=alternate}
 end)
 if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%s',text(attribution.ordinaryProof)); attribution.ordinaryProof={ok=false} end
+-- Rev13 diagnostic alternate: cached reference metadata only. The Preset 4.4
+-- grid A/B observation covers its tested fixture/attribute class, not Cue 8.
+local rev13OK,rev13=pcall(function()
+ local start=now()
+ local targets={['Preset 4.1']=true,['Preset 4.4']=true,['Preset 4.23']=true,['Preset 6.10']=true,['Preset 21.5']=true}
+ local byLabel,control={},nil
+ for _,row in ipairs(rev6Result.rev7.rows or {}) do
+  local label=desc(row.ref)
+  if label=='Preset 4.4' then control=metadataCache.raw[metadataCache.identity(row.ref)] end
+ end
+ for _,rec in ipairs(attribution.rows or {}) do
+  local label=desc(rec.ref)
+  if rec.category=='FINAL_SURVIVING_UNSAFE' and targets[label] then
+   local entry=byLabel[label] or {rows={},ref=rec.ref}; byLabel[label]=entry
+   entry.rows[#entry.rows+1]=rec.row
+  end
+ end
+ local eligible,eligibleCount={},0
+ local labels={}; for label in pairs(byLabel) do labels[#labels+1]=label end; table.sort(labels)
+ for _,label in ipairs(labels) do
+  local entry=byLabel[label]; local key=metadataCache.identity(entry.ref)
+  local raw=metadataCache.raw[key]
+  local static=attribution.ordinaryProof and attribution.ordinaryProof.proofs and attribution.ordinaryProof.proofs[key]
+  local scope=true
+  for _,row in ipairs(entry.rows) do if not row.members or not next(row.members) then scope=false end end
+  -- The reference cache has no cooked fixture/attribute compatibility evidence
+  -- for these Cue 8 rows. Do not transfer the A/B result by shape alone.
+  local p=__rev13GlobalApplicability(raw,control,static,scope and entry.rows[1].members or nil,false)
+  local info=rev6ByIdentity[key]
+  if not info or not info.featureScopeKnown or not next(info.features or {}) or not next(info.layers or {}) then p.reasons.FEATURE_OR_LAYER_SCOPE_UNPROVEN=true end
+  local allowed=next(p.reasons)==nil
+  if allowed then for _,row in ipairs(entry.rows) do eligible[row]=true; eligibleCount=eligibleCount+1 end end
+  log('GLOBAL_APPLICABILITY_CLASS reference=%s rows=%d store_mode=%s selective=%s motion_static_proven=%s grid_mask_shape=%s individual_mask_shape=%s value_mask_shape=%s effective_step_shape=%s layer=%s semantic_shape=%s matches_native_proven_class=%s remaining_reasons=%s',
+   label,#entry.rows,joined(p.modes),joined(p.selective),text(static and static.motionStaticProven),joined(p.gridMasks),joined(p.individualMasks),joined(p.valueMasks),joined(p.steps),joined(p.layers),p.semanticShape,text(allowed),joined(p.reasons))
+ end
+ local alternateRows={}
+ for _,row in ipairs(rev6Result.rev7.rows or {}) do
+  local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,
+   members=row.members,features=row.features,layers=row.layers,lanes=row.lanes,moving=row.moving,
+   unsafe=row.unsafe,evidence=row.evidence}
+  if eligible[row] then
+   local info=rev6ByIdentity[metadataCache.identity(row.ref)]
+   copy.features=info.features; copy.layers=info.layers; copy.lanes=info.lanes
+   copy.moving=false; copy.unsafe={}
+  end
+  alternateRows[#alternateRows+1]=copy
+ end
+ local result=recipeReverseResolve(alternateRows)
+ local final={}; for rid,entry in pairs(result.refs) do final[rid]=entry.ref end
+ local silent=function() end
+ local alt=proof.attributeUnsafe({rows=alternateRows,result=result,final=final,
+  infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,
+  log=silent,detail=silent,now=now,ms=ms})
+ local missing,extra=0,0
+ for rid in pairs(oracle) do if not final[rid] then missing=missing+1 end end
+ for rid in pairs(final) do if not oracle[rid] then extra=extra+1 end end
+ log('REV13_GLOBAL_ALTERNATE refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d final_surviving_unsafe=%d static_terminators=%d eligible_global_rows=%d classification=%s diagnostic_only=true alternate_ms=%s',
+  count(final),count(oracle),oracleOK and tostring(missing) or 'UNVERIFIED',oracleOK and tostring(extra) or 'UNVERIFIED',
+  #result.unsafe,alt.finalSurviving or 0,result.staticRows or 0,eligibleCount,
+  oracleOK and missing==0 and extra==0 and 'EXACT_MATCH' or 'INCONCLUSIVE',text(ms(start,now())))
+ local remaining={}
+ for _,rec in ipairs(alt.rows or {}) do if rec.category=='FINAL_SURVIVING_UNSAFE' then
+  local label=desc(rec.ref); remaining[label]=(remaining[label] or 0)+1 end end
+ local names={}; for label in pairs(remaining) do names[#names+1]=label end; table.sort(names)
+ for _,label in ipairs(names) do log('REV13_GLOBAL_REMAINING reference=%s rows=%d',label,remaining[label]) end
+ return {result=result,final=final,attribution=alt,eligible=eligibleCount}
+end)
+if not rev13OK then log('REV13_GLOBAL_ALTERNATE_ERROR error=%s',text(rev13)) end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
 return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}

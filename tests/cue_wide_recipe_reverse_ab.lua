@@ -398,6 +398,7 @@ check(r.attribution.ordinaryProofOK and r.attribution.ordinaryProof.totals.motio
 check(has('ORDINARY_STATIC_PROOF reference=Preset ordinary static') and has('projected_eligible_rows=0'),'already safe ordinary reference needs no promotion')
 check(r.attribution.ordinaryProof.alternate==nil,'no alternate when no eligible unsafe row exists')
 check(r.rev7Final and next(r.rev7Final)==nil,'Rev7 final reference set unchanged by observer')
+check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate does not alter baseline refs')
 p=setup(); metadataReads=0; oracleReads=0
 local selectiveOrdinary=obj('Preset','Preset selective ordinary'); selectiveOrdinary.db=91028
 references[selectiveOrdinary.db]={[1]={[1]={absolute=50},mask_active_value=2,
