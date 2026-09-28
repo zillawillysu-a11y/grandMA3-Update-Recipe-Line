@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.1"
+local PLUGIN_VERSION = "0.7.1.2"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1157,6 +1157,12 @@ local function render(state)
             state.markerStatus and (" | "..state.markerStatus) or "")
         if state.provenSources.classification~="PROVEN" and state.provenSources.reason then
             resolverLines[#resolverLines+1]="Reason: "..tostring(state.provenSources.reason):sub(1,90)
+            local blockers=state.provenSources.unsafeRefs or {}
+            if #blockers>0 then
+                local shown={}
+                for index=1,math.min(#blockers,4) do shown[#shown+1]=blockers[index] end
+                resolverLines[#resolverLines+1]="Blocked refs: "..table.concat(shown,", "):sub(1,180)
+            end
         end
         if state.expanded and #refKeys>0 then
             local shown={}
@@ -1755,8 +1761,19 @@ local function newTrackARuntime(api)
             else attribution.unknown[#attribution.unknown+1]=row end
         end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
+            local blockers={}
+            for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
+                for _,row in ipairs(list) do
+                    local id=row.refId
+                    if id then blockers[id]=true end
+                end
+            end
+            local blockerRefs={}
+            for id in pairs(blockers) do blockerRefs[#blockerRefs+1]=id end
+            table.sort(blockerRefs)
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
-                refs={},unsafeAttribution=attribution,laneWork=laneWork}
+                refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
+                laneWork=laneWork}
         end
         for _,barrier in ipairs(residual) do
             -- A residual REL barrier may also suppress an older unsafe row.
@@ -1925,15 +1942,14 @@ end
         if left.partNumber ~= right.partNumber then return left.partNumber > right.partNumber end
         return left.recipeIndex > right.recipeIndex
     end)
-    local admitted={}
-    local groups=completeCandidates or completeGroups(fixtures)
-    for _,group in ipairs(groups) do admitted[commandAddress(group)]=true end
     local scopedRows={}
     for _, row in ipairs(rows) do
         local group=recipeField(row.recipe,"Selection")
         local gid=commandAddress(group)
         if gid==nil then return {classification="INCONCLUSIVE", reason="RECIPE_GROUP_UNPROVEN"} end
-        if admitted[gid] then
+        -- Layout selections often contain only some members of a Recipe's
+        -- Stored Group. Resolve those selected member lanes; this does not
+        -- make the Group a complete UPDATE target.
         local keys, groupBad = groupKeys(group)
         local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
         if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
@@ -1942,7 +1958,6 @@ end
         if intersects then
             if not values then return { classification = "INCONCLUSIVE" } end
             scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
-        end
         end
     end
     if #scopedRows==0 then return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"} end
@@ -2056,8 +2071,13 @@ end
             end
             return references
         end
-        -- A failed semantic proof may still mark complete Group tiles, but
-        -- must never publish a guessed Recipe reference.
+        -- An exact current Group identity is independently known even when
+        -- Recipe reference semantics fail closed. Never admit contained or
+        -- overlapping Groups through this fallback.
+        if state.currentGroup and relation(state.currentGroup,state.lastFixtures)=="EXACT_COMPLETE" then
+            state.currentGroups={state.currentGroup}
+            add(state.currentGroup)
+        end
         return references
     end
     if state.currentRecipe then

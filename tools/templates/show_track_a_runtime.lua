@@ -492,8 +492,19 @@ local function newTrackARuntime(api)
             else attribution.unknown[#attribution.unknown+1]=row end
         end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
+            local blockers={}
+            for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
+                for _,row in ipairs(list) do
+                    local id=row.refId
+                    if id then blockers[id]=true end
+                end
+            end
+            local blockerRefs={}
+            for id in pairs(blockers) do blockerRefs[#blockerRefs+1]=id end
+            table.sort(blockerRefs)
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
-                refs={},unsafeAttribution=attribution,laneWork=laneWork}
+                refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
+                laneWork=laneWork}
         end
         for _,barrier in ipairs(residual) do
             -- A residual REL barrier may also suppress an older unsafe row.

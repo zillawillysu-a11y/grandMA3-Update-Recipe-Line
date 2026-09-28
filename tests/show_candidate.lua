@@ -234,6 +234,11 @@ local globalScope=result({recipe(gBoth,moving,1)},fBoth)
 check(globalScope.classification=="PROVEN" and globalScope.refMembers["Preset 1.2"]["101"]
  and globalScope.refMembers["Preset 1.2"]["201.1.1"],
  "Global capability must admit both members when they have the FeatureGroup")
+local layoutPartial=result({recipe(gBoth,moving,1)},fOne)
+check(layoutPartial.classification=="PROVEN" and layoutPartial.refs["Preset 1.2"]==moving
+ and layoutPartial.refMembers["Preset 1.2"]["101"]
+ and not layoutPartial.refMembers["Preset 1.2"]["201.1.1"],
+ "Layout member may receive a partial Stored Group Recipe lane without becoming a complete Group")
 local savedUI=uiByHandle[subfixtureByIndex[203]]
 uiByHandle[subfixtureByIndex[203]]={2,3,4}
 hookState.memberUICache={}
@@ -280,6 +285,8 @@ check(linkedFailure.classification=="INCONCLUSIVE",
 local unknown=object("Preset","Preset X")
 local unknownResult=result({recipe(gOne,unknown,1)},fOne)
 check(unknownResult.classification=="INCONCLUSIVE","unknown reference metadata must fail closed")
+check(unknownResult.unsafeRefs and unknownResult.unsafeRefs[1]=="Preset X",
+ "failed native metadata must expose bounded reference identity in the visible panel")
 -- Unsafe history is retained as a lane barrier until reverse attribution.
 local unsafe=preset("Preset Unsafe",0,2,false)
 referenceData[unsafe][0].unrecognized_active_field=1
@@ -415,6 +422,10 @@ local groupOnly=functions.recipePoolReferences(failedState)
 check(groupOnly["Group 6"]==nil and groupOnly["Group 4"]==nil
  and groupOnly["Preset X"]==nil,
  "failed resolver must not publish stale Group or guessed Recipe refs")
+failedState.currentGroup=gOne
+local exactGroupOnly=functions.recipePoolReferences(failedState)
+check(exactGroupOnly["Group 6"]==gOne and exactGroupOnly["Preset X"]==nil,
+ "exact current Group may be marked independently while unsafe Recipe refs remain closed")
 check(first["Group 6"]==gOne and first["Group 7"]==gCell
  and first["Preset 1.2"]==moving and first["Generator 1"]==generator,
  "Group and surviving Recipe Pool marker sources must be present")
