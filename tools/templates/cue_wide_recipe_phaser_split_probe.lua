@@ -76,11 +76,14 @@ function __phaser9008SplitProbe(ctx,api)
    linkedOK=true
    for lk,lh in pairs(linked) do
     linkedLabels[#linkedLabels+1]=refLabel(lh)
+    -- bridgeInfo only proves cached ordinary metadata exists on the expected
+    -- path; the later native-proven Rev12 ordinary proof is semantic authority.
     local li=ctx.bridgeInfo and ctx.bridgeInfo[lk]
     local lp=lk and ctx.ordinaryProofs and ctx.ordinaryProofs[lk]
-    if not (type(li)=='table' and li.completeness=='COMPLETE' and li.motion=='STATIC'
-     and type(li.layers)=='table' and li.layers.ABS==true
-     and type(lp)=='table' and lp.memberApplicabilityProven==true) then linkedOK=false end
+    if not (type(li)=='table' and li.source=='ORDINARY_GETPRESETDATA'
+     and type(lp)=='table' and lp.motionStaticProven==true and lp.memberApplicabilityProven==true
+     and type(lp.layers)=='table' and lp.layers.ABS==true and lp.layers.REL~=true
+     and type(lp.channels)=='number' and lp.channels>0 and lp.activeValue==lp.channels) then linkedOK=false end
    end
    table.sort(linkedLabels)
   end
@@ -129,23 +132,34 @@ function __phaser9008SplitProbe(ctx,api)
   for rid in pairs(ctx.oracle or {}) do if not splitFinal[rid] then missing=missing+1 end end
   for rid in pairs(splitFinal) do if not (ctx.oracle or {})[rid] then extra=extra+1 end end
  end
+ local attOK,att=pcall(api.attributor,altRows,splitResult,splitFinal)
+ local splitSurviving=-1
+ if attOK and type(att)=='table' and type(att.rows)=='table' then
+  splitSurviving=0
+  for _,rec in ipairs(att.rows) do if rec.category=='FINAL_SURVIVING_UNSAFE' then splitSurviving=splitSurviving+1 end end
+ end
  emit('PHASER_9008_SPLIT_ALTERNATE final_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d final_surviving_unsafe=%d static_terminators=%d moving_rows=%d classification=%s diagnostic_only=true',
   count(splitFinal),count(ctx.oracle or {}),ctx.oracleOK and tostring(missing) or 'UNVERIFIED',ctx.oracleOK and tostring(extra) or 'UNVERIFIED',
-  #(splitResult.unsafe or {}),count(splitFinal),splitResult.staticRows or 0,splitResult.movingRows or 0,
-  (ctx.oracleOK and missing==0 and extra==0) and 'ORACLE_EXACT_MATCH' or 'INCONCLUSIVE')
+  #(splitResult.unsafe or {}),splitSurviving,splitResult.staticRows or 0,splitResult.movingRows or 0,
+  (ctx.oracleOK and missing==0 and extra==0 and splitSurviving>=0) and 'ORACLE_EXACT_MATCH' or 'INCONCLUSIVE')
  -- Residual REL barrier analysis on the alternate result.
  local decided,unres={},{}
  for _,a in ipairs(splitResult.assignments or {}) do decided[tostring(a.member)..'\0'..tostring(a.lane)]=a.row end
  for _,u in ipairs(splitResult.unresolved or {}) do unres[tostring(u.member)..'\0'..tostring(u.lane)]=u.row end
  local relMembers,relLanes,superseded,finalUnres,blockedRefs,blockedLanes=0,{},0,0,{},0
+ local relMemberSet={}
  for barrier in pairs(relBarriers) do
   if type(barrier.members)=='table' then for m in pairs(barrier.members) do
-   relMembers=relMembers+1
-   local k=tostring(m)..'\0'..relLaneKey
-   relLanes[k]=true
-   if decided[k] then superseded=superseded+1
-   elseif unres[k]==barrier then finalUnres=finalUnres+1 end
+   relMemberSet[m]=true
+   relLanes[tostring(m)..'\0'..relLaneKey]=true
   end end
+ end
+ for m in pairs(relMemberSet) do relMembers=relMembers+1 end
+ for k in pairs(relLanes) do
+  if decided[k] then superseded=superseded+1
+  else
+   for barrier in pairs(relBarriers) do if unres[k]==barrier then finalUnres=finalUnres+1; break end end
+  end
  end
  for _,row in ipairs(altRows) do
   for _,sup in ipairs(row.superseded or {}) do
@@ -156,12 +170,14 @@ function __phaser9008SplitProbe(ctx,api)
   end
  end
  local blockedList={}; for k in pairs(blockedRefs) do blockedList[#blockedList+1]=k end; table.sort(blockedList)
- local barrierClass=finalUnres==0 and 'REL_FULLY_SUPERSEDED' or (#blockedList==0 and 'REL_NONCONTRIBUTING' or 'REL_BLOCKS_HISTORY')
+ local relLaneCount=count(relLanes)
+ local barrierClass=(finalUnres==0 and superseded==relLaneCount) and 'REL_FULLY_SUPERSEDED' or ((blockedLanes==0 and #blockedList==0) and 'REL_NONCONTRIBUTING' or 'REL_BLOCKS_HISTORY')
  emit('PHASER_9008_REL_BARRIER_SUMMARY members=%d rel_barrier_lanes=%d fully_superseded_lanes=%d final_unresolved_lanes=%d blocked_older_candidate_lanes=%d blocked_references=%s classification=%s diagnostic_only=true',
   relMembers,count(relLanes),superseded,finalUnres,blockedLanes,table.concat(blockedList,',')~='' and table.concat(blockedList,',') or '-',barrierClass)
  local classification
- if ctx.oracleOK and missing==0 and extra==0 and finalUnres==0 then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_SUPERSEDED'
- elseif ctx.oracleOK and missing==0 and extra==0 and #blockedList==0 then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING'
+ if splitSurviving<0 then classification='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED'
+ elseif ctx.oracleOK and missing==0 and extra==0 and finalUnres==0 and superseded==relLaneCount then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_SUPERSEDED'
+ elseif ctx.oracleOK and missing==0 and extra==0 and blockedLanes==0 and #blockedList==0 then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING'
  else classification='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED' end
  -- Source Part cooked cross-check only (never drives promotion).
  local cooked={members=0,applicable=0,absExp=0,absDiff=0,absMiss=0,relExp=0,relOther=0,relAbsent=0,noBucket=0}
@@ -212,7 +228,6 @@ function __phaser9008SplitProbe(ctx,api)
   cooked.members,cooked.applicable,cooked.absExp,cooked.absDiff,cooked.absMiss,cooked.relExp,cooked.relOther,cooked.relAbsent,cooked.noBucket)
  if classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_SUPERSEDED' or classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING' then
   local rem={} -- derived remaining blockers from split attribution
-  local attOK,att=pcall(api.attributor,altRows,splitResult,splitFinal)
   if attOK and type(att)=='table' and type(att.rows)=='table' then
    for _,rec in ipairs(att.rows) do
     if rec.category=='FINAL_SURVIVING_UNSAFE' and rec.ref then rem[refLabel(rec.ref)]=true end

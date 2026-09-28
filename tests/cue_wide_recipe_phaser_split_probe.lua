@@ -23,10 +23,13 @@ local bySf={[11]=mA,[12]=mB}
 local key9008='DBI:'..r9008.id
 local bridgeBase={source='MIXED',completeness='PARTIAL',motion='MOVING',motionProof='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE',
  phaserStructure=true,features={[FG]=true},layers={ABS=true},lanes={[FG..'|ABS']={}},evidence={}}
+-- Native shape: older generic normalizer left PARTIAL/UNSAFE; Rev12 ordinary
+-- proof is the semantic authority for linked presets.
 local bridgeInfo={[key9008]=bridgeBase,
- ['DBI:'..linkedA.id]={completeness='COMPLETE',motion='STATIC',layers={ABS=true}},
- ['DBI:'..linkedB.id]={completeness='COMPLETE',motion='STATIC',layers={ABS=true}}}
-local proofs={['DBI:'..linkedA.id]={memberApplicabilityProven=true},['DBI:'..linkedB.id]={memberApplicabilityProven=true}}
+ ['DBI:'..linkedA.id]={source='ORDINARY_GETPRESETDATA',completeness='PARTIAL',motion='UNSAFE',layers={ABS=true}},
+ ['DBI:'..linkedB.id]={source='ORDINARY_GETPRESETDATA',completeness='PARTIAL',motion='UNSAFE',layers={ABS=true}}}
+local function linkedProof() return {motionStaticProven=true,memberApplicabilityProven=true,layers={ABS=true},channels=58,activeValue=58} end
+local proofs={['DBI:'..linkedA.id]=linkedProof(),['DBI:'..linkedB.id]=linkedProof()}
 local rawRows={{ref=r9008,structural={audits={{presetHandle=linkedA},{presetHandle=linkedB}}}}}
 local function mkrow(ref,refId,members,extra)
  local r={recipe=handle('Recipe','R'),part=part,cue=handle('Cue','C'),group=handle('Group','Group 232'),ref=ref,refId=refId,members=members,
@@ -80,7 +83,8 @@ local function stubResolve(rows)
  end end
  return res
 end
-local function stubAttributor(rows,result,final) return {rows={}} end
+local attRows={}
+local function stubAttributor(rows,result,final) return {rows=attRows} end
 local logs={}; local calls={presetData=0}
 local api={log=function(s) logs[#logs+1]=s end,identity=function(h) return h and 'DBI:'..h.id end,
  describe=function(h) return h and h.label end,
@@ -144,11 +148,46 @@ local olderREL=mkrow(olderR,40,{[11]=true},{layers={REL=true},lanes={[FG..'|REL'
 r=run({r9008row,olderREL},{att9008},cooked(r9008,false),{[10]=r9008})
 assert(r.classification=='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED',r.classification)
 assert(has('blocked_references=older_REL') or has('older REL'))
--- 12. linked proof required
-bridgeInfo['DBI:'..linkedB.id]={completeness='PARTIAL',motion='STATIC',layers={ABS=true}}
+-- 6. final_surviving_unsafe is attribution row count, not ref count
+attRows={{category='FINAL_SURVIVING_UNSAFE',ref=r9008},{category='FINAL_SURVIVING_UNSAFE',ref=olderA},{category='OTHER'}}
+r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008})
+assert(has('final_surviving_unsafe=2'))
+attRows={}
+-- 7. blocked row with ref=nil must NOT pass Path B
+local olderRELNoRef=mkrow(nil,41,{[11]=true},{layers={REL=true},lanes={[FG..'|REL']={feature=FG,layer='REL',moving=false}}})
+r=run({r9008row,olderRELNoRef},{att9008},cooked(r9008,false),{[10]=r9008})
+assert(r.classification=='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED',r.classification)
+assert(has('blocked_older_candidate_lanes=1'))
+-- 8. Path A requires balanced supersession accounting
+r=run({newerRELRow,r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008,[31]=newerR})
+assert(has('rel_barrier_lanes=2 fully_superseded_lanes=2 final_unresolved_lanes=0'))
+-- 1. PARTIAL/UNSAFE bridge + ordinary-proven ABS => linked accepted
+assert(has('linked_presets=Preset_1.1,Preset_1.11'))
+-- 2. motionStaticProven=false => reject
+proofs['DBI:'..linkedB.id].motionStaticProven=false
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+proofs['DBI:'..linkedB.id].motionStaticProven=true
+-- 3. memberApplicabilityProven=false => reject
+proofs['DBI:'..linkedB.id].memberApplicabilityProven=false
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+proofs['DBI:'..linkedB.id].memberApplicabilityProven=true
+-- 4. REL layer in linked proof => reject for this narrow rule
+proofs['DBI:'..linkedB.id].layers={ABS=true,REL=true}
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+proofs['DBI:'..linkedB.id].layers={ABS=true}
+-- 5. activeValue != channels => reject
+proofs['DBI:'..linkedB.id].activeValue=57
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+proofs['DBI:'..linkedB.id].activeValue=58
+-- 12. bridge source path still required
+bridgeInfo['DBI:'..linkedB.id]={source='OTHER',completeness='PARTIAL',motion='UNSAFE',layers={ABS=true}}
 r=run({r9008row},{att9008},cooked(r9008,false))
 assert(has('classification=INCONCLUSIVE'))
-bridgeInfo['DBI:'..linkedB.id]={completeness='COMPLETE',motion='STATIC',layers={ABS=true}}
+bridgeInfo['DBI:'..linkedB.id]={source='ORDINARY_GETPRESETDATA',completeness='PARTIAL',motion='UNSAFE',layers={ABS=true}}
 -- 13. cooked contradiction does not block structural promotion
 r=run({r9008row},{att9008},cooked(olderA,r9008))
 assert(has('classification=ABS_STRUCTURE_PROVEN'))
