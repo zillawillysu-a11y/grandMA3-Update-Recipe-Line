@@ -21,7 +21,7 @@ Latest native Cue 8 member-key probe: cooked `by_fixtures` keys are strings such
 
 ## Current Problem
 
-Native rerun must show whether hierarchical addresses explain the 1,176 member-key lanes with independent native evidence. The 183 Attribute-capability lanes remain separately unresolved. No production or Group matcher change is authorized.
+Native rerun must show whether handle Addr/AddrNative/ToAddr plus FromAddr round-trip prove the 1,176 member-key lanes as canonical cooked-bucket identity. Bucket-exists and Attribute-present are evaluated separately; Attribute-absent stays an Attribute-capability problem. The 16 sf_index residuals are rechecked as accidental other-bucket collisions. No production, Rev7, attribution, Rev13, eligibility, truth, Selective, Preset 25.9008, Attribute-capability, Group matcher, or UI change is authorized.
 
 ## Known Failed Attempts
 
@@ -44,4 +44,4 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review `COOKED_HIERARCHICAL_ADDRESS_SHAPE/SAMPLE/SUMMARY`, `COOKED_OLD_CANDIDATE_RESIDUAL`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8 and review NATIVE_MEMBER_ADDRESS_SAMPLE/SUMMARY plus OLD_SF_INDEX_COLLISION_SUMMARY. Also review `COOKED_HIERARCHICAL_ADDRESS_SHAPE/SAMPLE/SUMMARY`, `COOKED_OLD_CANDIDATE_RESIDUAL`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries. Local native-address probe deployed (Lua SHA256 4b717eaa); runner green incl. 294 integration checks.
