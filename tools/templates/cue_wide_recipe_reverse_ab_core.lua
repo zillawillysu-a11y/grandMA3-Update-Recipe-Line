@@ -669,7 +669,7 @@ if not attributionOK then log('UNSAFE_ATTRIBUTION_ERROR error=%s',text(attributi
 attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
  local ordinaryProofStart=now()
  local seen,proofs,eligible={},{},{}
- local totals={ordinary=0,proven=0,unproven=0,eligibleRows=0}
+ local totals={ordinary=0,motionProven=0,motionUnproven=0,memberProven=0,memberUnproven=0,eligibleRows=0}
  for _,row in ipairs(rev6Result.rev7.rows or {}) do
   local key=row.ref and metadataCache.identity(row.ref)
   local info=key and rev6ByIdentity[key]
@@ -677,11 +677,12 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    seen[key]=true
    local p=__rev12OrdinaryStaticInspect(metadataCache.raw[key]); proofs[key]=p
    totals.ordinary=totals.ordinary+1
-   if p.staticProven then totals.proven=totals.proven+1 else totals.unproven=totals.unproven+1 end
+   if p.motionStaticProven then totals.motionProven=totals.motionProven+1 else totals.motionUnproven=totals.motionUnproven+1 end
+   if p.memberApplicabilityProven then totals.memberProven=totals.memberProven+1 else totals.memberUnproven=totals.memberUnproven+1 end
    local stepCounts={}; for n,c in pairs(p.steps) do stepCounts[#stepCounts+1]=n..':'..c end; table.sort(stepCounts)
-   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d active_phaser_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s static_proven=%s blocking_reasons=%s',
-    text(desc(row.ref)),p.channels,p.activeValue,p.activePhaser,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
-    text(p.staticProven),joined(p.reasons))
+   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d non_grid_motion_channels=%d grid_position_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s motion_static_proven=%s member_applicability_proven=%s motion_blocking_reasons=%s member_blocking_reasons=%s',
+    text(desc(row.ref)),p.channels,p.activeValue,p.nonGridMotion,p.gridPosition,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
+    text(p.motionStaticProven),text(p.memberApplicabilityProven),joined(p.motionReasons),joined(p.memberReasons))
   end
  end
  for _,rec in ipairs(attribution.rows or {}) do
@@ -689,20 +690,8 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    local key=rec.ref and metadataCache.identity(rec.ref)
    local p=key and proofs[key]
    local info=key and rev6ByIdentity[key]
-   -- Only the proven Universal/Global member rule can support a projected
-   -- terminator. Selective, individual and unknown mode remain unsafe.
-   local modeOK=true
-   local raw=key and metadataCache.raw[key]
-   for ui,ch in pairs(type(raw)=='table' and raw or {}) do if type(ui)=='number' then
-    local mode=ch.preset_store_mode or ch.pm
-    local flags=ch.dict_flags
-    if (mode~=2 and mode~=3) or (ch.pm~=nil and ch.preset_store_mode~=nil and ch.pm~=ch.preset_store_mode)
-      or ch.selective==true or (type(flags)=='table' and
-       ((flags.blocked~=nil and flags.blocked~=false and flags.blocked~=0) or
-        (flags.blocked_rel~=nil and flags.blocked_rel~=false and flags.blocked_rel~=0))) or
-      (ch.mask_individual~=nil and ch.mask_individual~=0 and ch.mask_individual~=false) then modeOK=false end
-   end end
-   if p and p.staticProven and modeOK and info and info.featureScopeKnown and next(info.features or {})
+   -- Static motion and member applicability must both be independently proven.
+   if p and p.motionStaticProven and p.memberApplicabilityProven and info and info.featureScopeKnown and next(info.features or {})
       and next(info.layers or {}) and rec.row.members then totals.eligibleRows=totals.eligibleRows+1; eligible[rec.row]=true end
   end
  end
@@ -737,9 +726,9 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    #alternateResult.unsafe,projected,alternateResult.staticRows or 0,text(ms(alternateStart,now())))
   alternate={final=alternateFinal,result=alternateResult,attribution=altAttribution,missing=missing,extra=extra}
  end
- log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d static_proven=%d static_unproven=%d final_surviving_rows_before=%d projected_final_surviving_rows_after=%d projected_eligible_rows=%d extra_GetPresetData_calls=0 observer_ms=%s',
-  totals.ordinary,totals.proven,totals.unproven,attribution.finalSurviving or 0,
-  projected,totals.eligibleRows,text(ms(ordinaryProofStart,now())))
+ log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d motion_static_proven=%d motion_static_unproven=%d member_applicability_proven=%d member_applicability_unproven=%d final_surviving_rows_before=%d projected_eligible_rows=%d projected_final_surviving_rows_after=%d extra_GetPresetData_calls=0 observer_ms=%s',
+  totals.ordinary,totals.motionProven,totals.motionUnproven,totals.memberProven,totals.memberUnproven,
+  attribution.finalSurviving or 0,totals.eligibleRows,projected,text(ms(ordinaryProofStart,now())))
  return {totals=totals,proofs=proofs,alternate=alternate}
 end)
 if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%s',text(attribution.ordinaryProof)); attribution.ordinaryProof={ok=false} end

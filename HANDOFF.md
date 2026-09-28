@@ -2,30 +2,30 @@
 
 ## Current Goal
 
-Native validate Rev12 ordinary Preset static semantics on Cue 8 in grandMA3 2.5.0.3, without changing production or Rev7 gates.
+Native validate Rev12.1 ordinary Preset motion/static and member-applicability proofs on Cue 8 in grandMA3 2.5.0.3. Production, Rev7 baseline, oracle, UI marker, and Preset 25.9008 remain unchanged.
 
 ## Current Working State
 
-Rev12 adds a cached ordinary Preset static observer and an isolated alternate reverse result for proven Global/Universal static references. It leaves the Rev7 baseline, oracle, production, UI markers, and Preset 25.9008 unchanged. Local Lua 5.4 integration and deterministic build validation pass. The independent diagnostic was copied to its own grandMA3 Plugin folder; source/deployed SHA256 matches and production source/folder snapshots are unchanged. Native Rev12 validation is pending.
+Rev12.1 corrects only the diagnostic ordinary-static observer and its report. The isolated alternate resolver promotes a row only when static motion and member applicability are both proven. Local focused Lua 5.4 tests and deterministic build pass. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
 
-Rev11.1 Cue 8: Rev7 final references exactly 25.9006, 25.9007, 25.9009, 25.9010; missing=0, extra=0; reverse about 188.6 ms, total path about 331.3 ms. Of 50 unsafe rows, 31 fully superseded and 19 final surviving. The 19 are 18 ordinary Preset rows and one Phaser reference, 25.9008. All have `ref_in_final=false`.
+Rev12 Cue 8: Rev7 EXACT_MATCH, refs=4, missing=0, extra=0, unsafe=50, final surviving=19, fully superseded=31, unknown=0. The Rev12 observer reported ordinary_refs=15, static_proven=2, static_unproven=13, eligible_rows=0, projected final surviving=19. Most ordinary static failures carried `ACTIVE_PHASER_MASK_NOT_ZERO`, although bit 64 is vendor grid-position applicability. Selective dictionary metadata also incorrectly blocked motion.
 
 ## Verified Facts
 
-- Installed 2.5 vendor system tests define active Phaser mask and ABS/REL active value bits 2/4. They identify Preset mode 1/2/3 as Selective/Global/Universal.
-- Existing Rev11 linked Preset rule can excuse member applicability evidence for Universal/Global but keeps Selective member mapping unsafe.
-- The Rev12 observer reads only the existing reference metadata cache and adds no `GetPresetData` calls.
-- Local tests cover ordinary static, active Phaser and multistep negatives, unknown active dictionary flag, Selective motion proof with unsafe membership, and unchanged Rev7 final refs.
+- Installed 2.5 vendor `GetPhaserMask`/`PhaserMaskToList` defines 64 as `gridpos`; 4/8/16/32/128/256 as fade/delay/speed/phase/measure/nshot; 1/2 as Preset dependencies.
+- The Rev6 field-semantics code already treats active bit 64 as `ACTIVE_GRID_POSITION_APPLICABILITY_UNPROVEN`.
+- Rev12.1 local tests show bit 64 and Selective metadata can coexist with static motion proof while member applicability stays unproven. Vendor speed bit 16 and unknown bits block static proof.
+- The observer reads only cached reference data, with no extra `GetPresetData` calls.
 
 ## Current Problem
 
-Native Rev12 output must show whether all 18 ordinary final surviving rows satisfy the per-channel static proof, whether the isolated alternate result keeps the four final refs with missing=0/extra=0, and the performance overhead. Local mocks cannot establish those Cue 8 facts.
+Native Rev12.1 must determine how many of the 15 ordinary refs have static motion proven after separating bit 64, and whether member applicability remains the limiting evidence. The projected survivor count must come from the actual diagnostic alternate result, without forcing a decrease.
 
 ## Known Failed Attempts
 
-Rev11.1 completeness combined static motion evidence with member applicability evidence, leaving ordinary rows unsafe. Do not weaken the shared resolver gate or infer Selective membership from a static step.
+Rev12 used `mask_active_phaser ~= 0` and treated `dict_flags.selective` as an unknown motion flag. Both conflated member applicability with motion. Do not restore either rule or relax the shared Rev7 resolver.
 
 ## Important Files
 
@@ -37,8 +37,8 @@ Rev11.1 completeness combined static motion evidence with member applicability e
 
 ## Current Branch / Commit
 
-Rev12 diagnostic checkpoint atop `origin/qwen` baseline 5d6c255. The older dirty `qwen` worktree is untouched.
+`origin/qwen`, Rev12.1 diagnostic checkpoint atop commit subject `test: observe ordinary Preset static semantics in Rev12`. The older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the Rev12 diagnostic on Cue 8 in grandMA3 2.5.0.3. Capture every `ORDINARY_STATIC_PROOF`, `ORDINARY_STATIC_PROOF_SUMMARY`, and `ORDINARY_STATIC_ALTERNATE` line, plus the existing Rev7 final refs, diff, and timing. Compare static proof counts, projected final surviving unsafe rows, final reference set, missing/extra, and observer/alternate overhead. Stop before any production integration.
+Run Rev12.1 on native Cue 8. Capture all `ORDINARY_STATIC_PROOF` lines, the separate proof summary, any `ORDINARY_STATIC_ALTERNATE` line, Rev7 final refs/diff, and diagnostic timing. Report static versus member-proof counts and remaining reasons before any production decision.

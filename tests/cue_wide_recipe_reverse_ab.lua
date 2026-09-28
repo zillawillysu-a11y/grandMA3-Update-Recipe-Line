@@ -390,23 +390,22 @@ check(r.attribution.unknown==0,'fail-closed unknown stays empty here')
 p=setup(); metadataReads=0; oracleReads=0
 local ordinary=obj('Preset','Preset ordinary static'); ordinary.db=91027
 references[ordinary.db]={[1]={[1]={absolute=50,absolute_value=50},mask_active_value=2,
- mask_active_phaser=0,preset_store_mode=2,selective=false,gridposmatr={1},dict_flags={has_absolute=true}}}
+ mask_active_phaser=0,preset_store_mode=2,selective=false,dict_flags={has_absolute=true}}}
 row(p,group(716,{11,12}),ordinary)
 data[p]={}
 r=run()
-check(r.attribution.ordinaryProofOK and r.attribution.ordinaryProof.totals.proven==1,'ordinary static separately proven')
-check(has('ORDINARY_STATIC_PROOF reference=Preset ordinary static') and has('projected_eligible_rows=1'),'ordinary projection reported')
-check(r.attribution.ordinaryProof.alternate and r.attribution.ordinaryProof.alternate.attribution.finalSurviving==0,'alternate removes eligible ordinary unsafe row')
-check(has('ORDINARY_STATIC_ALTERNATE refs=0 oracle_refs=0 missing=0 extra=0'),'alternate final reference set matches oracle')
+check(r.attribution.ordinaryProofOK and r.attribution.ordinaryProof.totals.motionProven==1 and r.attribution.ordinaryProof.totals.memberProven==1,'ordinary static and membership separately proven')
+check(has('ORDINARY_STATIC_PROOF reference=Preset ordinary static') and has('projected_eligible_rows=0'),'already safe ordinary reference needs no promotion')
+check(r.attribution.ordinaryProof.alternate==nil,'no alternate when no eligible unsafe row exists')
 check(r.rev7Final and next(r.rev7Final)==nil,'Rev7 final reference set unchanged by observer')
 p=setup(); metadataReads=0; oracleReads=0
 local selectiveOrdinary=obj('Preset','Preset selective ordinary'); selectiveOrdinary.db=91028
 references[selectiveOrdinary.db]={[1]={[1]={absolute=50},mask_active_value=2,
- mask_active_phaser=0,preset_store_mode=1,selective=true}}
+ mask_active_phaser=64,preset_store_mode=1,selective=true,dict_flags={selective=true}}}
 row(p,group(717,{11,12}),selectiveOrdinary)
 data[p]={}
 r=run()
-check(r.attribution.ordinaryProofOK and r.attribution.ordinaryProof.totals.proven==1,'selective static motion proven')
+check(r.attribution.ordinaryProofOK and r.attribution.ordinaryProof.totals.motionProven==1 and r.attribution.ordinaryProof.totals.memberUnproven==1,'selective grid ordinary static motion proven, membership blocked')
 check(has('projected_eligible_rows=0') and r.attribution.finalSurviving==1,'selective member applicability stays unsafe')
 check(next(r.rev7Final)==nil,'selective cannot change Rev7 final set')
 env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle=oldRead,oldAttribute,oldCompare

@@ -1930,27 +1930,41 @@ end
  return {accept=accept,ordinary=ordinary,rawLayer=rawLayer,observe=observe,summary=summary,attributeUnsafe=attributeUnsafe}
 end
 
--- Rev12 observer only. Static motion evidence is independent of member mapping.
+-- Rev12.1 observer only. Vendor 2.5 GetPhaserMask/PhaserMaskToList:
+-- 1/2 Preset dependencies, 4/8/16/32/128/256 timing/motion, 64 gridpos.
 function __rev12OrdinaryStaticInspect(raw)
-  local out={channels=0,activeValue=0,activePhaser=0,steps={},layers={},modes={},selective={},reasons={}}
-  local function block(s) out.reasons[s]=true end
-  if type(raw)~='table' then block('REFERENCE_DATA_UNAVAILABLE'); return out end
+  local motionBits=4|8|16|32|128|256
+  local knownBits=1|2|motionBits|64
+  local out={channels=0,activeValue=0,nonGridMotion=0,gridPosition=0,steps={},layers={},modes={},selective={},motionReasons={},memberReasons={}}
+  local function motion(s) out.motionReasons[s]=true end
+  local function member(s) out.memberReasons[s]=true end
+  if type(raw)~='table' then
+   motion('REFERENCE_DATA_UNAVAILABLE'); member('REFERENCE_DATA_UNAVAILABLE')
+   out.motionStaticProven=false; out.memberApplicabilityProven=false; return out
+  end
   for ui,p in pairs(raw) do
    if ui=='count' then
-    if type(p)~='number' then block('INVALID_COUNT') end
+    if type(p)~='number' then motion('INVALID_COUNT'); member('INVALID_COUNT') end
    elseif ui=='by_fixtures' then
-    if p~=false then block('NOT_UI_CHANNEL_INDEXED') end
-   elseif type(ui)~='number' or type(p)~='table' then block('UNSUPPORTED_TOP_LEVEL')
+    if p~=false then motion('NOT_UI_CHANNEL_INDEXED'); member('NOT_UI_CHANNEL_INDEXED') end
+   elseif type(ui)~='number' or type(p)~='table' then motion('UNSUPPORTED_TOP_LEVEL'); member('UNSUPPORTED_TOP_LEVEL')
    else
     out.channels=out.channels+1
-    if out.channels>262144 then block('CHANNEL_LIMIT'); break end
+    if out.channels>262144 then motion('CHANNEL_LIMIT'); member('CHANNEL_LIMIT'); break end
     local mask=p.mask_active_value
-    if type(mask)~='number' or math.type(mask)~='integer' or mask & ~(2|4)~=0 or mask & (2|4)==0 then block('ACTIVE_VALUE_MASK_UNPROVEN')
+    if type(mask)~='number' or math.type(mask)~='integer' or mask & ~(2|4)~=0 or mask & (2|4)==0 then motion('ACTIVE_VALUE_MASK_UNPROVEN')
     else out.activeValue=out.activeValue+1 end
-    if p.mask_active_phaser~=0 then out.activePhaser=out.activePhaser+1; block('ACTIVE_PHASER_MASK_NOT_ZERO') end
-    if p.mask_cooked~=nil and p.mask_cooked~=0 then block('COOKED_MASK_UNPROVEN') end
+    local phaser=p.mask_active_phaser
+    if type(phaser)~='number' or math.type(phaser)~='integer' or phaser<0 or phaser & ~knownBits~=0 then
+     motion('PHASER_MASK_SHAPE_OR_BITS_UNPROVEN'); member('PHASER_MASK_SHAPE_OR_BITS_UNPROVEN')
+    else
+     if phaser & motionBits~=0 then out.nonGridMotion=out.nonGridMotion+1; motion('NON_GRID_MOTION_MASK_ACTIVE') end
+     if phaser & (1|2)~=0 then motion('PHASER_PRESET_DEPENDENCY_ACTIVE') end
+     if phaser & 64~=0 then out.gridPosition=out.gridPosition+1; member('ACTIVE_GRID_POSITION_APPLICABILITY_UNPROVEN') end
+    end
+    if p.mask_cooked~=nil and p.mask_cooked~=0 then motion('COOKED_MASK_UNPROVEN') end
     for _,k in ipairs({'speed','phase','measure','nshot_count','fade','delay','speed_master','abs_generator','rel_generator','generator','abs_preset','rel_preset'}) do
-     if p[k]~=nil and p[k]~=false and p[k]~=0 then block('MOTION_OR_DEPENDENCY_'..k) end
+     if p[k]~=nil and p[k]~=false and p[k]~=0 then motion('MOTION_OR_DEPENDENCY_'..k) end
     end
     for k,v in pairs(p) do
      if type(k)=='string' and not ({attribute=true,abs_preset=true,rel_preset=true,abs_generator=true,rel_generator=true,generator=true,
@@ -1958,57 +1972,66 @@ function __rev12OrdinaryStaticInspect(raw)
       dict_flags=true,dict_index=true,gridposmatr=true,gridpos=true,grid=true,phase=true,speed=true,measure=true,
       fade=true,delay=true,selective=true,preset_store_mode=true,pm=true,ui_channel_index=true,
       grid_origin=true,grid_matrix=true,nshot_count=true,nshot_flags=true,speed_master=true})[k] then
-      block('UNKNOWN_PHASER_FIELD_'..tostring(k))
+      motion('UNKNOWN_PHASER_FIELD_'..tostring(k))
      end
     end
-    if p.pm~=nil and p.pm~=1 and p.pm~=2 and p.pm~=3 then block('UNKNOWN_PRESET_MODE') end
-    if p.preset_store_mode~=nil and p.preset_store_mode~=1 and p.preset_store_mode~=2 and p.preset_store_mode~=3 then block('UNKNOWN_STORE_MODE') end
-    if p.ui_channel_index~=nil and p.ui_channel_index~=ui then block('UI_CHANNEL_INDEX_MISMATCH') end
+    local mode=p.preset_store_mode or p.pm
+    if mode~=2 and mode~=3 then member('MEMBER_PRESET_MODE_UNPROVEN') end
+    if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then member('CONFLICTING_PRESET_MODES') end
+    if p.selective==true then member('SELECTIVE_MEMBER_APPLICABILITY_UNPROVEN') end
+    if p.selective~=nil and type(p.selective)~='boolean' then member('SELECTIVE_FIELD_SHAPE_UNPROVEN') end
+    if p.ui_channel_index~=nil and p.ui_channel_index~=ui then motion('UI_CHANNEL_INDEX_MISMATCH'); member('UI_CHANNEL_INDEX_MISMATCH') end
+    if p.mask_individual~=nil and p.mask_individual~=0 and p.mask_individual~=false then member('INDIVIDUAL_MEMBER_APPLICABILITY_UNPROVEN') end
+    if p.gridpos~=nil and p.gridpos~=0 and p.gridpos~=false and not (type(p.gridpos)=='table' and next(p.gridpos)==nil) then member('GRID_POSITION_EFFECT_UNPROVEN') end
+    if p.gridposmatr~=nil and (type(p.gridposmatr)~='table' or next(p.gridposmatr)~=nil) then member('GRID_MATRIX_EFFECT_UNPROVEN') end
     if p.dict_flags~=nil then
-     if type(p.dict_flags)~='table' then block('DICTIONARY_FLAGS_UNPROVEN')
+     if type(p.dict_flags)~='table' then motion('DICTIONARY_FLAGS_UNPROVEN'); member('DICTIONARY_FLAGS_UNPROVEN')
      else for k,v in pairs(p.dict_flags) do
-      if not ({has_absolute=true,has_relative=true,blocked=true,blocked_rel=true})[k]
-       and v~=nil and v~=false and v~=0 then block('UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end
+      if k=='selective' and v~=nil and v~=false and v~=0 then member('DICTIONARY_SELECTIVE_APPLICABILITY_UNPROVEN')
+      elseif (k=='blocked' or k=='blocked_rel') and v~=nil and v~=false and v~=0 then member('BLOCKED_DICTIONARY_LAYER_'..k)
+      elseif not ({has_absolute=true,has_relative=true,blocked=true,blocked_rel=true,selective=true})[k]
+       and v~=nil and v~=false and v~=0 then motion('UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end
      end end
     end
-    out.modes[tostring(p.preset_store_mode or p.pm or 'nil')]=true
-    out.selective[tostring(p.selective)]=true
+    out.modes[tostring(mode or 'nil')]=true
+    out.selective['field='..tostring(p.selective)..'/dict='..tostring(type(p.dict_flags)=='table' and p.dict_flags.selective or nil)]=true
     local steps,n,seen={},0,{}
     for k,v in pairs(p) do if type(k)=='number' then
      n=n+1; seen[k]=true
-     if k<1 or k%1~=0 or type(v)~='table' then block('INVALID_STEP_SHAPE') else steps[#steps+1]=v end
+     if k<1 or k%1~=0 or type(v)~='table' then motion('INVALID_STEP_SHAPE') else steps[#steps+1]=v end
     end end
     out.steps[tostring(n)]=(out.steps[tostring(n)] or 0)+1
-    if n~=1 or not seen[1] then block('SINGLE_EFFECTIVE_STEP_UNPROVEN') end
+    if n~=1 or not seen[1] then motion('SINGLE_EFFECTIVE_STEP_UNPROVEN') end
     local step=steps[1]
     if type(step)=='table' then
      local touched=0
      for _,spec in ipairs({{'ABS','absolute',2},{'REL','relative',4}}) do
       local layer,value,bit=table.unpack(spec)
       if step[value]~=nil then
-       if type(step[value])~='number' or step[value]~=step[value] or math.abs(step[value])==math.huge then block('EFFECTIVE_'..layer..'_UNPROVEN') end
-       if type(mask)~='number' or math.type(mask)~='integer' or mask & bit==0 then block('INACTIVE_'..layer..'_VALUE') end
+       if type(step[value])~='number' or step[value]~=step[value] or math.abs(step[value])==math.huge then motion('EFFECTIVE_'..layer..'_UNPROVEN') end
+       if type(mask)~='number' or math.type(mask)~='integer' or mask & bit==0 then motion('INACTIVE_'..layer..'_VALUE') end
        touched=touched | bit; out.layers[layer]=true
       end
      end
-     if type(mask)=='number' and math.type(mask)=='integer' and mask & (2|4)~=touched then block('ACTIVE_LAYER_WITHOUT_EFFECTIVE_STEP') end
+     if type(mask)=='number' and math.type(mask)=='integer' and mask & (2|4)~=touched then motion('ACTIVE_LAYER_WITHOUT_EFFECTIVE_STEP') end
      for _,k in ipairs({'abs_release','rel_release','abs_remove','rel_remove','abs_preset','rel_preset','integrated','accel','decel','trans','transition','width'}) do
-      if step[k]~=nil and step[k]~=false and step[k]~=0 then block('STEP_EFFECT_UNPROVEN_'..k) end
+      if step[k]~=nil and step[k]~=false and step[k]~=0 then motion('STEP_EFFECT_UNPROVEN_'..k) end
      end
      for k,v in pairs(step) do
       if type(k)=='string' and not ({absolute=true,relative=true,absolute_value=true,abs_release=true,rel_release=true,
        abs_remove=true,rel_remove=true,abs_preset=true,rel_preset=true,integrated=true,accel=true,decel=true,
        trans=true,transition=true,width=true,channel_function=true,mask_active=true,mask_individual=true,
-       mask_integrated=true,dict_flags=true})[k] then block('UNKNOWN_STEP_FIELD_'..tostring(k)) end
+       mask_integrated=true,dict_flags=true})[k] then motion('UNKNOWN_STEP_FIELD_'..tostring(k)) end
      end
      if step.absolute_value~=nil and (type(step.absolute_value)~='number' or step.absolute==nil or type(mask)~='number' or math.type(mask)~='integer' or mask & 2==0) then
-      block('ABSOLUTE_VALUE_WITHOUT_EFFECTIVE_ABS') end
+      motion('ABSOLUTE_VALUE_WITHOUT_EFFECTIVE_ABS') end
     end
    end
   end
-  if out.channels==0 then block('EMPTY_REFERENCE_DATA') end
-  if raw.count~=nil and raw.count~=out.channels then block('COUNT_MISMATCH') end
-  out.staticProven=next(out.reasons)==nil
+  if out.channels==0 then motion('EMPTY_REFERENCE_DATA'); member('EMPTY_REFERENCE_DATA') end
+  if raw.count~=nil and raw.count~=out.channels then motion('COUNT_MISMATCH'); member('COUNT_MISMATCH') end
+  out.motionStaticProven=next(out.motionReasons)==nil
+  out.memberApplicabilityProven=next(out.memberReasons)==nil
   return out
 end
 
@@ -2754,7 +2777,7 @@ if not attributionOK then log('UNSAFE_ATTRIBUTION_ERROR error=%s',text(attributi
 attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
  local ordinaryProofStart=now()
  local seen,proofs,eligible={},{},{}
- local totals={ordinary=0,proven=0,unproven=0,eligibleRows=0}
+ local totals={ordinary=0,motionProven=0,motionUnproven=0,memberProven=0,memberUnproven=0,eligibleRows=0}
  for _,row in ipairs(rev6Result.rev7.rows or {}) do
   local key=row.ref and metadataCache.identity(row.ref)
   local info=key and rev6ByIdentity[key]
@@ -2762,11 +2785,12 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    seen[key]=true
    local p=__rev12OrdinaryStaticInspect(metadataCache.raw[key]); proofs[key]=p
    totals.ordinary=totals.ordinary+1
-   if p.staticProven then totals.proven=totals.proven+1 else totals.unproven=totals.unproven+1 end
+   if p.motionStaticProven then totals.motionProven=totals.motionProven+1 else totals.motionUnproven=totals.motionUnproven+1 end
+   if p.memberApplicabilityProven then totals.memberProven=totals.memberProven+1 else totals.memberUnproven=totals.memberUnproven+1 end
    local stepCounts={}; for n,c in pairs(p.steps) do stepCounts[#stepCounts+1]=n..':'..c end; table.sort(stepCounts)
-   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d active_phaser_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s static_proven=%s blocking_reasons=%s',
-    text(desc(row.ref)),p.channels,p.activeValue,p.activePhaser,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
-    text(p.staticProven),joined(p.reasons))
+   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d non_grid_motion_channels=%d grid_position_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s motion_static_proven=%s member_applicability_proven=%s motion_blocking_reasons=%s member_blocking_reasons=%s',
+    text(desc(row.ref)),p.channels,p.activeValue,p.nonGridMotion,p.gridPosition,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
+    text(p.motionStaticProven),text(p.memberApplicabilityProven),joined(p.motionReasons),joined(p.memberReasons))
   end
  end
  for _,rec in ipairs(attribution.rows or {}) do
@@ -2774,20 +2798,8 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    local key=rec.ref and metadataCache.identity(rec.ref)
    local p=key and proofs[key]
    local info=key and rev6ByIdentity[key]
-   -- Only the proven Universal/Global member rule can support a projected
-   -- terminator. Selective, individual and unknown mode remain unsafe.
-   local modeOK=true
-   local raw=key and metadataCache.raw[key]
-   for ui,ch in pairs(type(raw)=='table' and raw or {}) do if type(ui)=='number' then
-    local mode=ch.preset_store_mode or ch.pm
-    local flags=ch.dict_flags
-    if (mode~=2 and mode~=3) or (ch.pm~=nil and ch.preset_store_mode~=nil and ch.pm~=ch.preset_store_mode)
-      or ch.selective==true or (type(flags)=='table' and
-       ((flags.blocked~=nil and flags.blocked~=false and flags.blocked~=0) or
-        (flags.blocked_rel~=nil and flags.blocked_rel~=false and flags.blocked_rel~=0))) or
-      (ch.mask_individual~=nil and ch.mask_individual~=0 and ch.mask_individual~=false) then modeOK=false end
-   end end
-   if p and p.staticProven and modeOK and info and info.featureScopeKnown and next(info.features or {})
+   -- Static motion and member applicability must both be independently proven.
+   if p and p.motionStaticProven and p.memberApplicabilityProven and info and info.featureScopeKnown and next(info.features or {})
       and next(info.layers or {}) and rec.row.members then totals.eligibleRows=totals.eligibleRows+1; eligible[rec.row]=true end
   end
  end
@@ -2822,9 +2834,9 @@ attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
    #alternateResult.unsafe,projected,alternateResult.staticRows or 0,text(ms(alternateStart,now())))
   alternate={final=alternateFinal,result=alternateResult,attribution=altAttribution,missing=missing,extra=extra}
  end
- log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d static_proven=%d static_unproven=%d final_surviving_rows_before=%d projected_final_surviving_rows_after=%d projected_eligible_rows=%d extra_GetPresetData_calls=0 observer_ms=%s',
-  totals.ordinary,totals.proven,totals.unproven,attribution.finalSurviving or 0,
-  projected,totals.eligibleRows,text(ms(ordinaryProofStart,now())))
+ log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d motion_static_proven=%d motion_static_unproven=%d member_applicability_proven=%d member_applicability_unproven=%d final_surviving_rows_before=%d projected_eligible_rows=%d projected_final_surviving_rows_after=%d extra_GetPresetData_calls=0 observer_ms=%s',
+  totals.ordinary,totals.motionProven,totals.motionUnproven,totals.memberProven,totals.memberUnproven,
+  attribution.finalSurviving or 0,totals.eligibleRows,projected,text(ms(ordinaryProofStart,now())))
  return {totals=totals,proofs=proofs,alternate=alternate}
 end)
 if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%s',text(attribution.ordinaryProof)); attribution.ordinaryProof={ok=false} end
