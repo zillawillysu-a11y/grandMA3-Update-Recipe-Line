@@ -6,7 +6,7 @@ Finish the Fast-Track show release: native-proven Track A resolver, exact Fixtur
 
 ## Current Working State
 
-Muse's uncommitted v0.7.1.0 candidate is preserved in the show-rel worktree. It adds canonical dotted Fixture keys, complete Group collection, a lightweight newest-first Recipe source walk, and Group/Recipe Pool marker wiring. It preserves the existing Global.SuccessText/Global.Selected frame0 pulse, hidden-grid rediscovery, and bounded Pool traversal. Offline workflow and candidate tests pass. Do not deploy this candidate yet.
+Muse's v0.7.1.0 candidate is preserved in the show-rel worktree. It adds canonical dotted Fixture keys, complete Group collection, a lightweight newest-first Recipe source walk, and Group/Recipe Pool marker wiring. It preserves the existing Global.SuccessText/Global.Selected frame0 pulse, hidden-grid rediscovery, and bounded Pool traversal. Offline workflow and candidate tests pass. The live candidate switch is disabled until Track A lane gates are ported. Do not deploy this candidate yet.
 
 ## Latest Real-World User Test
 

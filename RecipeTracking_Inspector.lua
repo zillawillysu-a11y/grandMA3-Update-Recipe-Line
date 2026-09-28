@@ -6,6 +6,9 @@ local componentHandle = select(4, ...)
 
 local PLUGIN_VERSION = "0.7.1.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
+-- The show resolver remains a candidate until Track A lane gates are ported.
+-- Do not publish its heuristic reference set in a live Show.
+local ENABLE_TRACK_A_SHOW_CANDIDATE = false
 -- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
 -- disables both its purple Pool frames and all automatic Cue/Recipe/cooked-data
 -- scanning, while regular current Group/Recipe reference frames keep pulsing.
@@ -1070,7 +1073,7 @@ local function render(state)
         -- keeps its existing single-choice UX semantics untouched.
         state.lastFixtures = fixtures
         state.lastFeature = info.feature
-        state.provenEnabled = true
+        state.provenEnabled = ENABLE_TRACK_A_SHOW_CANDIDATE
     end
     if state and #state.matchingCandidates > 1 then
         local overview = {
