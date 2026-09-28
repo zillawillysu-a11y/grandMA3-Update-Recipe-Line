@@ -44,4 +44,4 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8 and review NATIVE_MEMBER_ADDRESS_SAMPLE/SUMMARY plus OLD_SF_INDEX_COLLISION_SUMMARY. Also review `COOKED_HIERARCHICAL_ADDRESS_SHAPE/SAMPLE/SUMMARY`, `COOKED_OLD_CANDIDATE_RESIDUAL`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries. ToAddr-primary observer fixed (numeric Addr paths observation-only, independent per-candidate round-trip); deployed Lua SHA256 a5f864af; runner green incl. 294 integration checks.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8 and review NATIVE_MEMBER_ADDRESS_SAMPLE/SUMMARY plus OLD_SF_INDEX_COLLISION_SUMMARY. Also review `COOKED_HIERARCHICAL_ADDRESS_SHAPE/SAMPLE/SUMMARY`, `COOKED_OLD_CANDIDATE_RESIDUAL`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries. ObjectList(ToAddr()) canonical proof replaces FromAddr; member identity separated from cooked state (exists+missing==unique); deployed Lua SHA256 229f93c4; runner green incl. 294 integration checks.

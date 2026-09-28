@@ -858,7 +858,7 @@ local truthOK,truth=pcall(function()
  local nativeStart=now()
  local nativeOK,nativeResult=pcall(__nativeMemberAddressProbe,observation.problematic,observation.views,{
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
-  getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle,fromAddr=_G.FromAddr,toAddr=_G.ToAddr})
+  getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle,fromAddr=_G.FromAddr,toAddr=_G.ToAddr,objectList=_G.ObjectList})
  if nativeOK then log('NATIVE_MEMBER_ADDRESS_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(nativeStart,now())))
  else log('NATIVE_MEMBER_ADDRESS_ERROR error=%s',text(nativeResult)) end
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
