@@ -1,22 +1,22 @@
 # Project Handoff
 
 ## Current Goal
-Rev8 `8_RAW_REL_GROUND_TRUTH_CONTROL`: locate the native or serialized difference between a known blank Relative cell and a persistently authored Relative zero in grandMA3 2.5.0.3.
+Rev8.1: validate the native `ValueRelative` discriminator between a known blank Relative cell and persistently authored Relative zero in grandMA3 2.5.0.3, without resolver integration.
 
 ## Current Working State
-An independent read-only observer compares every matching PhaserRecipeValueSource in the two user-designated Presets. It logs all enumerated property differences, especially REL/value/layer/mask/active/storage evidence, without invoking the reverse engine or cooked oracle. An offline comparer can read existing XML exports, but the observer never exports or mutates show data. The independent plugin was deployed with matching source/deployed hashes; production and the Rev7 zero gate remain unchanged. Ground-truth native validation is pending.
+The independent read-only observer now compares normalized semantic property observations, excluding transient `PropertyInfo` table addresses. It repeat-reads RawValueRel and ValueRelative, checks ABS semantic equality and Step 1 blank-REL negative controls, and recognizes the controlled Step 2 empty-versus-numeric-zero pattern. Local regressions pass. No resolver, production plugin, or show data changed. Rev8.1 native validation is pending.
 
 ## Latest Real-World User Test
-Rev7 on Sequence 3841 / Cue 8: 20 ValueSources in 7 patterns; REL_AUTHORED_PROVEN=0, REL_NOT_AUTHORED_PROVEN=1, REL_AMBIGUOUS=19. Numeric RawValueRel=0 with empty ValueRelative getter, absent Layer/ValueLayer, and complete ABS-only linked Preset remained correctly ambiguous. Rev7 final refs=0; oracle refs=4. The user then copied Preset 25.9009 to 25.9013 and explicitly authored Relative=0 in the copy. After closing/reopening the editor, 25.9013 still displays 0 while untouched 25.9009 remains blank.
+Two independent Rev8 runs in the same native log observed Step 2 RawValueRel numeric 0 in both controls, but ValueRelative direct/Get/display empty strings on untouched 25.9009 and numeric 0/numeric 0/`0.00` on authored-zero 25.9013. Rev8 incorrectly returned INCONCLUSIVE because `PropertyInfo` produced new Lua table addresses and created false ABS differences.
 
 ## Verified Facts
-The two Presets have known different REL authoring histories; neither has been changed by Rev8. Installed MA3 2.5 resources document direct ValueSource `ValueRelative` editing, its `RawValueRel` mapping, and Preset export. The shared developer-reference checkout is absent from this worktree. The persistent UI difference does not identify the storage field.
+The two Presets have known different REL authoring histories and are untouched. Native Step 2 `ValueRelative` is the observed discriminator; `RawValueRel` alone is not. The Rev8.1 patch is only a validation observer and does not promote any resolver state.
 
 ## Current Problem
-The exact native or serialized field distinguishing un-authored REL from authored zero is unknown. No matching XML exports were present locally. Rev8 must be run natively on the two existing controls; an export comparison is optional if the user supplies exports.
+Rev8.1 must confirm stable repeat reads and Step 1 negative controls in a fresh native run. No matching XML exports were present locally; export comparison remains optional.
 
 ## Known Failed Attempts
-Rev7's linked ABS-only Preset, empty ValueRelative getter, absent Layer, and numeric zero did not independently distinguish authored from default REL zero. Do not infer from those signals or weaken the zero gate.
+Rev7's linked ABS-only Preset, absent Layer, and numeric RawValueRel zero did not independently distinguish authored from default REL zero. Rev8's comparator mistakenly included transient `PropertyInfo` table identities. Do not infer from RawValueRel alone or weaken the zero gate.
 
 ## Important Files
 - `docs/raw-rel-ground-truth-rev8.md`
@@ -27,9 +27,9 @@ Rev7's linked ABS-only Preset, empty ValueRelative getter, absent Layer, and num
 - `tools/run_raw_rel_ground_truth.py`
 
 ## Current Branch / Commit
-`rev6-native`, based on the Rev7 raw relative zero semantics audit; Rev8 checkpoint subject `test: add Rev8 raw REL ground truth control`. The older dirty `qwen` worktree is untouched.
+`rev6-native`, Rev8.1 diagnostic checkpoint in progress. The older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
-Run the independent Rev8 observer in the existing grandMA3 2.5.0.3 show and capture all `GROUND_TRUTH_*` and `RAW_REL_GROUND_TRUTH_RESULT` lines. Compare every matched Step/ValueSource. If XML exports are supplied, run the offline comparer. Report exact differences before changing any resolver classification.
+Run the updated independent Rev8.1 observer in grandMA3 2.5.0.3 and capture `GROUND_TRUTH_REPEAT_READ`, `GROUND_TRUTH_PROPERTY_DIFF`, and `RAW_REL_GROUND_TRUTH_RESULT`. Confirm Step 1 blank in both controls, Step 2 stable empty versus numeric zero, and no ABS difference. Do not integrate into resolver yet.
 
 GROUND-TRUTH VALIDATION PENDING

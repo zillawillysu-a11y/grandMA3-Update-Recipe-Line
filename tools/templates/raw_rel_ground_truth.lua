@@ -16,6 +16,17 @@ return function()
  local function addr(h) return shown(safe(_G.HandleToStr,h) or safe(function() return h:ToAddr() end)) end
  local function ident(h) return 'db='..shown(safe(_G.HandleToInt,h))..',path='..addr(h) end
  local function typed(v) return type(v)..':'..shown(v) end
+ local function semantic(v)
+  local kind=type(v)
+  if kind=='nil' then return 'nil:<nil>' end
+  if kind=='string' or kind=='boolean' then return kind..':'..shown(v) end
+  if kind=='number' then return kind..':'..string.format('%.17g',v) end
+  if kind=='userdata' or kind=='table' then
+   if cls(v) then return 'handle:'..ident(v) end
+   return kind..':<opaque>'
+  end
+  return kind..':<opaque>'
+ end
  local function log(fmt,...) nativePrintf('%s','[RawRelGroundTruth] '..string.format(fmt,...)) end
  local function read(h,key,role)
   if role==nil then return safe(function() return h:Get(key) end) end
@@ -30,7 +41,9 @@ return function()
    raw=roles.Raw and read(h,key,roles.Raw) or nil,
    display=roles.Display and read(h,key,roles.Display) or nil,
    stringValue=roles.String and read(h,key,roles.String) or nil}
-  p.signature=table.concat({tostring(p.enumerated),shown(p.type),shown(p.info),typed(p.raw),typed(p.direct),typed(p.get),typed(p.display),typed(p.stringValue)},'|')
+  -- PropertyInfo is a fresh Lua table on native reads. Raw/String roles are
+  -- retained for observation, but only the requested semantic fields compare.
+  p.signature=table.concat({tostring(p.enumerated),semantic(p.type),semantic(p.direct),semantic(p.get),semantic(p.display)},'|')
   return p
  end
  local function relevant(key)
@@ -106,6 +119,10 @@ return function()
   local second=metadata(h)
   local stable=true
   for key,p in pairs(properties) do if not second[key] or second[key].signature~=p.signature then stable=false end end
+  for _,key in ipairs({'rawvaluerel','valuerelative'}) do
+   local first,again=properties[key],second[key]
+   log('GROUND_TRUTH_REPEAT_READ case=%s key=%s property=%s first_direct=%s second_direct=%s first_Get=%s second_Get=%s first_display=%s second_display=%s stable=%s',caseName,item.key,key,semantic(first.direct),semantic(again.direct),semantic(first.get),semantic(again.get),semantic(first.display),semantic(again.display),tostring(first.signature==again.signature))
+  end
   local attr,attrHandle=link(h,'Attributes')
   local feature=cls(attrHandle) and safe(function() return attrHandle.Feature end)
   local fg=cls(feature) and parent(feature)
@@ -119,7 +136,7 @@ return function()
   log('GROUND_TRUTH_PROPERTY_NAMES case=%s key=%s all_count=%d focused_count=%d focused_names=%s',caseName,item.key,#allNames,#names,table.concat(names,','))
   for _,key in ipairs(names) do
    local p=properties[key]
-   log('GROUND_TRUTH_PROPERTY case=%s key=%s name=%s enumerated=%s type=%s info=%s raw=%s direct=%s get=%s display=%s string=%s',caseName,item.key,key,tostring(p.enumerated),shown(p.type),shown(p.info),typed(p.raw),typed(p.direct),typed(p.get),typed(p.display),typed(p.stringValue))
+   log('GROUND_TRUTH_PROPERTY case=%s key=%s name=%s enumerated=%s type=%s info_type=%s raw=%s direct=%s get=%s display=%s string=%s',caseName,item.key,key,tostring(p.enumerated),shown(p.type),type(p.info),semantic(p.raw),semantic(p.direct),semantic(p.get),semantic(p.display),semantic(p.stringValue))
   end
   return {properties=properties,stable=stable,attribute=attr,featureGroup=cls(fg) and ident(fg) or typed(fg),preset=preset,shape=shape}
  end
@@ -166,8 +183,8 @@ return function()
      local xs=x and x.signature or '<absent>'; local ys=y and y.signature or '<absent>'
      if xs~=ys then
       diffs[#diffs+1]=a.key..':'..key
-      log('GROUND_TRUTH_PROPERTY_DIFF key=%s property=%s A_enumerated=%s B_enumerated=%s A_type=%s B_type=%s A_info=%s B_info=%s A_raw=%s B_raw=%s A_direct=%s B_direct=%s A_Get=%s B_Get=%s A_display=%s B_display=%s A_string=%s B_string=%s stable_reads=%s',
-       a.key,key,tostring(x and x.enumerated),tostring(y and y.enumerated),shown(x and x.type),shown(y and y.type),shown(x and x.info),shown(y and y.info),typed(x and x.raw),typed(y and y.raw),typed(x and x.direct),typed(y and y.direct),typed(x and x.get),typed(y and y.get),typed(x and x.display),typed(y and y.display),typed(x and x.stringValue),typed(y and y.stringValue),tostring(left.stable and right.stable))
+      log('GROUND_TRUTH_PROPERTY_DIFF key=%s property=%s A_enumerated=%s B_enumerated=%s A_type=%s B_type=%s A_direct=%s B_direct=%s A_Get=%s B_Get=%s A_display=%s B_display=%s stable_reads=%s',
+       a.key,key,tostring(x and x.enumerated),tostring(y and y.enumerated),semantic(x and x.type),semantic(y and y.type),semantic(x and x.direct),semantic(y and y.direct),semantic(x and x.get),semantic(y and y.get),semantic(x and x.display),semantic(y and y.display),tostring(left.stable and right.stable))
       if key:find('abs',1,true) and not key:find('rel',1,true) then invalid[#invalid+1]='ABS_CONTROL_DIFFERENCE:'..a.key..':'..key end
       if relevant(key) and not (key:find('abs',1,true) and not key:find('rel',1,true)) then semanticDiffs[#semanticDiffs+1]=a.key..':'..key end
      end
@@ -176,18 +193,30 @@ return function()
   end
  end
  table.sort(diffs); table.sort(semanticDiffs); table.sort(invalid)
- local zero=false
- for _,item in ipairs(lists.B) do
-  local m=metadata(item.handle)
-  local raw=m and m.rawvaluerel
-  if raw and (raw.direct==0 or raw.get==0 or raw.raw==0) then zero=true end
+ local function stepProperty(list,stepNumber,key)
+  for _,item in ipairs(list) do
+   if index(item.step)==stepNumber then
+    local m=metadata(item.handle)
+    return m and m[key]
+   end
+  end
  end
+ local aRaw=stepProperty(lists.A,2,'rawvaluerel')
+ local bRaw=stepProperty(lists.B,2,'rawvaluerel')
+ local aRel=stepProperty(lists.A,2,'valuerelative')
+ local bRel=stepProperty(lists.B,2,'valuerelative')
+ local aFirst=stepProperty(lists.A,1,'valuerelative')
+ local bFirst=stepProperty(lists.B,1,'valuerelative')
+ local function blank(p) return p and p.direct=='' and p.get=='' and p.display=='' end
+ local function numericZero(p) return p and type(p.direct)=='number' and p.direct==0 and type(p.get)=='number' and p.get==0 end
+ local controls=blank(aFirst) and blank(bFirst) and aRaw and bRaw and numericZero(aRaw) and numericZero(bRaw)
+ if not controls then invalid[#invalid+1]='STEP1_NEGATIVE_OR_STEP2_RAW_ZERO_CONTROL_FAILED' end
+ local discriminator=blank(aRel) and numericZero(bRel) and type(bRel.display)=='string' and tonumber(bRel.display)==0
  local classification,evidence
  if #invalid>0 then classification='INCONCLUSIVE'; evidence=table.concat(invalid,',')
- elseif not zero then classification='INCONCLUSIVE'; evidence='AUTHORED_ZERO_NOT_OBSERVED_AS_NUMERIC_RAW_ZERO'
- elseif #semanticDiffs>0 then classification='DISCRIMINATOR_PROVEN'; evidence='STABLE_MATCHED_VALUESOURCE_DIFF:'..table.concat(semanticDiffs,',')
- elseif #diffs>0 then classification='INCONCLUSIVE'; evidence='ONLY_NONSEMANTIC_PROPERTIES_DIFFER:'..table.concat(diffs,',')
- else classification='INCONCLUSIVE'; evidence='NO_NATIVE_PROPERTY_DIFF;SERIALIZATION_COMPARISON_PENDING' end
+ elseif discriminator then classification='DISCRIMINATOR_PROVEN'; evidence='STEP2_RAW_REL_NUMERIC_ZERO_BOTH;A_VALUERELATIVE_EMPTY_STRING_DIRECT_GET_DISPLAY;B_VALUERELATIVE_NUMERIC_ZERO_DIRECT_GET_AND_ZERO_DISPLAY;STEP1_REL_BLANK_BOTH;REPEAT_READ_STABLE'
+ elseif aRel and bRel and aRel.signature==bRel.signature then classification='NO_DISCRIMINATOR_FOUND'; evidence='STEP2_VALUERELATIVE_SEMANTICALLY_EQUAL;STEP1_AND_RAW_ZERO_CONTROLS_PASS'
+ else classification='INCONCLUSIVE'; evidence='STEP2_VALUERELATIVE_DIFFERENCE_NOT_EXPECTED_CONTROLLED_PATTERN' end
  log('RAW_REL_GROUND_TRUTH_RESULT classification=%s matched_valuesources=%d differences=%d evidence=%s',classification,#lists.A,#diffs,evidence)
  return {classification=classification,evidence=evidence,differences=diffs,matched=#lists.A}
 end

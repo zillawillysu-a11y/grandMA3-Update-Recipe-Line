@@ -20,10 +20,13 @@ local function node(kind,id,index,parent)
  function h:PropertyCount() return #self.props end
  function h:PropertyName(i) return self.props[i+1] end
  function h:PropertyType() return 'String' end
- function h:PropertyInfo() return 'native-info' end
+ function h:PropertyInfo() return {transient='native-info'} end
  function h:Get(key,role)
   local value=self[key]
-  if role==2 or role==3 then return value==nil and '' or tostring(value) end
+  if role==2 or role==3 then
+   if key=='ValueRelative' and type(value)=='number' then return '0.00' end
+   return value==nil and '' or tostring(value)
+  end
   return value
  end
  function h:GetDependencies() return {} end
@@ -43,23 +46,29 @@ local function setup(stateA,stateB)
    sourceNode.RawValueAbs=stepNumber==1 and 100 or 0
    sourceNode.RawValueRel=0
    sourceNode.ValueAbsolute=sourceNode.RawValueAbs
-   sourceNode.ValueRelative=''
-   sourceNode.RelativeStorage=state
-   sourceNode.Name=caseName
+   sourceNode.ValueRelative=stepNumber==2 and state or ''
+   sourceNode.RelativeStorage='same'
+   sourceNode.Name='Value Source 1'
   end
   objects[caseName=='A' and 'Preset 25.9009' or 'Preset 25.9013']=preset
  end
 end
-setup('inactive','authored-zero')
+setup('',0)
 local result=run()
 assert(result.classification=='DISCRIMINATOR_PROVEN' and result.matched==2)
 local output=table.concat(logs,'\n')
-assert(output:find('property=relativestorage',1,true) and output:find('property=name',1,true))
+assert(output:find('property=valuerelative',1,true) and not output:find('ABS_CONTROL_DIFFERENCE',1,true))
+assert(output:find('GROUND_TRUTH_REPEAT_READ case=A key=recipe=1/step=2/source=1 property=valuerelative',1,true))
 assert(output:find('Step_index=2',1,true))
-setup('same','same')
+setup('','')
 result=run()
-assert(result.classification=='INCONCLUSIVE' and result.matched==2)
+assert(result.classification=='NO_DISCRIMINATOR_FOUND' and result.matched==2)
+setup('',0)
+objects['Preset 25.9013'].children[1].children[1].children[1].children[1].ValueRelative=0
+result=run()
+assert(result.classification=='INCONCLUSIVE')
+setup('',0)
 objects['Preset 25.9013'].children[1].children[1].children[2]=nil
 result=run()
 assert(result.classification=='INCONCLUSIVE')
-print('PASS Rev8 two-Preset all-Step differential, hidden-property capture, and structure gate')
+print('PASS Rev8.1 semantic comparator, repeat reads, ABS equality, zero discriminator, negative controls')
