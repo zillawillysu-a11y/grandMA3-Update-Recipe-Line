@@ -2,28 +2,28 @@
 
 ## Current Goal
 
-Validate the deployed v0.7.1.0 Track A show candidate in grandMA3 2.5.0.3: Cue 8 final references and Fixture/SubFixture/Cell plus multi-Group marker behavior.
+Validate the deployed v0.7.1.1 native bugfix candidate in grandMA3 2.5.0.3: selected Attribute's actual contributing Groups, Clear response, and Recipe/EFX Pool frames.
 
 ## Current Working State
 
-The `C:\tmp\show-rel` worktree contains the v0.7.1.0 candidate. The compact Track A runtime now keeps unsafe historical rows as member + FeatureGroup + layer barriers, runs reverse resolution, and attributes fully superseded versus final surviving/unknown unsafe rows. Only proven fully superseded rows are omitted; unresolved rows fail closed. Ordinary, Global/Universal, Selective, Phaser ABS/REL, linked metadata, and Generator gates remain in the runtime. The live Track A switch is `true`; the old Cue Phaser scanner switch remains `false`. Existing Group/member matching and Pool marker appearance are unchanged.
+The `C:\tmp\show-rel` worktree contains v0.7.1.1. Track A reverse-lane resolver gates remain intact. Group Pool markers now come only from surviving lanes in the selected Attribute's FeatureGroup, including static terminators; full-set containment alone no longer paints every overlapping Group. Complete Group candidates are cached per selection and reused on steady marker pulses. Clear resets current Groups/refs and removes frames on the next refresh. Pool button lookup supports nested buttons and native handle identity fallback. The panel shows numbered current Groups, resolver classification/ref count, frame count, and bounded missing-stage detail. `ENABLE_TRACK_A_SHOW_CANDIDATE=true`; `ENABLE_CUE_PHASER_MARKERS=false`. Existing theme pulse colors and `frame0` are unchanged.
 
 ## Latest Real-World User Test
 
-The native Track A checkpoint passed: member identity, Global ordinary, Selective, and Preset 25.9008 known ABS are proven; 9008 unknown REL is safe noncontributing. Four final references match the oracle with no missing or extra references. The current production candidate has not been tested in grandMA3.
+The user loaded v0.7.1.0 in grandMA3 2.5.0.3 and confirmed its visible title. Native UX failures: many overlapping Groups lit; Group number absent; Group marker and Clear felt slow; two Layout-selected lights did not show both active Attribute Groups; none of the expected Cue 8 Recipe/EFX Pool tiles had frames (not just 25.9009). The old Command Line History did not expose ResolverShadow. v0.7.1.1 has not yet been tested natively.
 
 ## Verified Facts
 
 - Native identity is strict ToAddr(handle) -> Fixture <numeric dotted key>, with unique ObjectList(ToAddr()) round-trip. Parent and child remain distinct.
-- The candidate's Group matcher admits every complete contained Stored Group and rejects partial Groups.
-- Offline tests passed: 86 legacy workflow assertions plus 76 enabled show candidate checks. The synthetic four-reference fixture includes superseded unsafe history and reports missing=0, extra=0, remaining semantic blockers=0. Lua parser, deterministic build, XML validation, and `git diff --check` passed.
-- Candidate tests exercise Group, Preset, Phaser, and Generator marker sources, multiple complete Groups, parent/child distinction, override, Recipe deletion cache invalidation, no cooked-history scan, and steady metadata caching.
+- The candidate still uses complete Stored Group membership to admit Recipe rows, then marks only Groups owning surviving lanes for the selected Attribute FeatureGroup. Partial Groups remain excluded; parent and child stay exact.
+- Offline tests passed: 86 legacy workflow assertions plus 97 enabled show candidate checks. Synthetic four refs remain missing=0, extra=0, blockers=0. Lua parser, deterministic build, XML validation, and diff check passed. Version mismatch was independently shown to fail the build guard.
+- Selection context changes mark Pool refs dirty in the same loop; cached Group candidate matching runs once per selected member set. Bounded context timing measures selection/programmer/tracking, Group match, resolver, Pool discovery, and tile application on native semantic recompute.
 - Existing marker colors, frame texture, Recall View hidden-grid handling, and bounded discovery were not changed.
-- v0.7.1.0 was deployed to the user-confirmed active `Update Plugin` folder. Source/deployed SHA256: Inspector `6027673DF01738C260D080ED7ADB7AD423467B09B81C42DDCACAF916FF8314EF`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `17326FA1DE0070CEA86EE5A71D7781A5C4E257D480D16690CB68A31DD88A13B0`. Backup: `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.0-20260928-232532`.
+- v0.7.1.1 was deployed to the confirmed active folder. Source/deployed SHA256: Inspector `01B806BB7920F9BF1C90998EF3E6247CE743E1006A17DB9B837AA1AFE88BBA02`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `7963F2EA3B7A44C8015E80B2D83983CDBB852577DF9E18E2B2DC740FD510A418`. The exact v0.7.1.0 files were backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.1-20260928-235939`.
 
 ## Current Problem
 
-Native validation of the production candidate is pending. Offline synthetic tests cannot prove the actual Cue 8 showfile reference set or visual marker placement. Do not claim show-ready until the user's grandMA3 test passes.
+The first missing stage for actual Cue 8 Recipe/EFX frames is still unknown. The v0.7.1.1 panel now reports resolver status/ref count and frame count; if refs are present but frames missing, it shows the first missing marker stage. Do not infer the 9009 root cause from synthetic tests. Native stage timings are pending; no reliable before/after milliseconds can be claimed yet. Do not claim show-ready.
 
 ## Known Failed Attempts
 
@@ -42,8 +42,8 @@ Muse's initial candidate only resolved the Programmer-selected Feature. This was
 
 ## Current Branch / Commit
 
-Detached `C:\tmp\show-rel` worktree based on `origin/qwen`; see Git for the new checkpoint after commit/push. Before deployment the confirmed old XML was v0.2.5.4; old Inspector SHA256 `489588FA0B32F988503D7DEB410AF52E80F4EF87F01D9236398241C227498458`, old XML SHA256 `A1C34F1AEA2052626E24732683738033104A8714035F10AA049BE04F7EEA20E1`.
+Detached `C:\tmp\show-rel` worktree based on origin/qwen; see Git for the new v0.7.1.1 checkpoint after commit/push. Before this deployment the confirmed v0.7.1.0 Inspector SHA256 was `6027673DF01738C260D080ED7ADB7AD423467B09B81C42DDCACAF916FF8314EF` and XML SHA256 was `17326FA1DE0070CEA86EE5A71D7781A5C4E257D480D16690CB68A31DD88A13B0`.
 
 ## Exact Next Action
 
-In grandMA3 2.5.0.3 load the deployed v0.7.1.0 Plugin, select the known Cue 8 test context and inspect the bounded `[RecipeTracking][ResolverShadow]` line: require `classification=PROVEN`, `final_refs=4`, and exactly Preset 25.9006/9007/9009/9010. Then select a complete child/Cell Group and multiple complete Groups: exact Group and surviving Recipe Pool tiles should pulse with the existing frame; partial or parent-only matches must not. Report the native log and marker observations before declaring the release complete.
+In grandMA3 2.5.0.3 load v0.7.1.1, select Cue 8 and the two lights/Attribute from the reported case. Read the visible `Resolver` and `frames` panel line (DETAIL shows bounded ref list), then check Group number+name and EFX Pool frames. Press Clear and verify the panel and old frames disappear on the next refresh. If any frames remain missing, report the visible `Reason` or `Missing ... @ STAGE` text; Command Line History is not required. Then test parent versus child Cell and two different current Attribute Groups. Only after native success remove temporary marker-stage logging and consider show-ready.

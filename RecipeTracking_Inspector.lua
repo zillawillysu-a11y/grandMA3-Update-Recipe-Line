@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.0"
+local PLUGIN_VERSION = "0.7.1.1"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -30,6 +30,17 @@ local function safe(fn, ...)
     if not result[1] then return nil end
     table.remove(result, 1)
     return table.unpack(result)
+end
+
+local function contextClock()
+    if type(os)=="table" and type(os.clock)=="function" then return safe(os.clock) end
+    if callable("Time") then return safe(Time) end
+    return nil
+end
+
+local function contextElapsed(started)
+    local finished=started and contextClock()
+    return type(finished)=="number" and (finished-started)*1000 or nil
 end
 
 local function property(object, name)
@@ -66,6 +77,24 @@ end
 local function label(object)
     if object == nil then return "UNRESOLVED" end
     return property(object, "Name") or property(object, "NAME") or address(object)
+end
+
+local function groupDisplayLabel(group)
+    if group == nil then return "UNRESOLVED" end
+    local raw = safe(function() return group:ToAddr() end)
+    local number = tonumber(property(group, "No") or property(group, "NO"))
+        or tonumber(type(raw) == "string" and raw:match("^Group%s+(%d+)"))
+    local name = label(group)
+    if number == nil then return tostring(raw or "Group ?") .. " " .. name end
+    return string.format("%g %s", number, name)
+end
+
+local function groupPanelLines(groups)
+    if type(groups)~="table" or #groups==0 then return nil end
+    if #groups==1 then return {"Group: "..groupDisplayLabel(groups[1])} end
+    local lines={"Groups:"}
+    for _,group in ipairs(groups) do lines[#lines+1]=groupDisplayLabel(group) end
+    return lines
 end
 
 local function class(object)
@@ -423,6 +452,15 @@ local function sameReference(left, right)
     if left == nil or right == nil then return false end
     local ok, equal = pcall(function() return left == right end)
     if ok and equal then return true end
+    if callable("CompareHandle") and safe(CompareHandle, left, right) == true then return true end
+    if callable("HandleToInt") then
+        local leftId, rightId = safe(HandleToInt, left), safe(HandleToInt, right)
+        if type(leftId) == "number" and leftId ~= 0 and leftId == rightId then return true end
+    end
+    if callable("HandleToStr") then
+        local leftId, rightId = safe(HandleToStr, left), safe(HandleToStr, right)
+        if type(leftId)=="string" and leftId~="" and leftId==rightId then return true end
+    end
     local leftCommand, rightCommand = commandAddress(left), commandAddress(right)
     if leftCommand and rightCommand and leftCommand == rightCommand then return true end
     local leftAddress, rightAddress = address(left), address(right)
@@ -898,7 +936,8 @@ end
 
 
 local function canCreateRecipe(state)
-    return state.currentNewPreset and state.currentSequence and state.currentCue
+    return not (state.provenEnabled and #(state.currentGroups or {})>1)
+        and state.currentNewPreset and state.currentSequence and state.currentCue
         and (state.currentGroup or #(state.newGroupCandidates or {}) > 0)
         and type(state.currentAssignedAttributes) == "table" and #state.currentAssignedAttributes > 0
 end
@@ -942,6 +981,7 @@ local function coloredTextLayers(text)
         table.concat(currentLines, "\n"), table.concat(presetLines, "\n")
 end
 
+local recipePoolReferences
 local function render(state)
     if state then
         state.currentGroup = nil
@@ -958,11 +998,37 @@ local function render(state)
         state.newGroupCandidates = {}
         state.matchingCandidates = {}
     end
+    local selectionStarted=contextClock()
     local fixtures = readSelection()
+    if state then state.lastSelectionReadMs=contextElapsed(selectionStarted) end
+    local programmerStarted=contextClock()
     local info = readProgrammer(fixtures)
+    if state then state.lastProgrammerMs=contextElapsed(programmerStarted) end
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
+    if state then
+        local parts={tostring(commandAddress(sequence)),tostring(cueNumber(currentCue))}
+        for _,fixture in ipairs(fixtures) do
+            parts[#parts+1]=tostring(fixture.index)
+        end
+        local contextKey=table.concat(parts,"|")
+        if state.markerContextKey~=contextKey then
+            state.markerContextKey=contextKey
+            state.poolMarkersDirty=true
+        end
+        if #fixtures==0 or not sequence or not currentCue then
+            state.currentGroups={}
+            state.markerReferences={}
+            state.provenSourceKey=nil
+            state.provenSources=nil
+            state.markerProbe=nil
+            state.markerStatus=nil
+            state.completeGroupSelectionKey=nil
+            state.completeGroupCandidates=nil
+            state.poolMarkersDirty=true
+        end
+    end
     if state then
         local context = tostring(commandAddress(sequence)) .. ":" .. tostring(cueNumber(currentCue)) .. ":" .. tostring(info.feature)
         if state.targetContext ~= context then state.targetGroup = nil; state.targetContext = context end
@@ -997,7 +1063,7 @@ local function render(state)
                 state.currentSourceIsCurrent = true
             end
             lines[#lines + 1] = "Recipe: " .. recipeLabel(recipe, "Recipe 1")
-            lines[#lines + 1] = "Group: " .. label(group)
+            lines[#lines + 1] = "Group: " .. groupDisplayLabel(group)
             lines[#lines + 1] = "Old Values: " .. presetText(values, info.feature)
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
             lines[#lines + 1] = "Confidence: DIRECT"
@@ -1009,7 +1075,9 @@ local function render(state)
         -- Cue editor while the inspector is open. Caching candidates by
         -- (sequence, Cue, feature, selection) kept deleted rows visible as
         -- the source and blocked NEW CONTENT.
+        local trackingStarted=contextClock()
         local candidates = scanTracking(sequence, currentCue, fixtures, info)
+        if state then state.lastTrackingScanMs=contextElapsed(trackingStarted) end
         if state then state.matchingCandidates = candidates end
         local chosen = #candidates == 1 and candidates[1] or nil
         if state and #candidates > 1 then
@@ -1037,7 +1105,7 @@ local function render(state)
             lines[#lines + 1] = "\nSource Cue: " .. cueLabel(item.cue)
             lines[#lines + 1] = "Part: " .. indexedLabel(item.part, "PART", "Part 0")
             lines[#lines + 1] = "Recipe: " .. recipeLabel(item.recipe, "Recipe 1", item.recipeIndex)
-            lines[#lines + 1] = "Group: " .. label(item.group)
+            lines[#lines + 1] = "Group: " .. groupDisplayLabel(item.group)
             lines[#lines + 1] = string.format("Coverage: %d selected / %d in Group", item.selectedCount, item.groupCount)
             lines[#lines + 1] = "Old Values: " .. presetText(item.values, info.feature)
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
@@ -1056,7 +1124,7 @@ local function render(state)
                 state.currentPart = findCuePart(currentCue, 0)
             end
             lines[#lines + 1] = "Source Cue: NONE"
-            lines[#lines + 1] = "Group: " .. (group and label(group) or
+            lines[#lines + 1] = "Group: " .. (group and groupDisplayLabel(group) or
                 (#groups > 1 and "Choose Group in UPDATE" or "Select a complete stored Group"))
             lines[#lines + 1] = "Old Values: No source Recipe"
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
@@ -1073,18 +1141,40 @@ local function render(state)
         state.lastFixtures = fixtures
         state.lastFeature = info.feature
         state.provenEnabled = ENABLE_TRACK_A_SHOW_CANDIDATE
+        if ENABLE_TRACK_A_SHOW_CANDIDATE and #fixtures>0 and sequence and currentCue
+            and recipePoolReferences then
+            local ok,refs=pcall(recipePoolReferences,state)
+            state.markerReferences=ok and refs or {}
+        end
+    end
+    local resolverLines={}
+    if state and ENABLE_TRACK_A_SHOW_CANDIDATE and state.provenSources then
+        local refKeys={}
+        for key in pairs(state.provenSources.refs or {}) do refKeys[#refKeys+1]=key end
+        table.sort(refKeys)
+        resolverLines[1]=string.format("Resolver: %s | %d refs%s",
+            tostring(state.provenSources.classification),#refKeys,
+            state.markerStatus and (" | "..state.markerStatus) or "")
+        if state.provenSources.classification~="PROVEN" and state.provenSources.reason then
+            resolverLines[#resolverLines+1]="Reason: "..tostring(state.provenSources.reason):sub(1,90)
+        end
+        if state.expanded and #refKeys>0 then
+            local shown={}
+            for index=1,math.min(#refKeys,8) do shown[#shown+1]=refKeys[index] end
+            resolverLines[#resolverLines+1]="Refs: "..table.concat(shown,", "):sub(1,180)
+        end
     end
     if state and #state.matchingCandidates > 1 then
         local overview = {
             string.format("%s | %d fixtures | %d matching Groups", tostring(info.feature), #fixtures, #state.matchingCandidates),
             "Current Cue: " .. cueLabel(currentCue),
-            "Target: " .. (state.currentGroup and label(state.currentGroup) or "Choose SELECT GROUP"),
+            "Target: " .. (state.currentGroup and groupDisplayLabel(state.currentGroup) or "Choose SELECT GROUP"),
             "New Preset: " .. programmerValueText(info),
             ""
         }
         for index, item in ipairs(state.matchingCandidates) do
             overview[#overview + 1] = (sameReference(item.group, state.currentGroup) and "> " or "  ") ..
-                tostring(index) .. ". " .. label(item.group) .. " | Cue " .. cueLabel(item.cue)
+                tostring(index) .. ". " .. groupDisplayLabel(item.group) .. " | Cue " .. cueLabel(item.cue)
             overview[#overview + 1] = "     Part " .. tostring(partNumber(item.part)) .. " / Recipe " ..
                 tostring(item.recipeIndex or recipeNumber(item.recipe) or "?") .. " | " .. presetText(item.values, info.feature)
         end
@@ -1118,6 +1208,12 @@ local function render(state)
             "Old Preset: " .. oldValue,
             "New Preset: " .. newValue
         } or { status or (lines[#lines] or "") }
+        local groupLines=state and groupPanelLines(state.currentGroups)
+        if groupLines then
+            details[1]=groupLines[1]
+            for index=2,#groupLines do table.insert(details,index,groupLines[index]) end
+        end
+        for _,line in ipairs(resolverLines) do details[#details+1]=line end
         if state and state.selectGroup then
             pcall(function() state.selectGroup.Enabled = state.currentGroup and "Yes" or "No" end)
         end
@@ -1144,6 +1240,7 @@ local function render(state)
         local canCreate = canCreateRecipe(state)
         pcall(function() state.update.Enabled = (not state.updating and (changed or canCreate)) and "Yes" or "No" end)
     end
+    for _,line in ipairs(resolverLines) do lines[#lines+1]=line end
     return coloredTextLayers(table.concat(lines, "\n"))
 end
 
@@ -1512,10 +1609,11 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
-    local function run(rows,members,referenceCache,uiCache)
+    local function run(rows,members,referenceCache,uiCache,targetFG)
         local normalized={}
         for _,source in ipairs(rows) do
-            local row={ref=source.ref,refId=api.identity(source.ref),members={},lanes={},superseded={}}
+            local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
+                members={},lanes={},superseded={}}
             if not row.refId then return fail("REFERENCE_IDENTITY_UNPROVEN") end
             for key,handle in pairs(members) do
                 if source.groupMembers[key] then row.members[key]=handle end
@@ -1603,7 +1701,7 @@ local function newTrackARuntime(api)
                             row.superseded[#row.superseded+1]={member=key,lane=lane,newer=barrier,unsafe=true}
                         else
                             decided[key][lane]=row
-                            assignments[#assignments+1]={member=key,lane=lane,row=row}
+                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row}
                             if data.moving then
                                 refs[row.refId]=row.ref
                                 survivors[row.refId]=survivors[row.refId] or {}
@@ -1672,14 +1770,22 @@ local function newTrackARuntime(api)
             end
             if (victims[barrier] or 0)>0 then return fail("REL_BARRIER_BLOCKS_HISTORY") end
         end
-        return {classification="PROVEN",refs=refs,refMembers=survivors,barriers=#residual,
+        local sourceGroups={}
+        if targetFG then for _,assignment in ipairs(assignments) do
+            if assignment.fg==targetFG and assignment.row.group then
+                local groupId=api.identity(assignment.row.group)
+                if groupId then sourceGroups[groupId]=assignment.row.group end
+            end
+        end end
+        return {classification="PROVEN",refs=refs,refMembers=survivors,
+            sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end
     return {run=run,metadata=metadata}
 end
 -- END GENERATED TRACK A RUNTIME
 
-local function recipePoolReferences(state)
+recipePoolReferences = function(state)
     local references = {}
     local function add(object)
         local key = commandAddress(object)
@@ -1776,7 +1882,7 @@ end
     end)
     return matches
 end
-    local function sources(sequence, currentCue, fixtures, info)
+    local function sources(sequence, currentCue, fixtures, info,completeCandidates)
     if not sequence or not currentCue then
         return { classification = "INCONCLUSIVE" }
     end
@@ -1820,8 +1926,7 @@ end
         return left.recipeIndex > right.recipeIndex
     end)
     local admitted={}
-    local groups=state.currentGroups
-    if type(groups)~="table" or #groups==0 then groups=completeGroups(fixtures) end
+    local groups=completeCandidates or completeGroups(fixtures)
     for _,group in ipairs(groups) do admitted[commandAddress(group)]=true end
     local scopedRows={}
     for _, row in ipairs(rows) do
@@ -1836,7 +1941,7 @@ end
         for key in pairs(selectedMembers) do if keys[key] then intersects = true; break end end
         if intersects then
             if not values then return { classification = "INCONCLUSIVE" } end
-            scopedRows[#scopedRows+1]={ref=values,groupMembers=keys}
+            scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
         end
         end
     end
@@ -1846,7 +1951,13 @@ end
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
         identity=commandAddress,objectList=_G.ObjectList,getPresetData=_G.GetPresetData,
         getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel})
-    local ok,result=pcall(runtime.run,scopedRows,selectedMembers,state.referenceMetadataCache,state.memberUICache)
+    local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
+    local feature=selected and safe(function() return selected.Feature end)
+    if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
+    local fg=feature and safe(function() return feature:Parent() end)
+    local targetFG=string.lower(class(fg))=="featuregroup" and commandAddress(fg) or nil
+    local ok,result=pcall(runtime.run,scopedRows,selectedMembers,
+        state.referenceMetadataCache,state.memberUICache,targetFG)
     if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
     if result.classification~="PROVEN" then return result end
     local refs={}
@@ -1856,17 +1967,25 @@ end
 end
     local function refresh(state, sequence, currentCue, fixtures, info)
     if not state then return nil end
-    local groupKeys = {}
-    for _, group in ipairs(state.currentGroups or {}) do
-        groupKeys[#groupKeys + 1] = tostring(commandAddress(group))
-    end
-    table.sort(groupKeys)
     local memberKeys = {}
     for _, fixture in ipairs(fixtures or {}) do
         local key = canonicalMemberKey(fixture)
         if key then memberKeys[#memberKeys + 1] = key end
     end
     table.sort(memberKeys)
+    local selectionKey=table.concat(memberKeys, ",")
+    state.lastGroupMatchMs=0
+    if state.completeGroupSelectionKey~=selectionKey or not state.completeGroupCandidates then
+        local groupStarted=contextClock()
+        state.completeGroupSelectionKey=selectionKey
+        state.completeGroupCandidates=completeGroups(fixtures)
+        state.lastGroupMatchMs=contextElapsed(groupStarted)
+    end
+    local groupKeys = {}
+    for _, group in ipairs(state.completeGroupCandidates) do
+        groupKeys[#groupKeys + 1] = tostring(commandAddress(group))
+    end
+    table.sort(groupKeys)
     local cacheKey = tostring(commandAddress(sequence)) .. ":" .. tostring(cueNumber(currentCue))
         .. ":" .. tostring(info and info.feature) .. ":"
         .. table.concat(groupKeys, ",") .. ":" .. table.concat(memberKeys, ",")
@@ -1874,10 +1993,9 @@ end
         .. ":" .. tostring(commandAddress(state.currentOldPreset))
         .. ":" .. tostring(#(state.matchingCandidates or {}))
     if state.provenSourceKey == cacheKey then return state.provenSources end
-    local started = type(os) == "table" and type(os.clock) == "function" and safe(os.clock) or nil
-    local result = sources(sequence, currentCue, fixtures, info)
-    local finished = started ~= nil and safe(os.clock) or nil
-    local elapsed = finished and (finished - started) * 1000 or "UNMEASURED"
+    local started = contextClock()
+    local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates)
+    local elapsed = contextElapsed(started) or "UNMEASURED"
     local oldKeys, newKeys = {}, {}
     if state.provenSources and state.provenSources.refs then
         for key in pairs(state.provenSources.refs) do oldKeys[#oldKeys + 1] = key end
@@ -1890,6 +2008,15 @@ end
     for _, key in ipairs(newKeys) do if not oldSet[key] then extra[#extra + 1] = key end end
     state.provenSourceKey = cacheKey
     state.provenSources = result
+    state.lastResolverMs=type(elapsed)=="number" and elapsed or nil
+    state.markerProbeSerial=(state.markerProbeSerial or 0)+1
+    state.markerProbe={}
+    state.markerStatus=nil
+    for key in pairs(result.refs or {}) do
+        state.markerProbe[key]={finalRef=true,sourceAdmitted=false,poolTileFound=false,
+            poolTileVisible=false,identityMatch=false,frameCreated=false}
+    end
+    state.poolMarkersDirty=true
     if callable("ErrEcho") then
         local finalList=table.concat(newKeys,",")
         if #finalList>256 then finalList=finalList:sub(1,256).."..." end
@@ -1910,14 +2037,23 @@ end
             refresh = refresh,
         }
     end
-    state.currentGroups = completeGroups(state.lastFixtures or {})
     local flagOn = state ~= nil and state.provenEnabled == true
     if flagOn then
         local provenResult = refresh(state, state.currentSequence, state.currentCue,
             state.lastFixtures, { feature = state.lastFeature })
-        for _, group in ipairs(state.currentGroups or {}) do add(group) end
+        state.currentGroups={}
         if provenResult and provenResult.classification == "PROVEN" then
+            for _,group in pairs(provenResult.sourceGroups or {}) do
+                state.currentGroups[#state.currentGroups+1]=group
+            end
+            table.sort(state.currentGroups,function(a,b)
+                return tostring(commandAddress(a))<tostring(commandAddress(b))
+            end)
+            for _,group in ipairs(state.currentGroups) do add(group) end
             for _, object in pairs(provenResult.refs) do add(object) end
+            for key,probe in pairs(state.markerProbe or {}) do
+                probe.sourceAdmitted=references[key]~=nil
+            end
             return references
         end
         -- A failed semantic proof may still mark complete Group tiles, but
@@ -2004,11 +2140,7 @@ local function memoReferenceAddress(scan, ref)
 end
 
 local function clockSeconds()
-    if type(os) == "table" and type(os.clock) == "function" then
-        local ok, value = pcall(os.clock)
-        if ok then return value end
-    end
-    return nil
+    return contextClock()
 end
 
 local function elapsedMs(started)
@@ -2403,6 +2535,13 @@ end
 
 local function refreshPoolMarkers(state)
     if state.poolBlink == false or not state.running then clearPoolMarkers(state); return end
+    if state.provenEnabled==true and (#(state.lastFixtures or {})==0
+        or not state.currentSequence or not state.currentCue) then
+        clearPoolMarkers(state)
+        state.currentGroups={}
+        state.markerReferences={}
+        return
+    end
     state.poolBlinkTicks = (state.poolBlinkTicks or 0) + 1
     -- Pulse existing frames at 4 Hz without rescanning the UI tree. Pool lookup
     -- remains at 2 Hz, so the faster animation does not double traversal cost.
@@ -2415,10 +2554,18 @@ local function refreshPoolMarkers(state)
         end)
     end
     if state.poolBlinkTicks % 2 ~= 0 and not state.poolMarkersDirty then return end
+    local markerStarted=clockSeconds()
     state.poolMarkersDirty = false
-    local references = recipePoolReferences(state)
+    local references = state.markerReferences or recipePoolReferences(state)
     local markers, found = state.poolMarkers or {}, {}
     state.poolMarkers = markers
+    local displayProbe={}
+    if state.markerProbe and state.markerProbeReported~=state.markerProbeSerial then
+        for refKey,probe in pairs(state.markerProbe) do
+            local displayKey=refKey:gsub("%s*%[%#.-%]$","")
+            displayProbe[displayKey]=probe
+        end
+    end
     local function uiChildren(object)
         local result = safe(function() return object:UIChildren() end)
         return type(result) == "table" and result or children(object)
@@ -2441,6 +2588,7 @@ local function refreshPoolMarkers(state)
         local normalized = string.lower(tostring(status))
         return status == true or normalized == "yes" or normalized == "true" or normalized == "1"
     end
+    local discoveryStarted=clockSeconds()
     local grids, needsDiscovery = {}, state.poolGridRefreshNeeded == true
     state.poolGridRefreshNeeded = false
     for _, grid in ipairs(state.poolGrids or {}) do
@@ -2471,23 +2619,44 @@ local function refreshPoolMarkers(state)
     else
         state.poolGrids = grids
     end
+    state.lastPoolDiscoveryMs=elapsedMs(discoveryStarted)
+    local tileStarted=clockSeconds()
     local function scanGrid(node)
         local pool = safe(function() return node.PoolObject end)
-        for _, button in ipairs(uiChildren(node)) do
+        local visited, budget={},2048
+        local function visit(button,depth)
+            if not button or visited[button] or budget<=0 or depth>5 then return end
+            visited[button]=true; budget=budget-1
             local index = isPoolItemButton(button)
                 and tonumber(property(button, "ObjectIndex")) or nil
             local object = index and safe(function() return pool:Ptr(index) end) or nil
             local key = commandAddress(object)
+            local displayKey=key and key:gsub("%s*%[%#.-%]$","")
+            local candidateProbe=displayKey and displayProbe[displayKey]
+            if candidateProbe then
+                candidateProbe.poolTileFound=true
+                candidateProbe.poolTileVisible=actuallyVisible(node) and actuallyVisible(button)
+            end
             local matched = key and references[key] or nil
+            local identityMethod=matched and "ADDRESS" or nil
             if not matched and object then
                 -- Generator Recipe links and Generator Pool targets can expose
                 -- different command-address text (Random vs Generator) for the
                 -- same native object. Fall back only after the O(1) key lookup.
                 for _, reference in pairs(references) do
-                    if sameReference(object, reference) then matched = reference; break end
+                    if sameReference(object, reference) then
+                        matched = reference; identityMethod="HANDLE"; break
+                    end
                 end
             end
             if matched then
+                local probe=state.markerProbe and state.markerProbe[commandAddress(matched)]
+                if probe then
+                    probe.poolTileFound=true
+                    probe.poolTileVisible=actuallyVisible(node) and actuallyVisible(button)
+                    probe.identityMatch=identityMethod~=nil
+                    probe.matchMethod=identityMethod
+                end
                 found[button] = true
                 local entry = markers[button]
                 if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end
@@ -2523,13 +2692,55 @@ local function refreshPoolMarkers(state)
                         entry.overlay.BackColor = pulseColor
                         entry.overlay.Text = ""
                     end)
+                    if probe then probe.frameCreated=true end
                 end
             end
+            if not index then
+                for _,child in ipairs(uiChildren(button)) do visit(child,depth+1) end
+            end
         end
+        for _,button in ipairs(uiChildren(node)) do visit(button,1) end
     end
     for _, grid in ipairs(grids) do scanGrid(grid) end
     for button, entry in pairs(markers) do
         if not found[button] then deleteHandle(entry.overlay); markers[button] = nil end
+    end
+    state.lastTileApplyMs=elapsedMs(tileStarted)
+    if state.markerProbe and state.markerProbeReported~=state.markerProbeSerial then
+        state.markerProbeReported=state.markerProbeSerial
+        local keys={}
+        for key in pairs(state.markerProbe) do keys[#keys+1]=key end
+        table.sort(keys)
+        local framed,firstMissing=0,nil
+        for _,key in ipairs(keys) do
+            local probe=state.markerProbe[key]
+            if probe.frameCreated then framed=framed+1
+            elseif not firstMissing then
+                local stage=not probe.sourceAdmitted and "SOURCE_ADMITTED"
+                    or not probe.poolTileFound and "POOL_TILE_FOUND"
+                    or not probe.poolTileVisible and "POOL_TILE_VISIBLE"
+                    or not probe.identityMatch and "IDENTITY_MATCH"
+                    or "FRAME_CREATED"
+                firstMissing=key:sub(1,48).." @ "..stage
+            end
+        end
+        state.markerStatus=string.format("%d/%d frames",framed,#keys)
+        if firstMissing then state.markerStatus=state.markerStatus.." | Missing "..firstMissing end
+        for index=1,math.min(#keys,16) do
+            local key=keys[index]; local probe=state.markerProbe[key]
+            if callable("ErrEcho") then safe(ErrEcho,string.format(
+                "[RecipeTracking][MarkerStage] ref=%s FINAL_REF=1 SOURCE_ADMITTED=%s POOL_TILE_FOUND=%s POOL_TILE_VISIBLE=%s IDENTITY_MATCH=%s FRAME_CREATED=%s method=%s",
+                key,tostring(probe.sourceAdmitted),tostring(probe.poolTileFound),tostring(probe.poolTileVisible),
+                tostring(probe.identityMatch),tostring(probe.frameCreated),
+                tostring(probe.matchMethod or "-"))) end
+        end
+        if callable("ErrEcho") then safe(ErrEcho,string.format(
+            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_ms=%s render_ms=%s group_ms=%s resolver_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
+            formatElapsed(state.lastSelectionReadMs),formatElapsed(state.lastProgrammerMs),
+            formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastRenderMs),
+            formatElapsed(state.lastGroupMatchMs),formatElapsed(state.lastResolverMs),
+            formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs),
+            formatElapsed(elapsedMs(markerStarted)),#grids,#keys)) end
     end
 end
 
@@ -2708,6 +2919,10 @@ local function updateRecipeTrackingValue(updateMode)
         return
     end
     local createRecipe, createCommand, groupAssignCommand = updateMode == "new", nil, nil
+    if createRecipe and state.provenEnabled and #(state.currentGroups or {})>1 then
+        notify("Recipe Update", "Multiple current Groups are active. Select one target Group before creating a Recipe.")
+        return
+    end
     if createRecipe then
         local wantedPart = partNumber(state.currentPart) or 0
         local currentPart = wantedPart ~= nil and findCuePart(state.currentCue, wantedPart) or nil
@@ -3292,6 +3507,7 @@ local function main()
         if callable("ErrEcho") then ErrEcho("[RecipeTracking] " .. tostring(err)) end
         return
     end
+    if callable("ErrEcho") then safe(ErrEcho, "[RecipeTracking] START v" .. PLUGIN_VERSION) end
 
     local previous, previousSourceHighlights, previousCurrentHighlights, previousPresetHighlights =
         nil, nil, nil, nil
@@ -3306,7 +3522,9 @@ local function main()
             state.referenceMetadataCache = nil
             state.memberUICache = nil
         end
+        local renderStarted=clockSeconds()
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
+        state.lastRenderMs=elapsedMs(renderStarted)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
                 "\n\nStatus: ERROR\n" .. tostring(text)

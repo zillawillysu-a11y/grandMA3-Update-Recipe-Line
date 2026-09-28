@@ -112,6 +112,8 @@ local attrs={
  [0]=attribute(1,fgD),[1]=attribute(2,fgD),
  [2]=attribute(3,fgP),[3]=attribute(4,fgC),[4]=attribute(5,fgB)
 }
+local selectedAttribute=attrs[0]
+_G.GetSelectedAttribute=function() return selectedAttribute end
 local uiByHandle={
  [subfixtureByIndex[101]]={0,2,3},
  [subfixtureByIndex[201]]={0,2,3},
@@ -150,6 +152,7 @@ local moving=preset("Preset 1.2",0,2,true)
 local selective=preset("Preset 1.3",0,1,false)
 local selectiveMoving=preset("Preset 1.5",0,1,true)
 local secondDimmer=preset("Preset 1.6",1,2,true)
+local cellStatic=preset("Preset 1.8",1,2,false)
 local linked=preset("Preset 1.4",0,2,false)
 local position=preset("Preset 2.1",2,2,true)
 local beam=preset("Preset 5.1",4,2,true)
@@ -180,9 +183,9 @@ local relPhaser=phaser("Preset 25.C",attrs[0],nil,nil,5,10,nil)
 local genChannel=object("RandomChannel","Generator Channel",{Attribute=attrs[3]})
 local generator=object("Generator","Generator 1",
  {RandomChannels=object("RandomChannels","Generator Channels",{}, {genChannel})})
-local gOne=object("Group","Group 6",{Selection={{sf_index=101}}})
-local gCell=object("Group","Group 7",{Selection={{sf_index=203}}})
-local gBoth=object("Group","Group 8",{Selection={{sf_index=101},{sf_index=203}}})
+local gOne=object("Group","Group 6",{Name="Key",Selection={{sf_index=101}}})
+local gCell=object("Group","Group 7",{Name="Cell",Selection={{sf_index=203}}})
+local gBoth=object("Group","Group 8",{Name="Overlapping",Selection={{sf_index=101},{sf_index=203}}})
 groupPool.Children=function() return {mixedGroup,parentGroup,cellGroup,gOne,gCell,gBoth} end
 local function recipe(group,ref,index)
  return object("StandardRecipe","Recipe "..index,{Index=index,Selection=group,Values=ref,Enabled="Yes"})
@@ -362,7 +365,8 @@ check(partialGroup.classification=="PROVEN" and partialGroup.refs["Preset 1.2"]=
  and partialGroup.refs["Preset 5.1"]==nil,"partial Stored Group must be excluded")
 local finalResult,finalSeq,finalCue=result({
  recipe(gOne,unsafe,1),recipe(gOne,static,2),recipe(gOne,moving,3),
- recipe(gOne,position,4),recipe(gOne,generator,5),recipe(gCell,beam,6)
+ recipe(gOne,position,4),recipe(gOne,generator,5),recipe(gCell,beam,6),
+ recipe(gCell,cellStatic,7)
 },fBoth)
 local expected={["Preset 1.2"]=true,["Preset 2.1"]=true,
  ["Generator 1"]=true,["Preset 5.1"]=true}
@@ -373,22 +377,55 @@ check(finalResult.classification=="PROVEN" and final==4 and missing==0 and extra
  "synthetic Cue-8-equivalent with unsafe history must have final_refs=4 missing=0 extra=0")
 check(#attr(finalResult).fullySuperseded==1 and finalResult.remainingSemanticBlockers==0,
  "synthetic four-reference result must exclude fully superseded unsafe history")
+check(finalResult.sourceGroups["Group 6"]==gOne and finalResult.sourceGroups["Group 7"]==gCell
+ and finalResult.sourceGroups["Group 8"]==nil,
+ "only contributing Group lanes for the selected Attribute become current Groups")
 local cached=state(finalSeq,finalCue,fBoth)
+_G.SelectionFirst=function() return 101,0,0,0 end
+_G.SelectionNext=function(index)
+ if index==101 then return 203,1,0,0 end
+ return nil
+end
+_G.SelectedSequence=function() return finalSeq end
+_G.GetCurrentCue=function() return finalCue end
+local panelText=functions.render(cached)
+check(panelText:find("Groups:\n6 Key\n7 Cell",1,true)~=nil
+ and panelText:find("Resolver: PROVEN | 4 refs",1,true)~=nil,
+ "panel must show both numbered current Groups and visible resolver status")
 local first=functions.recipePoolReferences(cached)
 local reads=referenceReads.count
 functions.recipePoolReferences(cached)
 check(referenceReads.count==reads and referenceReads.part==0,
  "steady marker pulse must reuse reference metadata and never read cooked Cue history")
+local stable=state(finalSeq,finalCue,fBoth)
+local beforeChildren=groupPool.Children
+local groupScans=0
+groupPool.Children=function(...)
+ groupScans=groupScans+1
+ return beforeChildren(...)
+end
+functions.recipePoolReferences(stable)
+functions.recipePoolReferences(stable)
+check(groupScans==1,"unchanged marker context must reuse complete Group matching")
+groupPool.Children=beforeChildren
 local unknownSeq,unknownCue=tree({recipe(gOne,unknown,1)})
 local failedState=state(unknownSeq,unknownCue,fOne)
 failedState.currentGroup=parentGroup
 local groupOnly=functions.recipePoolReferences(failedState)
-check(groupOnly["Group 6"]==gOne and groupOnly["Group 4"]==nil
+check(groupOnly["Group 6"]==nil and groupOnly["Group 4"]==nil
  and groupOnly["Preset X"]==nil,
- "failed resolver may publish complete Groups but not stale Group or guessed Recipe refs")
+ "failed resolver must not publish stale Group or guessed Recipe refs")
 check(first["Group 6"]==gOne and first["Group 7"]==gCell
  and first["Preset 1.2"]==moving and first["Generator 1"]==generator,
  "Group and surviving Recipe Pool marker sources must be present")
+check(first["Group 8"]==nil and #cached.currentGroups==2
+ and functions.groupDisplayLabel(gOne)=="6 Key"
+ and functions.groupDisplayLabel(gCell)=="7 Cell",
+ "overlapping noncontributing Group stays dark and current Groups retain number plus name")
+local groupLines=functions.groupPanelLines(cached.currentGroups)
+check(groupLines[1]=="Groups:" and groupLines[2]=="6 Key" and groupLines[3]=="7 Cell"
+ and functions.groupPanelLines({gOne})[1]=="Group: 6 Key",
+ "single and multiple current Groups must render number plus name")
 local editRecipe=recipe(gOne,moving,1)
 local editSeq,editCue=tree({editRecipe})
 local editState=state(editSeq,editCue,fOne)
@@ -409,4 +446,49 @@ local unrelated=object("Preset","Preset Unknown")
 local unrelatedResult=result({recipe(gOne,unrelated,1),recipe(gCell,beam,2)},fBoth)
 check(unrelatedResult.classification=="INCONCLUSIVE",
  "unresolved reference semantics anywhere in admitted scope must fail closed")
+local expected9009=preset("Preset 25.9009",0,2,true)
+local markerSeq,markerCue=tree({recipe(gOne,expected9009,1)})
+local markerState=state(markerSeq,markerCue,fOne)
+markerState.running=true; markerState.poolBlink=true
+markerState.markerReferences=functions.recipePoolReferences(markerState)
+check(markerState.poolMarkersDirty==true,
+ "semantic recompute must request a marker refresh in the same loop")
+check(markerState.markerReferences["Preset 25.9009"]==expected9009,
+ "9009-style final ref must reach marker source")
+check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
+ "final 9009-style ref must survive recipePoolReferences admission")
+local tileAlias=object("Preset","Preset 25.9009")
+local button=object("PoolButton","Preset tile",{ObjectIndex=1,W=80,H=80,
+ Anchors={left=0,right=0,top=0,bottom=0}})
+local nested=object("UIObject","Nested tile holder",{}, {button})
+local pool=object("PoolLayoutGrid","Preset pool",{
+ PoolObject={Ptr=function(_,i) if i==1 then return tileAlias end end},
+ IsActuallyVisible=function() return true end
+}, {nested})
+local overlay
+pool.Append=function()
+ overlay={CommandDelete=function(self) self.deleted=true end}
+ return overlay
+end
+local display=object("Display","Display 1",{}, {pool})
+_G.GetDisplayByIndex=function(index) return index==1 and display or nil end
+functions.refreshPoolMarkers(markerState)
+check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
+ and overlay.Visible=="Yes" and overlay.HasHover=="No",
+ "nested Preset Pool tile must receive the existing visible frame0 marker")
+check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
+ "9009 marker pipeline must reach FRAME_CREATED")
+check(markerState.markerStatus=="1/1 frames",
+ "normal UI status must show framed reference count without Command Line History")
+markerState.currentGroup=gOne
+markerState.currentGroups={gOne}
+markerState.currentRecipe=recipe(gOne,expected9009,2)
+_G.SelectionFirst=function() return nil end
+_G.SelectionNext=function() return nil end
+functions.render(markerState)
+functions.refreshPoolMarkers(markerState)
+check(overlay.deleted and next(markerState.poolMarkers)==nil
+ and #markerState.currentGroups==0 and markerState.currentGroup==nil
+ and markerState.currentRecipe==nil and next(markerState.markerReferences)==nil,
+ "Clear must remove Group, Recipe context and frames on the next refresh")
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

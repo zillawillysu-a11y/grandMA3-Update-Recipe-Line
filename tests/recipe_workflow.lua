@@ -530,7 +530,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.1.0"}
+local sameInstance = {running = true, version = "0.7.1.1"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {

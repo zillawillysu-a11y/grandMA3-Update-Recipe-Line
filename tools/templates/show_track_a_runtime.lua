@@ -346,10 +346,11 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
-    local function run(rows,members,referenceCache,uiCache)
+    local function run(rows,members,referenceCache,uiCache,targetFG)
         local normalized={}
         for _,source in ipairs(rows) do
-            local row={ref=source.ref,refId=api.identity(source.ref),members={},lanes={},superseded={}}
+            local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
+                members={},lanes={},superseded={}}
             if not row.refId then return fail("REFERENCE_IDENTITY_UNPROVEN") end
             for key,handle in pairs(members) do
                 if source.groupMembers[key] then row.members[key]=handle end
@@ -437,7 +438,7 @@ local function newTrackARuntime(api)
                             row.superseded[#row.superseded+1]={member=key,lane=lane,newer=barrier,unsafe=true}
                         else
                             decided[key][lane]=row
-                            assignments[#assignments+1]={member=key,lane=lane,row=row}
+                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row}
                             if data.moving then
                                 refs[row.refId]=row.ref
                                 survivors[row.refId]=survivors[row.refId] or {}
@@ -506,7 +507,15 @@ local function newTrackARuntime(api)
             end
             if (victims[barrier] or 0)>0 then return fail("REL_BARRIER_BLOCKS_HISTORY") end
         end
-        return {classification="PROVEN",refs=refs,refMembers=survivors,barriers=#residual,
+        local sourceGroups={}
+        if targetFG then for _,assignment in ipairs(assignments) do
+            if assignment.fg==targetFG and assignment.row.group then
+                local groupId=api.identity(assignment.row.group)
+                if groupId then sourceGroups[groupId]=assignment.row.group end
+            end
+        end end
+        return {classification="PROVEN",refs=refs,refMembers=survivors,
+            sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end
     return {run=run,metadata=metadata}
