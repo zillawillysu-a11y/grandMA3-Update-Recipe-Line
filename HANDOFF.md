@@ -2,27 +2,26 @@
 
 ## Current Goal
 
-Fix native Group and Recipe Pool markers plus selection response in grandMA3 2.5.0.3 without weakening Track A reference gates.
+Fix native Group and Recipe Pool markers in grandMA3 2.5.0.3 without weakening Track A proof.
 
 ## Current Working State
 
-`C:\tmp\show-rel` is authoritative. v0.7.1.4 keeps Track A fail closed, canonical Fixture/SubFixture/Cell identity, original `frame0` theme marker appearance, and Cue Phaser scanner disabled. On selection change the panel and known displayed Recipe Group are painted first; expensive reference resolution runs on the next normal tick with old refs cleared. Ordinary header failures now identify the exact rejected native field or mask. Source/deployed hashes and backup are available from the deployment record and Git. Offline release checks passed.
+Production Plugin was rolled back to v0.7.1.4 after v0.7.1.5 crashed when selecting a fixture. The v0.7.1.5 coroutine resolver commit is reverted on qwen. Current source is v0.7.1.4. Keep Track A fail closed, canonical Fixture/SubFixture/Cell identity, current marker style, and Cue Phaser scanner disabled.
 
 ## Latest Real-World User Test
 
-v0.7.1.3 native screenshot: Group 231 lights, but after a noticeable delay. Panel shows 3 selected fixtures, `UNSAFE_LANE_ATTRIBUTION_BLOCKER`, ordinary Presets 1.1 and 25.9010 rejected at `ORDINARY_CHANNEL_HEADER_UNPROVEN`. Measured native timing: selection 0.0 ms, tracking about 67 ms, group 0.0 ms, resolver about 612 ms, Pool 0.0 ms. User says no further native steps needed for that screenshot.
+v0.7.1.5 crashed immediately when the user selected a fixture. Production files were restored from the exact pre-v0.7.1.5 backup. Earlier v0.7.1.4 showed Group 231 immediately, but `SELECT GROUP` and pulse paused about 600 ms during resolver work. Parser failures included `PRESET_MODE_NATIVE_MISMATCH` and ordinary channel shape blockers. No v0.7.1.5 native behavior is accepted.
 
 ## Verified Facts
 
-- One Group tile can be framed independently of unresolved Recipe Values. Preset/EFX frames remain absent because resolver returns INCONCLUSIVE.
-- The first panel update was delayed by synchronous Track A metadata resolution inside `render()`. v0.7.1.4 defers only that resolution one tick, clears stale refs on the context-change tick, and frames the displayed Group immediately. Native response time is not yet measured after this patch.
-- All ordinary header checks still fail closed; v0.7.1.4 replaces a broad stage code with specific field-level reasons. No native rule was relaxed.
-- Two-Group source attribution remains unresolved; old `scanTracking()` is single-source and name/subset heuristics cannot safely prove both current Groups.
-- Offline: 86 workflow assertions and 105 show candidate checks pass, synthetic four refs exact; Lua/XML parse, deterministic build, and diff check pass.
+- Deployed rollback versions/hashes: Inspector v0.7.1.4 SHA256 `CE52E326C57EC3B2118F45DF23BC026D917A7BA256D65ADBB051B66DB61A996E`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `DEC1473D7AA113DC50E7BE196866DDBB22451FBCB9E555B7DDC5B14844EC9D40`.
+- Backup used: `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.5-20260929-004341`.
+- Most likely crash trigger is coroutine yielding while native API reads execute; not independently confirmed. Do not use coroutine-based resolver yielding again.
+- v0.7.1.4 still has the synchronous ~612 ms resolver delay, ordinary metadata blockers, missing Recipe refs, and unresolved multi-Group UI.
 
 ## Current Problem
 
-Native ordinary header rejection detail is needed to correct the production parser. The two-Group UI and actual Preset/EFX frames still require semantic proof. Do not claim show-ready.
+Need redesign incremental resolver without yielding across native API boundaries, or otherwise keep resolution synchronous and avoid the crash. Determine exact PresetMode/ordinary blockers from native evidence before changing safety gates.
 
 ## Important Files
 
@@ -33,8 +32,8 @@ Native ordinary header rejection detail is needed to correct the production pars
 
 ## Current Branch / Commit
 
-Detached `C:\tmp\show-rel` worktree on origin/qwen; inspect Git status and log.
+Detached `C:\tmp\show-rel` worktree at rollback commit; see Git status/log.
 
 ## Exact Next Action
 
-Load v0.7.1.4 in grandMA3. Select the same three fixtures in Cue 8 once; check whether Group 231 appears before the resolver settles and capture one panel screenshot showing the new detailed `Blocked refs:` reason. Use that exact native field result to correct metadata parsing; do not guess. Then address the two-Group display and remaining delay with measured evidence.
+First confirm the user restarted/reloaded the plugin and v0.7.1.4 no longer crashes. Then implement any resolver work as explicit per-reference steps across normal refresh ticks, with no coroutine yield inside or around native API calls.
