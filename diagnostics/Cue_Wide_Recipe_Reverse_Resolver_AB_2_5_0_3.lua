@@ -3731,6 +3731,9 @@ function __phaser9008SplitProbe(ctx,api)
   for rid in pairs(splitFinal) do if not (ctx.oracle or {})[rid] then extra=extra+1 end end
  end
  local attOK,att=pcall(api.attributor,altRows,splitResult,splitFinal)
+ if not attOK then
+  emit('PHASER_9008_SPLIT_ATTRIBUTION_ERROR error=%s diagnostic_only=true',txt(att))
+ end
  local splitSurviving=-1
  if attOK and type(att)=='table' and type(att.rows)=='table' then
   splitSurviving=0
@@ -3777,9 +3780,22 @@ function __phaser9008SplitProbe(ctx,api)
  elseif ctx.oracleOK and missing==0 and extra==0 and finalUnres==0 and superseded==relLaneCount then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_SUPERSEDED'
  elseif ctx.oracleOK and missing==0 and extra==0 and blockedLanes==0 and #blockedList==0 then classification='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING'
  else classification='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED' end
- -- Source Part cooked cross-check only (never drives promotion).
+ -- Source Part cooked cross-check only (never drives promotion). Scope is the
+ -- attribution-derived FINAL_SURVIVING_UNSAFE source row(s) for the target
+ -- reference only; historical superseded occurrences must not multiply members.
  local cooked={members=0,applicable=0,absExp=0,absDiff=0,absMiss=0,relExp=0,relOther=0,relAbsent=0,noBucket=0}
- for _,row in ipairs(targetRows) do
+ local sourceRows={}
+ do
+  local seenRows={} -- deduplicate repeated row tables
+  for _,rec in ipairs(ctx.attributionRows or {}) do
+   local rk=rec.ref and safe(api.identity,rec.ref)
+   if rec.category=='FINAL_SURVIVING_UNSAFE' and rk==tkey and type(rec.row)=='table' and not seenRows[rec.row] then
+    seenRows[rec.row]=true
+    sourceRows[#sourceRows+1]=rec.row
+   end
+  end
+ end
+ for _,row in ipairs(sourceRows) do
   local partKey=safe(api.identity,row.part) or row.part
   local view=ctx.views and ctx.views[partKey]
   local buckets=view and view.buckets
@@ -4799,6 +4815,7 @@ local truthOK,truth=pcall(function()
  if selOK then log('SELECTIVE_MEMBER_MAPPING_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(selStart,now())))
  else log('SELECTIVE_MEMBER_MAPPING_ERROR error=%s',text(selResult)) end
  local splitStart=now()
+ local silent=function() end
  local silentAttributor=function(arows,aresult,afinal) return proof.attributeUnsafe({rows=arows,result=aresult,final=afinal,infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,log=silent,detail=silent,now=now,ms=ms,reverseMs=0,totalMs=0}) end
  local splitOK,splitResult=pcall(__phaser9008SplitProbe,{rev7Rows=rev6Result.rev7.rows,rawRows=rows,attributionRows=attribution.rows,globalPaths=selPaths,selectiveRefs=selOK and selResult.refs or nil,bridgeInfo=rev6ByIdentity,ordinaryProofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,views=observation.views,oracle=oracle,oracleOK=oracleOK},{
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,text=text,

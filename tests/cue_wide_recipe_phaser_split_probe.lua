@@ -239,6 +239,25 @@ bridgeInfo['DBI:'..linkedB.id]={source='ORDINARY_GETPRESETDATA',completeness='PA
 r=run({r9008row},{att9008},cooked(olderA,r9008))
 assert(has('classification=ABS_STRUCTURE_PROVEN'))
 assert(has('abs_different=2') and has('rel_9008=2'))
+-- 8+9. three historical rows but one final-surviving source row: no triple count
+local hist2=mkrow(r9008,11,{[11]=true,[12]=true})
+local hist3=mkrow(r9008,12,{[11]=true,[12]=true})
+r=run({r9008row,hist2,hist3},{att9008},cooked(r9008,false))
+assert(has('9008_SOURCE_COOKED_SUMMARY') and has('members=2'))
+-- 10. split still transforms every occurrence of the reference
+local absN,relN,origN=0,0,0
+for _,row in ipairs(captured) do
+ if row.evidence=='PHASER_9008_KNOWN_ABS_SPLIT' then absN=absN+1 end
+ if row.evidence=='PHASER_9008_RESIDUAL_REL_BARRIER' then relN=relN+1 end
+ if row==r9008row or row==hist2 or row==hist3 then origN=origN+1 end
+end
+assert(absN==3 and relN==3 and origN==0)
+-- 3. attribution failure emits explicit error
+local saveAtt=api.attributor
+api.attributor=function() error('boom') end
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(has('PHASER_9008_SPLIT_ATTRIBUTION_ERROR'))
+api.attributor=saveAtt
 -- 14. zero new GetPresetData
 assert(calls.presetData==0)
 assert(has('diagnostic_only=true'))

@@ -877,6 +877,7 @@ local truthOK,truth=pcall(function()
  if selOK then log('SELECTIVE_MEMBER_MAPPING_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(selStart,now())))
  else log('SELECTIVE_MEMBER_MAPPING_ERROR error=%s',text(selResult)) end
  local splitStart=now()
+ local silent=function() end
  local silentAttributor=function(arows,aresult,afinal) return proof.attributeUnsafe({rows=arows,result=aresult,final=afinal,infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,log=silent,detail=silent,now=now,ms=ms,reverseMs=0,totalMs=0}) end
  local splitOK,splitResult=pcall(__phaser9008SplitProbe,{rev7Rows=rev6Result.rev7.rows,rawRows=rows,attributionRows=attribution.rows,globalPaths=selPaths,selectiveRefs=selOK and selResult.refs or nil,bridgeInfo=rev6ByIdentity,ordinaryProofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,views=observation.views,oracle=oracle,oracleOK=oracleOK},{
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,text=text,
