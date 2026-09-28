@@ -1,35 +1,33 @@
 # Project Handoff
 
 ## Current Goal
-Rev8.1: validate the native `ValueRelative` discriminator between a known blank Relative cell and persistently authored Relative zero in grandMA3 2.5.0.3, without resolver integration.
+Prove native linked-Preset Universal/Global versus Selective applicability using the user-prepared grandMA3 2.5.0.3 controls, without resolver integration.
 
 ## Current Working State
-The independent read-only observer now compares normalized semantic property observations, excluding transient `PropertyInfo` table addresses. It repeat-reads RawValueRel and ValueRelative, checks ABS semantic equality and Step 1 blank-REL negative controls, and recognizes the controlled Step 2 empty-versus-numeric-zero pattern. Local regressions pass. No resolver, production plugin, or show data changed. Rev8.1 native validation is pending.
+An independent read-only observer inspects Preset 25.9014's two linked ValueSources and four designated linked Presets. It records native Preset properties, `GetPresetData` UI-channel and by-fixtures views, mode/flag/mask/attribute/member fields, and bounded step data. No Cue/Part scan, marker, wait, production or resolver change. Native validation is pending.
 
 ## Latest Real-World User Test
-Two independent Rev8 runs in the same native log observed Step 2 RawValueRel numeric 0 in both controls, but ValueRelative direct/Get/display empty strings on untouched 25.9009 and numeric 0/numeric 0/`0.00` on authored-zero 25.9013. Rev8 incorrectly returned INCONCLUSIVE because `PropertyInfo` produced new Lua table addresses and created false ABS differences.
+Rev8.1 established stable `ValueRelative` empty versus numeric zero on controlled PhaserRecipeValueSources. The new control Preset 25.9014 links Universal/Global Dimmer.100 in Step 1 and Selective Dimmer.23 in Step 2; XML reports stored selective members 130–147. Linked Presets 1.28 and 1.14 are XML-verified Universal controls for remaining Cue 8 cases.
 
 ## Verified Facts
-The two Presets have known different REL authoring histories and are untouched. Native Step 2 `ValueRelative` is the observed discriminator; `RawValueRel` alone is not. The Rev8.1 patch is only a validation observer and does not promote any resolver state.
+XML authoring ground truth is user-supplied. No native applicability discriminator or typed member reconstruction has yet been proven. IDs are selectors, never classifier inputs.
 
 ## Current Problem
-Rev8.1 must confirm stable repeat reads and Step 1 negative controls in a fresh native run. No matching XML exports were present locally; export comparison remains optional.
+Determine which native mode/flag fields correlate with XML and whether the by-fixtures/native view reconstructs selective members while preserving fixture/subfixture/cell identity.
 
 ## Known Failed Attempts
-Rev7's linked ABS-only Preset, absent Layer, and numeric RawValueRel zero did not independently distinguish authored from default REL zero. Rev8's comparator mistakenly included transient `PropertyInfo` table identities. Do not infer from RawValueRel alone or weaken the zero gate.
+Rev6/Rev7 treated linked selective/member applicability as unsafe. ABS-only linked metadata or Preset names must not determine applicability.
 
 ## Important Files
-- `docs/raw-rel-ground-truth-rev8.md`
-- `tools/templates/raw_rel_ground_truth.lua`
-- `diagnostics/raw_rel_ground_truth_control_2_5_0_3.xml`
-- `tools/compare_raw_rel_ground_truth_exports.py`
-- `tests/raw_rel_ground_truth.lua`
-- `tools/run_raw_rel_ground_truth.py`
+- `tools/templates/linked_preset_applicability.lua`
+- `diagnostics/linked_preset_applicability_2_5_0_3.xml`
+- `tools/run_linked_preset_applicability.py`
+- `tests/linked_preset_applicability.lua`
 
 ## Current Branch / Commit
-`rev6-native`, Rev8.1 diagnostic checkpoint in progress. The older dirty `qwen` worktree is untouched.
+`rev6-native`, independent applicability checkpoint. Superseded uncommitted Rev9 raw-REL integration is preserved in a local stash; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
-Run the updated independent Rev8.1 observer in grandMA3 2.5.0.3 and capture `GROUND_TRUTH_REPEAT_READ`, `GROUND_TRUTH_PROPERTY_DIFF`, and `RAW_REL_GROUND_TRUTH_RESULT`. Confirm Step 1 blank in both controls, Step 2 stable empty versus numeric zero, and no ABS difference. Do not integrate into resolver yet.
+Run the independent Linked Preset Applicability Control plugin in grandMA3 2.5.0.3; capture all `[LinkedApplicability]` lines. Compare cases A/B/C/D against XML, especially `PRESET_MEMBER_VIEW`, and do not integrate into the resolver before review.
 
-GROUND-TRUTH VALIDATION PENDING
+REAL-WORLD VALIDATION PENDING

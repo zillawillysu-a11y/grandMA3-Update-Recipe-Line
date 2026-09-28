@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GMA3 DataVersion="0.8.84.0">
+ <UserPlugin Name="Linked Preset Applicability Control 2.5.0.3" Path="/Linked Preset Applicability Control 2.5.0.3">
+  <ComponentLua Name="linked_preset_applicability_control" FileName="Linked_Preset_Applicability_Control_2_5_0_3.lua" />
+ </UserPlugin>
+</GMA3>
