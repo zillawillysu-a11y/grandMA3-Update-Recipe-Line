@@ -3310,10 +3310,13 @@ end
 
 -- Diagnostic only: Selective Preset member applicability through native
 -- UI-channel ownership intersection. Observer only, never resolver rules.
--- Member UI indexes come from GetUIChannels(h,true) with the proven INDEX-1
--- contract; reference UI records reuse the cached Selective raw data.
+-- Surviving keys are attribution/barrier shape only: only the numeric member
+-- part before "\0" is used (native wildcard barriers arrive as "sf\0*").
+-- Semantic scope (FeatureGroup+ABS) is derived exclusively from the cached
+-- Selective referenceRaw ABS records. One wildcard member may expand into
+-- multiple observer-only (member, FeatureGroup, ABS) lanes.
 -- No new GetPresetData calls. No selection/Cmd. Fully-superseded rows are
--- never active targets.
+-- never active targets. Rev7/attribution/barrier formats are untouched.
 function __selectiveMemberApplicabilityProbe(ctx,api)
  local function safe(f,...) local ok,v=pcall(f,...); if ok then return v end end
  local function emit(fmt,...) api.log(string.format(fmt,...)) end
@@ -3370,31 +3373,37 @@ function __selectiveMemberApplicabilityProbe(ctx,api)
   result.complete=true
   uiCache[id]=result; return result,false
  end
- -- Reference stored UI sets per exact FG+ABS from cached raw records.
- local function refStored(raw)
-  local stored,byFG,bad={},{},{}
-  if type(raw)~='table' then return stored,byFG,bad end
+ -- Authoritative observer-side Selective scope from cached referenceRaw.
+ local function refScope(raw)
+  local storedByFG,valid,invalid,fgIds={},{},{},{}
+  if type(raw)~='table' then return storedByFG,valid,invalid,fgIds end
   for key,p in pairs(raw) do if type(key)=='number' and type(p)=='table' then
    local step=p[1]
    if type(step)=='table' and step.absolute~=nil then
-    if p.ui_channel_index~=nil and p.ui_channel_index~=key then bad[key]={reason='UI_CHANNEL_INDEX_MISMATCH',declared=p.ui_channel_index}
+    valid[#valid+1]=key
+    local badReason=nil
+    if p.ui_channel_index~=nil and p.ui_channel_index~=key then badReason='UI_CHANNEL_INDEX_MISMATCH'
     else
      local a=p.attribute or (api.attributeByUI and safe(api.attributeByUI,key))
      local fg=a and attrFG(a)
-     if not a or not isAttr(a) or not fg then bad[key]={reason='ATTRIBUTE_FG_UNPROVEN'}
-     else
-      local aid=safe(api.identity,a) or a
-      stored[key]={attr=a,attrId=aid,attrName=name(a),fg=fg}
-      byFG[fg]=byFG[fg] or {}
-      byFG[fg][key]={attr=a,attrId=aid,attrName=name(a)}
-     end
+     if not a or not isAttr(a) or not fg then badReason='ATTRIBUTE_FG_UNPROVEN' end
+    end
+    if badReason then invalid[#invalid+1]={key=key,reason=badReason}
+    else
+     local a=p.attribute or safe(api.attributeByUI,key)
+     local fg=attrFG(a); local aid=safe(api.identity,a) or a
+     storedByFG[fg]=storedByFG[fg] or {}
+     storedByFG[fg][key]={attr=a,attrId=aid,attrName=name(a)}
+     fgIds[fg]=true
     end
    end
   end end
-  return stored,byFG,bad
+  table.sort(valid)
+  return storedByFG,valid,invalid,fgIds
  end
  local function isSelectiveProof(p)
   if type(p)~='table' or p.motionStaticProven~=true then return false end
+  if type(p.layers)~='table' or p.layers.ABS~=true then return false end
   if type(p.selective)~='table' then return false end
   for k in pairs(p.selective) do
    if type(k)=='string' and k:match('^field=true') then return true end
@@ -3415,8 +3424,13 @@ function __selectiveMemberApplicabilityProbe(ctx,api)
    if not R then R={rows=0,lanes=0,stored=0,notStored=0,unproven=0,expectedLink=0,different=0}; refs[label]=R end
    R.rows=R.rows+1
    local raw=ctx.referenceRaw and ctx.referenceRaw[key]
-   local stored,storedByFG,bad=refStored(raw)
-   -- Owner map within this row's candidate members for collision detection.
+   local storedByFG,validAbs,invalidAbs,fgIds=refScope(raw)
+   local fgList={}; for fg in pairs(fgIds) do fgList[#fgList+1]=fg end; table.sort(fgList)
+   local scopeOK=#validAbs>0 and #invalidAbs==0
+   emit('SELECTIVE_SCOPE_REFERENCE reference=%s valid_abs_records=%d invalid_abs_records=%d feature_groups=%d feature_group_ids=%s classification=%s',
+    label,#validAbs,#invalidAbs,#fgList,table.concat(fgList,','):sub(1,120),
+    scopeOK and 'SELECTIVE_SCOPE_PROVEN' or (#validAbs==0 and 'SELECTIVE_SCOPE_EMPTY' or 'SELECTIVE_SCOPE_INCOMPLETE'))
+   -- Surviving member identities only; suffix is barrier shape.
    local members={}
    for _,skey in ipairs(rec.surviving or {}) do
     local split=type(skey)=='string' and skey:find('\0',1,true)
@@ -3436,97 +3450,89 @@ function __selectiveMemberApplicabilityProbe(ctx,api)
      owner[ui][#owner[ui]+1]=sf
     end end
    end
-   -- Bounded raw-vs-member index samples.
-   local rawKeys={}; for k in pairs(stored) do rawKeys[#rawKeys+1]=k end; table.sort(rawKeys)
+   local rawKeys={}; for _,fg in ipairs(fgList) do for k in pairs(storedByFG[fg]) do rawKeys[#rawKeys+1]=k end end; table.sort(rawKeys)
    for _,k in ipairs(rawKeys) do
     if sampleUI>=16 then break end
     sampleUI=sampleUI+1
-    local e=stored[k]; local owners=owner[k] or {}
+    local owners=owner[k] or {}
     local oSf=#owners==1 and owners[1] or nil
     local oH=oSf and members[oSf]
+    local e=oSf and memberEnum[oSf].byUI[k] or nil
     emit('SELECTIVE_UI_INDEX_SAMPLE reference=%s member=%s fixture_key=%s raw_ui_index=%s member_ui_index=%s attribute=%s attribute_identity=%s feature_group=%s layer=ABS classification=%s',
      label,txt(oSf),txt(oH and toaddrKey(safe(function() return oH:ToAddr() end))),tostring(k),
-     oSf and tostring(k) or '-',txt(e.attrName),txt(e.attrId),txt(e.fg),
+     oSf and tostring(k) or '-',txt(e and e.attrName),txt(e and e.attrId),txt(e and e.fg),
      #owners>1 and 'COLLIDING_INDEX' or (oSf and 'STORED_INDEX' or 'UNOWNED_INDEX'))
    end
-   for k,b in pairs(bad) do
-    if sampleUI>=20 then break end
-    sampleUI=sampleUI+1
-    emit('SELECTIVE_UI_INDEX_SAMPLE reference=%s member=- fixture_key=- raw_ui_index=%s member_ui_index=- attribute=- attribute_identity=- feature_group=- layer=ABS classification=BAD_INDEX_RECORD_%s',
-     label,tostring(k),txt(b.reason))
-   end
    local rowStat={lanes=0,stored=0,notStored=0,unproven=0,expectedLink=0,different=0,attrMissing=0,bucketMissing=0}
-   for _,skey in ipairs(rec.surviving or {}) do
-    local split=type(skey)=='string' and skey:find('\0',1,true)
-    local sf=split and tonumber(skey:sub(1,split-1))
-    local lane=split and skey:sub(split+1)
-    local feature,layer
-    if lane then feature,layer=lane:match('^(.-)|([^|]+)$') end
-    if layer=='*' then
-     local concreteFeature=type(feature)=='string' and feature:match('^FG:')
-      and type(row.features)=='table' and row.features[feature]==true
-     if concreteFeature and proof.layers and proof.layers.ABS==true then lane=feature..'|ABS'; layer='ABS' end
-    end
-    local h=sf and members[sf]
-    local laneClass='SELECTIVE_MEMBER_MAPPING_UNPROVEN'
-    local fkey=feature and feature:match('^FG:(.+)$')
-    local en=sf and memberEnum[sf]
-    local bucketExists=false; local interNames={}; local interCount=0
-    if sf and h and layer=='ABS' and fkey and en and en.complete then
-     local memberSet=en.byFG[fkey] or {}
-     local presetSet=storedByFG[fkey] or {}
-     -- Bad-record and owner-collision fail-closed checks.
-     local blocked=false
-     for ui in pairs(memberSet) do
-      if bad[ui] then blocked=true end
-      if owner[ui] and #owner[ui]>1 then blocked=true end
+   local orderedMembers={}; for sf in pairs(members) do orderedMembers[#orderedMembers+1]=sf end; table.sort(orderedMembers)
+   for _,sf in ipairs(orderedMembers) do local h=members[sf]
+    if #fgList==0 then
+     rowStat.lanes=rowStat.lanes+1; rowStat.unproven=rowStat.unproven+1
+     if sampleLane<24 then sampleLane=sampleLane+1
+      emit('SELECTIVE_MEMBER_SAMPLE reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s member=%s fixture_key=%s candidate_feature=- layer=- member_feature_ui_count=0 preset_intersection_count=0 stored_attributes=- cooked_bucket_exists=false classification=SELECTIVE_SCOPE_EMPTY_UNPROVEN',
+       label,txt(safe(api.describe,row.cue)),txt(safe(api.describe,row.part)),txt(safe(api.describe,row.recipe)),txt(safe(api.describe,row.group)),
+       txt(sf),txt(h and toaddrKey(safe(function() return h:ToAddr() end))))
      end
-     if not blocked then
-      for ui,v in pairs(memberSet) do if presetSet[ui] then interCount=interCount+1; interNames[#interNames+1]=v.attrName end end
-      table.sort(interNames)
-      if interCount>0 then
-       local key2=toaddrKey(h and safe(function() return h:ToAddr() end))
-       local partKey=safe(api.identity,row.part) or row.part
-       local view=ctx.views and ctx.views[partKey]
-       local bucket=key2 and view and type(view.buckets)=='table' and view.buckets[key2]
-       bucketExists=type(bucket)=='table'
-       if not bucketExists then laneClass='SELECTIVE_COOKED_BUCKET_MISSING'
-       else
-        local matched,different,missing=false,false,false
-        for _,n in ipairs(interNames) do
-         local p=bucket[n]
-         if type(p)~='table' then missing=true
-         else
-          local link=p.abs_preset
-          local expected=safe(api.identity,rec.ref); local actual=link and safe(api.identity,link)
-          if expected and actual==expected then matched=true elseif actual then different=true else missing=true end
+    end
+    for _,fg in ipairs(fgList) do
+     local feature='FG:'..fg
+     local laneClass='SELECTIVE_MEMBER_MAPPING_UNPROVEN'
+     local en=memberEnum[sf]
+     local bucketExists=false; local interNames={}; local interCount=0
+     if h and en and en.complete and scopeOK then
+      local memberSet=en.byFG[fg] or {}
+      local presetSet=storedByFG[fg] or {}
+      local blocked=false
+      for ui in pairs(memberSet) do
+       if owner[ui] and #owner[ui]>1 then blocked=true end
+      end
+      if not blocked then
+       for ui,v in pairs(memberSet) do if presetSet[ui] then interCount=interCount+1; interNames[#interNames+1]=v.attrName end end
+       table.sort(interNames)
+       if interCount>0 then
+        local key2=toaddrKey(h and safe(function() return h:ToAddr() end))
+        local partKey=safe(api.identity,row.part) or row.part
+        local view=ctx.views and ctx.views[partKey]
+        local bucket=key2 and view and type(view.buckets)=='table' and view.buckets[key2]
+        bucketExists=type(bucket)=='table'
+        if not bucketExists then laneClass='SELECTIVE_COOKED_BUCKET_MISSING'
+        else
+         local matched,different,missing=false,false,false
+         for _,n in ipairs(interNames) do
+          local p=bucket[n]
+          if type(p)~='table' then missing=true
+          else
+           local link=p.abs_preset
+           local expected=safe(api.identity,rec.ref); local actual=link and safe(api.identity,link)
+           if expected and actual==expected then matched=true elseif actual then different=true else missing=true end
+          end
          end
+         if different then laneClass='SELECTIVE_DIFFERENT_PRESET_LINK'
+         elseif missing or not matched then laneClass='SELECTIVE_COOKED_ATTRIBUTE_MISSING'
+         else laneClass='SELECTIVE_EXPECTED_PRESET_LINK' end
         end
-        if different then laneClass='SELECTIVE_DIFFERENT_PRESET_LINK'
-        elseif missing or not matched then laneClass='SELECTIVE_COOKED_ATTRIBUTE_MISSING'
-        else laneClass='SELECTIVE_EXPECTED_PRESET_LINK' end
+       else laneClass='SELECTIVE_MEMBER_NOT_STORED'
        end
-      else laneClass='SELECTIVE_MEMBER_NOT_STORED'
       end
      end
-    end
-    rowStat.lanes=rowStat.lanes+1
-    if laneClass=='SELECTIVE_EXPECTED_PRESET_LINK' then rowStat.stored=rowStat.stored+1; rowStat.expectedLink=rowStat.expectedLink+1
-    elseif laneClass=='SELECTIVE_MEMBER_NOT_STORED' then rowStat.notStored=rowStat.notStored+1
-    elseif laneClass=='SELECTIVE_DIFFERENT_PRESET_LINK' then rowStat.stored=rowStat.stored+1
-    elseif laneClass=='SELECTIVE_COOKED_ATTRIBUTE_MISSING' or laneClass=='SELECTIVE_COOKED_BUCKET_MISSING' then rowStat.stored=rowStat.stored+1
-    else rowStat.unproven=rowStat.unproven+1 end
-    if laneClass=='SELECTIVE_DIFFERENT_PRESET_LINK' then rowStat.different=rowStat.different+1 end
-    if laneClass=='SELECTIVE_COOKED_ATTRIBUTE_MISSING' then rowStat.attrMissing=rowStat.attrMissing+1 end
-    if laneClass=='SELECTIVE_COOKED_BUCKET_MISSING' then rowStat.bucketMissing=rowStat.bucketMissing+1 end
-    if sampleLane<24 then sampleLane=sampleLane+1
-     local stored_list=table.concat(interNames,','):sub(1,60)
-     if stored_list=='' then stored_list='-' end
-     local memberSet=en and en.complete and en.byFG[fkey] or {}
-     emit('SELECTIVE_MEMBER_SAMPLE reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s member=%s fixture_key=%s candidate_feature=%s layer=%s member_feature_ui_count=%d preset_intersection_count=%d stored_attributes=%s cooked_bucket_exists=%s classification=%s',
-      label,txt(safe(api.describe,row.cue)),txt(safe(api.describe,row.part)),txt(safe(api.describe,row.recipe)),txt(safe(api.describe,row.group)),
-      txt(sf),txt(h and toaddrKey(safe(function() return h:ToAddr() end))),txt(feature),txt(layer),
-      count(memberSet),interCount,stored_list,tostring(bucketExists),laneClass)
+     rowStat.lanes=rowStat.lanes+1
+     if laneClass=='SELECTIVE_EXPECTED_PRESET_LINK' then rowStat.stored=rowStat.stored+1; rowStat.expectedLink=rowStat.expectedLink+1
+     elseif laneClass=='SELECTIVE_MEMBER_NOT_STORED' then rowStat.notStored=rowStat.notStored+1
+     elseif laneClass=='SELECTIVE_DIFFERENT_PRESET_LINK' then rowStat.stored=rowStat.stored+1
+     elseif laneClass=='SELECTIVE_COOKED_ATTRIBUTE_MISSING' or laneClass=='SELECTIVE_COOKED_BUCKET_MISSING' then rowStat.stored=rowStat.stored+1
+     else rowStat.unproven=rowStat.unproven+1 end
+     if laneClass=='SELECTIVE_DIFFERENT_PRESET_LINK' then rowStat.different=rowStat.different+1 end
+     if laneClass=='SELECTIVE_COOKED_ATTRIBUTE_MISSING' then rowStat.attrMissing=rowStat.attrMissing+1 end
+     if laneClass=='SELECTIVE_COOKED_BUCKET_MISSING' then rowStat.bucketMissing=rowStat.bucketMissing+1 end
+     if sampleLane<24 then sampleLane=sampleLane+1
+      local stored_list=table.concat(interNames,','):sub(1,60)
+      if stored_list=='' then stored_list='-' end
+      local memberSet=en and en.complete and en.byFG[fg] or {}
+      emit('SELECTIVE_MEMBER_SAMPLE reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s member=%s fixture_key=%s candidate_feature=%s layer=ABS member_feature_ui_count=%d preset_intersection_count=%d stored_attributes=%s cooked_bucket_exists=%s classification=%s',
+       label,txt(safe(api.describe,row.cue)),txt(safe(api.describe,row.part)),txt(safe(api.describe,row.recipe)),txt(safe(api.describe,row.group)),
+       txt(sf),txt(h and toaddrKey(safe(function() return h:ToAddr() end))),txt(feature),
+       count(memberSet),interCount,stored_list,tostring(bucketExists),laneClass)
+     end
     end
    end
    local rowClass=(rowStat.lanes>0 and rowStat.unproven==0 and rowStat.different==0 and rowStat.attrMissing==0 and rowStat.bucketMissing==0)
@@ -3553,18 +3559,26 @@ function __selectiveMemberApplicabilityProbe(ctx,api)
   summary.expected,summary.checked,summary.proven,summary.lanes,summary.stored,summary.notStored,summary.unproven,
   summary.expectedLink,summary.different,summary.attrMissing,summary.bucketMissing,classification)
  if classification=='SELECTIVE_MEMBER_APPLICABILITY_PROVEN' then
-  local remaining,globalCount={},{}
+  local globalSet={}; for _,p in ipairs(ctx.globalPaths or {}) do globalSet[p]=true end
+  local globalRows,remainingRows,remainingRefs=0,0,{}
   for _,rec in ipairs(ctx.records or {}) do if rec.category=='FINAL_SURVIVING_UNSAFE' then
    local rk=rec.ref and safe(api.identity,rec.ref)
-   local provenSel=rk and refs[txt(safe(api.describe,rec.ref))]
-   local isGlobal=false
-   for _,p in ipairs(ctx.globalPaths or {}) do if p==rk then isGlobal=true end end
-   if not provenSel and not isGlobal then remaining[txt(safe(api.describe,rec.ref))]=true end
+   if rk and globalSet[rk] then globalRows=globalRows+1 end
   end end
-  for _,p in ipairs(ctx.globalPaths or {}) do globalCount[p]=true end
-  local rem={}; for k in pairs(remaining) do rem[#rem+1]=k end; table.sort(rem)
+  -- Proven selective identities: rows whose reference label reached PROVEN requires
+  -- row-level tracking; approximate conservatively via refs with zero unproven/different.
+  local provenLabels={}
+  for label,R in pairs(refs) do if R.unproven==0 and R.different==0 and R.rows>0 then provenLabels[label]=true end end
+  for _,rec in ipairs(ctx.records or {}) do if rec.category=='FINAL_SURVIVING_UNSAFE' then
+   local rk=rec.ref and safe(api.identity,rec.ref)
+   local rlabel=txt(safe(api.describe,rec.ref))
+   if not (rk and globalSet[rk]) and not provenLabels[rlabel] then
+    remainingRows=remainingRows+1; remainingRefs[rlabel]=true
+   end
+  end end
+  local rem={}; for k in pairs(remainingRefs) do rem[#rem+1]=k end; table.sort(rem)
   emit('SELECTIVE_RESOLVER_ALTERNATE global_ordinary_rows_proven=%d selective_rows_proven=%d remaining_final_surviving_unsafe_rows=%d remaining_references=%s classification=%s diagnostic_only=true',
-   count(globalCount),summary.proven,#rem,table.concat(rem,',')~='' and table.concat(rem,',') or '-',#rem==0 and 'ALL_RESOLVED' or 'OPEN_REFERENCES_REMAIN')
+   globalRows,summary.proven,remainingRows,table.concat(rem,',')~='' and table.concat(rem,',') or '-',#rem==0 and 'ALL_RESOLVED' or 'OPEN_REFERENCES_REMAIN')
  end
  return {summary=summary,refs=refs,uiReads=uiReads.reads,classification=classification}
 end
