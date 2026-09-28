@@ -426,6 +426,11 @@ failedState.currentGroup=gOne
 local exactGroupOnly=functions.recipePoolReferences(failedState)
 check(exactGroupOnly["Group 6"]==gOne and exactGroupOnly["Preset X"]==nil,
  "exact current Group may be marked independently while unsafe Recipe refs remain closed")
+local partialFailed=state(unknownSeq,unknownCue,fOne)
+partialFailed.currentGroup=gBoth; partialFailed.currentRecipe=recipe(gBoth,unknown,1)
+local partialGroupOnly=functions.recipePoolReferences(partialFailed)
+check(partialGroupOnly["Group 8"]==gBoth and partialGroupOnly["Preset X"]==nil,
+ "displayed single Recipe Group may be marked for a selected member while unsafe Values stay closed")
 check(first["Group 6"]==gOne and first["Group 7"]==gCell
  and first["Preset 1.2"]==moving and first["Generator 1"]==generator,
  "Group and surviving Recipe Pool marker sources must be present")

@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.2"
+local PLUGIN_VERSION = "0.7.1.3"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1160,14 +1160,26 @@ local function render(state)
             local blockers=state.provenSources.unsafeRefs or {}
             if #blockers>0 then
                 local shown={}
-                for index=1,math.min(#blockers,4) do shown[#shown+1]=blockers[index] end
-                resolverLines[#resolverLines+1]="Blocked refs: "..table.concat(shown,", "):sub(1,180)
+                for index=1,math.min(#blockers,3) do
+                    local id=blockers[index]
+                    shown[#shown+1]=id.." ("..tostring((state.provenSources.unsafeRefDetails or {})[id] or "UNPROVEN")..")"
+                end
+                resolverLines[#resolverLines+1]="Blocked refs: "..table.concat(shown,", "):sub(1,220)
             end
         end
         if state.expanded and #refKeys>0 then
             local shown={}
             for index=1,math.min(#refKeys,8) do shown[#shown+1]=refKeys[index] end
             resolverLines[#resolverLines+1]="Refs: "..table.concat(shown,", "):sub(1,180)
+        end
+        if state.expanded then
+            resolverLines[#resolverLines+1]=string.format(
+                "Timing ms: select=%s tracking=%s group=%s resolver=%s pool=%s",
+                tostring(state.lastSelectionReadMs or "?"),
+                tostring(state.lastTrackingScanMs or "?"),
+                tostring(state.lastGroupMatchMs or "?"),
+                tostring(state.lastResolverMs or "?"),
+                tostring(state.lastPoolDiscoveryMs or "?"))
         end
     end
     if state and #state.matchingCandidates > 1 then
@@ -1312,20 +1324,29 @@ local function newTrackARuntime(api)
     local function ordinary(ref,cache)
         local raw=api.safe(api.getPresetData,ref,false,true)
         local rawKey=api.identity(ref)
+        cache.__failure=cache.__failure or {}
+        if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
             cache.__raw[rawKey]=raw or false
         end
-        if type(raw)~="table" then return nil end
+        if type(raw)~="table" then
+            if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_DATA_UNAVAILABLE" end
+            return nil
+        end
         local nativeMode=api.safe(function() return ref.PresetMode end)
         if nativeMode==nil then nativeMode=api.safe(function() return ref:Get("PresetMode") end) end
         local modeNumber={Selective=1,Global=2,Universal=3}
-        if type(nativeMode)~="string" or not modeNumber[nativeMode] then return nil end
+        if type(nativeMode)~="string" or not modeNumber[nativeMode] then
+            if rawKey then cache.__failure[rawKey]="ORDINARY_PRESET_MODE_UNPROVEN" end
+            return nil
+        end
         local mode,scope,channels=nil,{},0
         local moving=false
         local knownBits=1|2|4|8|16|32|64|128|256
         for ui,p in pairs(raw) do
             if type(ui)=="number" then
+                if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_HEADER_UNPROVEN" end
                 if ui%1~=0 or type(p)~="table" then return nil end
                 channels=channels+1
                 if channels>262144 then return nil end
@@ -1372,8 +1393,10 @@ local function newTrackARuntime(api)
                 end
                 if phaser & (1|2)~=0 then return nil end
                 local attr=p.attribute or api.safe(api.attributeByUI,ui)
+                if rawKey then cache.__failure[rawKey]="ORDINARY_ATTRIBUTE_FG_UNPROVEN" end
                 local fg=attrFG(attr)
                 if not fg then return nil end
+                if rawKey then cache.__failure[rawKey]="ORDINARY_STEP_SHAPE_UNPROVEN" end
                 local steps,n={},0
                 for k,v in pairs(p) do if type(k)=="number" then
                     if k%1~=0 or k<1 or type(v)~="table" then return nil end
@@ -1396,6 +1419,7 @@ local function newTrackARuntime(api)
                     end
                 end
                 local motionBits=4|8|16|32|128|256
+                if rawKey then cache.__failure[rawKey]="ORDINARY_LANE_VALUE_UNPROVEN" end
                 for _,spec in ipairs({{"ABS","absolute",2},{"REL","relative",4}}) do
                     local layer,field,bit=table.unpack(spec)
                     if mask & bit~=0 then
@@ -1418,6 +1442,7 @@ local function newTrackARuntime(api)
             elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return nil end
             elseif ui~="count" then return nil end
         end
+        if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
         if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then return nil end
         -- Static ordinary references require the proven single-step, no-motion
         -- shape. Moving references require explicit motion bits or step change.
@@ -1431,6 +1456,7 @@ local function newTrackARuntime(api)
         else
             for _,lane in pairs(scope) do if not lane.moving then return nil end end
         end
+        if rawKey then cache.__failure[rawKey]=nil end
         return {kind="ORDINARY",mode=mode,lanes=scope,raw=raw}
     end
     local function propertyMap(node)
@@ -1461,6 +1487,9 @@ local function newTrackARuntime(api)
         return "UNKNOWN"
     end
     local function phaser(ref,referenceCache)
+        local refKey=api.identity(ref)
+        referenceCache.__failure=referenceCache.__failure or {}
+        if refKey then referenceCache.__failure[refKey]="PHASER_STRUCTURE_UNPROVEN" end
         local steps,linked,features,recipes,stepCount={}, {}, {},0,0
         local mismatch=false; local unknownRel=false
         local function walk(node,step,depth)
@@ -1516,6 +1545,7 @@ local function newTrackARuntime(api)
             if s.layer=="ABS" and moving then provenMovingAbs=true end
         end
         local linkedCount=0
+        if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN" end
         for _,entry in pairs(linked) do
             linkedCount=linkedCount+1
             local handle=entry.handle
@@ -1531,8 +1561,10 @@ local function newTrackARuntime(api)
         end
         if unknownRel then
             if not provenMovingAbs or count(features)~=1 or linkedCount==0 then return nil end
+            if refKey then referenceCache.__failure[refKey]=nil end
             return {kind="PHASER",lanes=lanes,relBarrier=next(features)}
         end
+        if refKey then referenceCache.__failure[refKey]=nil end
         return {kind="PHASER",lanes=lanes}
     end
     local function metadata(ref,cache)
@@ -1771,8 +1803,13 @@ local function newTrackARuntime(api)
             local blockerRefs={}
             for id in pairs(blockers) do blockerRefs[#blockerRefs+1]=id end
             table.sort(blockerRefs)
+            local blockerDetails={}
+            for _,id in ipairs(blockerRefs) do
+                blockerDetails[id]=(referenceCache.__failure or {})[id] or "UNSAFE_SCOPE_OR_ATTRIBUTION"
+            end
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
                 refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
+                unsafeRefDetails=blockerDetails,
                 laneWork=laneWork}
         end
         for _,barrier in ipairs(residual) do
@@ -2071,10 +2108,12 @@ end
             end
             return references
         end
-        -- An exact current Group identity is independently known even when
-        -- Recipe reference semantics fail closed. Never admit contained or
-        -- overlapping Groups through this fallback.
-        if state.currentGroup and relation(state.currentGroup,state.lastFixtures)=="EXACT_COMPLETE" then
+        -- A single selected Attribute's displayed Recipe has a concrete
+        -- Stored Group handle even if its Values metadata remains unsafe.
+        -- This marks only that displayed Group, never every overlapping Pool
+        -- Group. Recipe references themselves still fail closed.
+        if state.currentGroup and (state.currentRecipe
+            or relation(state.currentGroup,state.lastFixtures)=="EXACT_COMPLETE") then
             state.currentGroups={state.currentGroup}
             add(state.currentGroup)
         end
