@@ -6,11 +6,11 @@ Native validate the independent Global Grid Applicability A/B probe on grandMA3 
 
 ## Current Working State
 
-The new Plugin reads Group 85/86, Sequence 3858 Cue 1/2, and Preset 4.4. It resolves a Cue only when exactly one child Part has Recipe content, then compares canonical `sf_index` member sets, stored grid positions, and cooked per-member Attribute/Preset links. It changes no showfile state. Missing or ambiguous paths produce `GLOBAL_AB_PROBE_CONFIGURATION_REQUIRED`. Focused Lua 5.4, deterministic build, and XML validation pass. It is deployed to its own `Global Grid Applicability AB 2.5.0.3` Plugin folder with source/deployed SHA256 equality; production source/folder snapshots are unchanged. REAL-WORLD VALIDATION PENDING.
+The independent Plugin reads Group 85/86, Sequence 3858 Cue 1/2, and Preset 4.4 without changing showfile state. The CID patch accepts only nil, numeric 0, and exact string `None` as parent-fixture NO_CID; other representations fail closed. Five focused CID cases, Lua 5.4, deterministic build, and XML validation pass. It is deployed to its own `Global Grid Applicability AB 2.5.0.3` folder with matching source/deployed SHA256; production is unchanged. CID PATCH NATIVE RETEST PENDING.
 
 ## Latest Real-World User Test
 
-Rev12.1 Cue 8: Rev7 EXACT_MATCH, four refs, missing=0, extra=0, unsafe=50, final surviving=19, fully superseded=31, unknown=0. All 15 ordinary refs are motion-static proven; only two are member-applicability proven. Fifteen final-surviving Global ordinary rows remain blocked by grid/individual metadata; three Selective ordinary rows and Preset 25.9008 remain out of scope.
+First native Global Grid A/B run: `GLOBAL_AB_PRECHECK pass=false` with `COOKED_SUBFIXTURE_KEY_UNPROVEN`, `GROUP_GRID_NOT_PROVEN_DIFFERENT`, and `GROUP_MEMBER_SET_DIFFERENT_OR_UNPROVEN`. Native parent fixture CID was exact string `None`. User will make Group 86 members equal Group 85 Fixtures 101–107, changing only grid positions.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Rev12.1 Cue 8: Rev7 EXACT_MATCH, four refs, missing=0, extra=0, unsafe=50, final
 
 ## Current Problem
 
-Native A/B output is needed to determine whether changing Group grid position affects cooked applicability for the controlled Preset 4.4 case. User supplied Group 85/86 and Sequence 3858 Cue 1/2; native unique Part resolution remains to be verified.
+Repeat native A/B after user corrects Group 86. The CID representation blocker is patched locally; no A/B conclusion exists yet.
 
 ## Known Failed Attempts
 
@@ -42,4 +42,4 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Exact Next Action
 
-Run this independent Plugin on native grandMA3 2.5.0.3 and capture `GLOBAL_AB_PRECHECK`, both Group/member sections, cooked member lines, Preset metadata, `GLOBAL_AB_DIFF`, optional `GLOBAL_AB_RESULT`, and timing. If native object addressing differs, update the four CONFIG paths and redeploy. Review before any Rev13 resolver rule.
+After Group 86 matches Group 85 Fixtures 101–107 with different Selection Grid positions, rerun the deployed independent Plugin on grandMA3 2.5.0.3 and review native `GLOBAL_AB_PRECHECK`, Group/cooked member lines, `GLOBAL_AB_DIFF`, and result. Do not infer a Rev13 rule from local validation.

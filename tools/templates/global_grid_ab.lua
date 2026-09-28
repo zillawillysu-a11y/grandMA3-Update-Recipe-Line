@@ -14,6 +14,10 @@ local function probe(api, config)
   api.log('GLOBAL_AB_'..string.format(fmt,...))
  end
  local function val(x) return x==nil and 'UNAVAILABLE' or tostring(x):gsub('[\r\n]',' '):sub(1,160) end
+ local function normalizeCid(raw)
+  if raw==nil or (type(raw)=='number' and raw==0) or raw=='None' then return 'NO_CID' end
+  return 'UNPROVEN'
+ end
  local function safe(f,...) local ok,v=pcall(f,...); if ok then return v end end
  local function class(h) return h and safe(function() return h:GetClass() end) end
  local function ident(h)
@@ -85,9 +89,10 @@ local function probe(api, config)
    local h=api.getSubfixture and safe(api.getSubfixture,sf)
    local fid=h and safe(function() return h.FID end)
    local cid=h and safe(function() return h.CID end)
+   local cidNormalized=normalizeCid(cid)
    local parent=h and safe(function() return h:Parent() end)
    if not h or not ident(h) or fid==nil then fail('GROUP_'..side..'_SUBFIXTURE_MAPPING_UNPROVEN'); break end
-   members[sf]={sf=sf,handle=h,fid=fid,cid=cid,parent=parent,grid={x=tonumber(grid.x),y=tonumber(grid.y),z=tonumber(grid.z)}}
+   members[sf]={sf=sf,handle=h,fid=fid,cid=cid,cidNormalized=cidNormalized,parent=parent,grid={x=tonumber(grid.x),y=tonumber(grid.y),z=tonumber(grid.z)}}
   end
   local ids=ordered(members)
   if #ids==0 or #ids>256 then fail('GROUP_'..side..'_MEMBER_COUNT_UNSUPPORTED') end
@@ -95,7 +100,7 @@ local function probe(api, config)
   for _,sf in ipairs(ids) do
    local m=members[sf]; local xyz=table.concat({m.grid.x,m.grid.y,m.grid.z},'/')
    ms[#ms+1]=tostring(sf); gs[#gs+1]=tostring(sf)..':'..xyz; distinct[xyz]=true
-   if #ms<=32 then emit('GROUP_MEMBER side=%s member=%s parent=%s subfixture=%s fid=%s cid=%s grid_x=%s grid_y=%s grid_z=%s',side,val(sf),val(ident(m.parent)),val(ident(m.handle)),val(m.fid),val(m.cid),val(m.grid.x),val(m.grid.y),val(m.grid.z)) end
+   if #ms<=32 then emit('GROUP_MEMBER side=%s member=%s parent=%s subfixture=%s fid=%s cid_raw=%s cid_normalized=%s grid_x=%s grid_y=%s grid_z=%s',side,val(sf),val(ident(m.parent)),val(ident(m.handle)),val(m.fid),val(m.cid),m.cidNormalized,val(m.grid.x),val(m.grid.y),val(m.grid.z)) end
   end
   local memberHash,gridHash=hash(table.concat(ms,',')),hash(table.concat(gs,','))
   emit('GROUP side=%s group=%s member_count=%d member_set_hash=%s grid_hash=%s grid_distinct_positions=%d member_sample_shown=%d',side,val(config['group'..side]),#ids,memberHash,gridHash,count(distinct),math.min(#ids,32))
@@ -162,7 +167,7 @@ local function probe(api, config)
   local fixtureKeys={}
   for _,sf in ipairs(g.ids) do
    local m=g.members[sf]; local key=tostring(m.fid)
-   if m.cid~=nil and tonumber(m.cid)~=0 then fail('COOKED_SUBFIXTURE_KEY_UNPROVEN') end
+   if m.cidNormalized~='NO_CID' then fail('COOKED_SUBFIXTURE_KEY_UNPROVEN') end
    if fixtureKeys[key] then fail('COOKED_MEMBER_KEY_COLLISION') else fixtureKeys[key]=true end
    local bucket=buckets[key]
    if bucket~=nil and type(bucket)~='table' then fail('COOKED_MEMBER_SHAPE_UNPROVEN') end

@@ -57,6 +57,21 @@ local r=probe(api,cfg)
 assert(r.precheck and r.sameMembers and r.gridChanged and r.classification=='GRID_NO_OBSERVED_MEMBER_EFFECT')
 assert(table.concat(logs,'\n'):find('GLOBAL_AB_GROUP_MEMBER side=A',1,true))
 assert(table.concat(logs,'\n'):find('GLOBAL_AB_PRECHECK pass=true',1,true))
+for _,case in ipairs({
+ {label='nil',raw=nil,accepted=true},
+ {label='numeric_zero',raw=0,accepted=true},
+ {label='native_none',raw='None',accepted=true},
+ {label='numeric_one',raw=1,accepted=false},
+ {label='unexpected_string',raw='unexpected',accepted=false},
+}) do
+ reset(); f1.CID=case.raw
+ r=probe(api,cfg)
+ assert(r.precheck==case.accepted,case.label..' CID acceptance')
+ assert(r.classification==(case.accepted and 'GRID_NO_OBSERVED_MEMBER_EFFECT' or 'INCONCLUSIVE'),case.label..' CID classification')
+ assert((r.reasons.COOKED_SUBFIXTURE_KEY_UNPROVEN==true)==not case.accepted,case.label..' CID failure reason')
+ if case.label=='native_none' then assert(table.concat(logs,'\n'):find('cid_raw=None cid_normalized=NO_CID',1,true)) end
+end
+f1.CID=nil
 reset(); cookedB['2']={}
 r=probe(api,cfg)
 assert(r.precheck and r.classification=='GRID_OBSERVED_MEMBER_EFFECT' and not r.presenceSame)
