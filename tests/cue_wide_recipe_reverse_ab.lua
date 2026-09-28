@@ -415,6 +415,9 @@ check(classCount==5 and has('REV13_GLOBAL_TARGET_SUMMARY expected=5 found=5 clas
 local deltaCount=0
 for _,line in ipairs(logs) do if line:find('GLOBAL_SIGNATURE_DELTA reference=',1,true) then deltaCount=deltaCount+1 end end
 check(deltaCount==4 and has('GLOBAL_SIGNATURE_COMPONENT reference=Preset 4.1'),'Rev13.1 observes four targets without changing classification')
+local normalizedCount=0
+for _,line in ipairs(logs) do if line:find('GLOBAL_NORMALIZED_SEMANTIC_CLASS reference=',1,true) then normalizedCount=normalizedCount+1 end end
+check(normalizedCount==5 and has('GLOBAL_DICT_INDEX_AUDIT reference=Preset 4.4'),'Rev13.2 observes all five cached references')
 check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate unchanged by signature observer')
 check(has('duplicate_targets= pass=true'),'Rev13 target sanity passes')
 check(next(r.rev7Final)==nil,'Rev7 baseline final refs unchanged by target selection')

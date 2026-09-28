@@ -22,7 +22,7 @@ for a, b in sections:
 lua = LuaRuntime()
 lua.execute("assert(_VERSION=='Lua 5.4')")
 lua.eval('function(s) local f,e=load(s); assert(f,e) end')(before.decode())
-for test in ('cue_wide_recipe_ordinary_static.lua', 'cue_wide_recipe_global_applicability.lua', 'cue_wide_recipe_signature_delta.lua', 'cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua', 'cue_wide_recipe_reference_semantics.lua', 'cue_wide_recipe_reference_metadata.lua', 'cue_wide_recipe_metadata_bridge.lua', 'cue_wide_recipe_field_semantics.lua', 'cue_wide_recipe_raw_rel_zero.lua'):
+for test in ('cue_wide_recipe_ordinary_static.lua', 'cue_wide_recipe_global_applicability.lua', 'cue_wide_recipe_signature_delta.lua', 'cue_wide_recipe_semantic_normalization.lua', 'cue_wide_recipe_reverse_engine.lua', 'cue_wide_recipe_reverse_ab.lua', 'cue_wide_recipe_reference_semantics.lua', 'cue_wide_recipe_reference_metadata.lua', 'cue_wide_recipe_metadata_bridge.lua', 'cue_wide_recipe_field_semantics.lua', 'cue_wide_recipe_raw_rel_zero.lua'):
     lua.execute((root / 'tests' / test).read_text(encoding='utf-8'))
 print('PASS Lua 5.4, deterministic generation, unchanged oracle fidelity, production disabled')
 

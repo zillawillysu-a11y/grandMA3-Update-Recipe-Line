@@ -2,15 +2,15 @@
 
 ## Current Goal
 
-Native validate the Rev13.1 signature delta observer for four Global ordinary Presets versus Preset 4.4. Production, Rev7, Rev13 classification and compatibility gate, oracle, Selective Presets, and Preset 25.9008 are out of scope.
+Native validate the Rev13.2 semantic normalization and dict_index audit observers for five Global ordinary Presets. Production, Rev7, Rev13 classification and compatibility gate, oracle, Selective Presets, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-Rev13 target wiring passed natively. Rev13.1 adds only a cached-metadata observer that compares component signatures for Presets 4.1, 4.23, 6.10, and 21.5 against 4.4. It separates key identity, value, structure, and cardinality differences. The Rev13 classifier, eligible rows, compatibility gate, and Rev7 remain unchanged. Native Rev13.1 rerun is pending.
+Rev13.1 observed only storage-like value and cardinality differences, with no semantic-value or structural differences. Rev13.2 adds cached-metadata-only semantic-core comparison and a bounded dict_index audit for all five refs. Grid values and unresolved dict_index meaning remain independent blockers. The Rev13 classifier, eligible rows, compatibility gate, and Rev7 remain unchanged. Native Rev13.2 rerun is pending.
 
 ## Latest Real-World User Test
 
-Latest Rev13 native Cue 8 run: target summary expected=5, found=5, classified=5, pass=true. Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19. All five are Global, non-selective, motion-static proven, with the same printed masks, single step, and ABS layer. Preset 4.4 matches its control signature; the other four differ in unprinted signature components. No rows were promoted.
+Latest Rev13.1 native Cue 8 run: target summary expected=5, found=5, classified=5, pass=true. Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19; Rev13 alternate eligible rows=0. Preset 4.1 differs from 4.4 only in gridpos/gridposmatr values. Presets 4.23, 6.10, and 21.5 additionally differ in channel cardinality and dict_index values. No semantic-value or structural differences were reported.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Latest Rev13 native Cue 8 run: target summary expected=5, found=5, classified=5,
 
 ## Current Problem
 
-Identify which cached metadata components cause the four Rev13 signature mismatches. No production gate change is authorized.
+Determine from native Rev13.2 output whether dict_index has a proven identity relation and which unresolved semantics remain. No production gate change is authorized.
 
 ## Known Failed Attempts
 
@@ -38,8 +38,8 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `b8c9552`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `5a9ebdc`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review four `GLOBAL_SIGNATURE_DELTA` summaries and bounded component lines, alongside unchanged Rev13 alternate and Rev7 results. Do not change classifier semantics from observer output alone.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review five `GLOBAL_DICT_INDEX_AUDIT` and five `GLOBAL_NORMALIZED_SEMANTIC_CLASS` lines, alongside unchanged Rev13 alternate and Rev7 results. Do not change classifier semantics from observer output alone.

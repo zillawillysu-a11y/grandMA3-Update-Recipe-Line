@@ -771,6 +771,25 @@ local rev13OK,rev13=pcall(function()
     end
    else log('GLOBAL_SIGNATURE_DELTA_ERROR reference=%s error=%s',label,text(delta)) end
   end
+  if selected.pass then
+   local observationOK,observation=pcall(function()
+    local normalized=__rev132SemanticNormalize(raw,control,metadataCache.identity)
+    local delta=__rev131SignatureDelta(control,raw)
+    local cardinality,grid={},{}
+    for _,component in ipairs(delta.components) do
+     if component.status=='CARDINALITY_ONLY' then cardinality[#cardinality+1]=component.component end
+     if (component.component=='gridpos' or component.component=='gridposmatr')
+      and component.status~='SAME' and component.status~='CARDINALITY_ONLY' then grid[#grid+1]=component.component end
+    end
+    if #grid>0 then normalized.blockers.GRID_VALUE_EFFECT_UNPROVEN=true end
+    local audit=normalized.dictAudit
+    log('GLOBAL_DICT_INDEX_AUDIT reference=%s channel_count=%d unique_dict_index_count=%d dict_index_distribution=%s relation_to_ui_channel=%s relation_to_attribute=%s relation_to_grid=%s relation_to_storage_source=UNAVAILABLE_FROM_REFERENCE_CHANNELS classification=%s reasons=%s',
+     label,audit.channelCount,audit.uniqueCount,audit.distribution,audit.relationUI,audit.relationAttribute,audit.relationGrid,audit.classification,audit.reasons)
+    log('GLOBAL_NORMALIZED_SEMANTIC_CLASS reference=%s semantic_core_match=%s ui_channel_key_relation=%s cardinality_only_differences=%s grid_value_differences=%s dict_index_class=%s remaining_semantic_blockers=%s observation_only=true',
+     label,text(normalized.semanticCoreMatch),normalized.uiChannelKeyRelation,table.concat(cardinality,','),table.concat(grid,','),audit.classification,joined(normalized.blockers))
+   end)
+   if not observationOK then log('GLOBAL_NORMALIZED_SEMANTIC_ERROR reference=%s error=%s',label,text(observation)) end
+  end
  end
  local targetPass=selected.pass and classified==#paths
  log('REV13_GLOBAL_TARGET_SUMMARY expected=%d found=%d classified=%d missing_targets=%s duplicate_targets=%s pass=%s',
