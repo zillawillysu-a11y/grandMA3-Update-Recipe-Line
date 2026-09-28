@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.4"
+local PLUGIN_VERSION = "0.7.1.6"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1306,7 +1306,8 @@ local function newTrackARuntime(api)
     end
     local function memberUI(handle,cache)
         local id=handle
-        if cache[id] then return cache[id] end
+        if cache[id]~=nil then return cache[id] or nil end
+        cache[id]=false
         local channels=api.safe(api.getUIChannels,handle,true)
         if type(channels)~="table" then return nil end
         local result={byFG={},byUI={}}
@@ -1846,7 +1847,7 @@ local function newTrackARuntime(api)
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end
-    return {run=run,metadata=metadata}
+    return {run=run,metadata=metadata,memberUI=memberUI}
 end
 -- END GENERATED TRACK A RUNTIME
 
@@ -1947,7 +1948,50 @@ end
     end)
     return matches
 end
-    local function sources(sequence, currentCue, fixtures, info,completeCandidates)
+    local function advanceStagedResolver(task,taskState)
+        local cache=taskState.referenceMetadataCache
+        local cursor=task.metadataIndex or 1
+        while cursor<=#task.rows do
+            local row=task.rows[cursor]
+            local refKey=commandAddress(row.ref)
+            if refKey and cache[refKey]==nil then
+                task.runtime.metadata(row.ref,cache)
+                task.metadataIndex=cursor+1
+                taskState.lastResolverStage="REFERENCE_METADATA"
+                return {classification="PENDING",reason="REFERENCE_METADATA_PENDING",refs={}}
+            end
+            cursor=cursor+1
+        end
+        task.metadataIndex=#task.rows+1
+        cursor=task.memberIndex or 1
+        local warmed=0
+        while cursor<=#task.members and warmed<4 do
+            local member=task.members[cursor]
+            if taskState.memberUICache[member.handle]==nil then
+                task.runtime.memberUI(member.handle,taskState.memberUICache)
+                taskState.lastResolverStage="MEMBER_UI"
+            end
+            cursor=cursor+1
+            warmed=warmed+1
+        end
+        task.memberIndex=cursor
+        if cursor<=#task.members then
+            return {classification="PENDING",reason="MEMBER_UI_PENDING",refs={}}
+        end
+        local ok,result=pcall(task.runtime.run,task.rows,task.selectedMembers,
+            taskState.referenceMetadataCache,taskState.memberUICache,task.targetFG)
+        if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
+        if result.classification~="PROVEN" then return result end
+        local refs={}
+        for id,ref in pairs(result.refs) do refs[id]=ref end
+        result.refs=refs
+        return result
+    end
+    local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
+    if taskState and taskState.incrementalResolver and taskState.resolverTask
+        and taskState.resolverTask.key==taskState.resolverWorkKey then
+        return advanceStagedResolver(taskState.resolverTask,taskState)
+    end
     if not sequence or not currentCue then
         return { classification = "INCONCLUSIVE" }
     end
@@ -2019,6 +2063,16 @@ end
     if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
     local fg=feature and safe(function() return feature:Parent() end)
     local targetFG=string.lower(class(fg))=="featuregroup" and commandAddress(fg) or nil
+    if taskState and taskState.incrementalResolver then
+        local members={}
+        for key,handle in pairs(selectedMembers) do members[#members+1]={key=key,handle=handle} end
+        table.sort(members,function(a,b) return a.key<b.key end)
+        local task={key=taskState.resolverWorkKey,rows=scopedRows,
+            selectedMembers=selectedMembers,members=members,runtime=runtime,targetFG=targetFG,
+            metadataIndex=1,memberIndex=1}
+        taskState.resolverTask=task
+        return advanceStagedResolver(task,taskState)
+    end
     local ok,result=pcall(runtime.run,scopedRows,selectedMembers,
         state.referenceMetadataCache,state.memberUICache,targetFG)
     if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
@@ -2056,9 +2110,29 @@ end
         .. ":" .. tostring(commandAddress(state.currentOldPreset))
         .. ":" .. tostring(#(state.matchingCandidates or {}))
     if state.provenSourceKey == cacheKey then return state.provenSources end
+    if state.resolverWorkKey~=cacheKey then
+        state.resolverWorkKey=cacheKey
+        state.resolverTask=nil
+        state.resolverWarmRefIndex=1
+        state.resolverWarmUIIndex=1
+        state.resolverWorkStarted=contextClock()
+    end
     local started = contextClock()
-    local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates)
-    local elapsed = contextElapsed(started) or "UNMEASURED"
+    local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates,state)
+    local sliceElapsed = contextElapsed(started) or "UNMEASURED"
+    if result.classification=="PENDING" then
+        state.provenSourceKey=nil
+        state.provenSources=result
+        state.lastResolverSliceMs=type(sliceElapsed)=="number" and sliceElapsed or nil
+        state.lastResolverMs=state.lastResolverSliceMs
+        return result
+    end
+    local elapsed=contextElapsed(state.resolverWorkStarted) or sliceElapsed
+    state.resolverWorkKey=nil
+    state.resolverTask=nil
+    state.resolverWorkStarted=nil
+    state.resolverWarmRefIndex=nil
+    state.resolverWarmUIIndex=nil
     local oldKeys, newKeys = {}, {}
     if state.provenSources and state.provenSources.refs then
         for key in pairs(state.provenSources.refs) do oldKeys[#oldKeys + 1] = key end
@@ -2072,6 +2146,7 @@ end
     state.provenSourceKey = cacheKey
     state.provenSources = result
     state.lastResolverMs=type(elapsed)=="number" and elapsed or nil
+    state.lastResolverTotalMs=state.lastResolverMs
     state.markerProbeSerial=(state.markerProbeSerial or 0)+1
     state.markerProbe={}
     state.markerStatus=nil
@@ -2969,6 +3044,7 @@ signalTable.SelectRecipeTrackingGroup = function()
             state.targetGroup = group
             state.creationGroupOverride = group
             state.forceRefresh = true
+            state.preserveResolverCaches = true
         end
     end
 end
@@ -3582,7 +3658,8 @@ local function main()
     -- is not left with the plugin silently stopped and no Pool frames.
     if stopExistingForLaunch(existing) then return end
 
-    local state = { running = true, version = PLUGIN_VERSION }
+    local state = { running = true, version = PLUGIN_VERSION,
+        incrementalResolver = ENABLE_TRACK_A_SHOW_CANDIDATE == true }
     _G[STATE_KEY] = state
     local panel, err = createPanel(state)
     if not panel then
@@ -3600,10 +3677,17 @@ local function main()
         local forceRefresh = state.forceRefresh
         if forceRefresh then
             state.effectSequenceKey, state.effectCacheSequence = nil, nil
-            state.groupPoolReferenceKey = nil
             state.provenSourceKey = nil
-            state.referenceMetadataCache = nil
-            state.memberUICache = nil
+            state.resolverWorkKey=nil
+            state.resolverTask=nil
+            state.resolverWarmRefIndex=nil
+            state.resolverWarmUIIndex=nil
+            if not state.preserveResolverCaches then
+                state.groupPoolReferenceKey = nil
+                state.referenceMetadataCache = nil
+                state.memberUICache = nil
+            end
+            state.preserveResolverCaches=false
         end
         local renderStarted=clockSeconds()
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)

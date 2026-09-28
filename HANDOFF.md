@@ -2,26 +2,27 @@
 
 ## Current Goal
 
-Fix native Group and Recipe Pool markers in grandMA3 2.5.0.3 without weakening Track A proof.
+Validate candidate v0.7.1.6 in grandMA3 2.5.0.3 after v0.7.1.5 crashed.
 
 ## Current Working State
 
-Production Plugin was rolled back to v0.7.1.4 after v0.7.1.5 crashed when selecting a fixture. The v0.7.1.5 coroutine resolver commit is reverted on qwen. Current source is v0.7.1.4. Keep Track A fail closed, canonical Fixture/SubFixture/Cell identity, current marker style, and Cue Phaser scanner disabled.
+v0.7.1.6 is deployed in the confirmed Update Plugin directory. It removes coroutine-based resolver yielding and stages native metadata preparation across normal refresh calls. Prepared Cue rows/runtime are cached during the staged operation to avoid rescanning Cue history every 100 ms. At most one uncached reference metadata read and four member UI reads occur in each resolver slice. Track A remains fail closed; no semantic gate was weakened.
 
 ## Latest Real-World User Test
 
-v0.7.1.5 crashed immediately when the user selected a fixture. Production files were restored from the exact pre-v0.7.1.5 backup. Earlier v0.7.1.4 showed Group 231 immediately, but `SELECT GROUP` and pulse paused about 600 ms during resolver work. Parser failures included `PRESET_MODE_NATIVE_MISMATCH` and ordinary channel shape blockers. No v0.7.1.5 native behavior is accepted.
+User rolled back to v0.7.1.4 and confirmed fixture selection no longer crashes. Prior observation: Group frame appears, while SELECT GROUP / pulse can pause around 600 ms; Recipe refs remain inconclusive with native metadata blockers. v0.7.1.6 native validation is pending.
 
 ## Verified Facts
 
-- Deployed rollback versions/hashes: Inspector v0.7.1.4 SHA256 `CE52E326C57EC3B2118F45DF23BC026D917A7BA256D65ADBB051B66DB61A996E`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `DEC1473D7AA113DC50E7BE196866DDBB22451FBCB9E555B7DDC5B14844EC9D40`.
-- Backup used: `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.5-20260929-004341`.
-- Most likely crash trigger is coroutine yielding while native API reads execute; not independently confirmed. Do not use coroutine-based resolver yielding again.
-- v0.7.1.4 still has the synchronous ~612 ms resolver delay, ordinary metadata blockers, missing Recipe refs, and unresolved multi-Group UI.
+- Offline: 86 workflow assertions and 109 show-candidate checks pass; synthetic four-ref result is final_refs=4, missing=0, extra=0.
+- Lua parse, XML parse, deterministic build check, and git diff check pass.
+- v0.7.1.6 source/deployed SHA256 match: Inspector `6D0A704E2DC068AAC1BE207E5B94D29A524174A2757FD89914103E27B6415894`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `AF8AD866BF673BBF071DFDB897452EE58720524C974E05A5E756B7262E283C1D`.
+- v0.7.1.4 deployment backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.6-20260929`.
+- No coroutine resolver yielding and no full cooked Cue-history reads in the Track A runtime.
 
 ## Current Problem
 
-Need redesign incremental resolver without yielding across native API boundaries, or otherwise keep resolution synchronous and avoid the crash. Determine exact PresetMode/ordinary blockers from native evidence before changing safety gates.
+Native crash freedom, selection response, pulse cadence, and resolver outcome for v0.7.1.6 are unverified. Native API duration cannot be validated offline.
 
 ## Important Files
 
@@ -32,8 +33,8 @@ Need redesign incremental resolver without yielding across native API boundaries
 
 ## Current Branch / Commit
 
-Detached `C:\tmp\show-rel` worktree at rollback commit; see Git status/log.
+Worktree `C:\tmp\show-rel`, detached from `origin/qwen`; checkpoint pending.
 
 ## Exact Next Action
 
-First confirm the user restarted/reloaded the plugin and v0.7.1.4 no longer crashes. Then implement any resolver work as explicit per-reference steps across normal refresh ticks, with no coroutine yield inside or around native API calls.
+Load v0.7.1.6 and run one focused Cue 8 check: select the same fixture/Group, observe immediate panel and Group frame, use SELECT GROUP, and report whether it crashes, whether flashing stays regular, and the displayed Resolver reason/ref count. If it crashes, restore the v0.7.1.4 backup immediately.

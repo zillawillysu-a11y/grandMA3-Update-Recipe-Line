@@ -487,6 +487,25 @@ check(markerState.markerReferences["Preset 25.9009"]==expected9009,
  "9009-style final ref must reach marker source")
 check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
  "final 9009-style ref must survive recipePoolReferences admission")
+local stagedSeq,stagedCue=tree({recipe(gOne,moving,1)})
+local stagedState=state(stagedSeq,stagedCue,fOne); stagedState.incrementalResolver=true
+local stagedRefs,pendingStages={},0
+local stagedUIBefore=uiCalls
+stagedRefs=functions.recipePoolReferences(stagedState)
+if stagedState.provenSources and stagedState.provenSources.classification=="PENDING" then
+ pendingStages=pendingStages+1
+end
+check(pendingStages==1 and stagedState.provenSources.reason=="REFERENCE_METADATA_PENDING"
+ and uiCalls==stagedUIBefore,
+ "first incremental resolver slice must read reference metadata only and return without member UI work")
+stagedRefs=functions.recipePoolReferences(stagedState)
+check(stagedState.provenSources.classification=="PROVEN"
+ and stagedRefs["Preset 1.2"]==moving and uiCalls>stagedUIBefore,
+ "next normal refresh slice may warm member UI and complete Track A without coroutines")
+local stagedReads=referenceReads.count
+functions.recipePoolReferences(stagedState)
+check(referenceReads.count==stagedReads,
+ "incremental resolver steady state must reuse cached reference metadata")
 local tileAlias=object("Preset","Preset 25.9009")
 local button=object("PoolButton","Preset tile",{ObjectIndex=1,W=80,H=80,
  Anchors={left=0,right=0,top=0,bottom=0}})

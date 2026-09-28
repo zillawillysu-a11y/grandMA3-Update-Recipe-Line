@@ -18,7 +18,8 @@ local function newTrackARuntime(api)
     end
     local function memberUI(handle,cache)
         local id=handle
-        if cache[id] then return cache[id] end
+        if cache[id]~=nil then return cache[id] or nil end
+        cache[id]=false
         local channels=api.safe(api.getUIChannels,handle,true)
         if type(channels)~="table" then return nil end
         local result={byFG={},byUI={}}
@@ -558,5 +559,5 @@ local function newTrackARuntime(api)
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end
-    return {run=run,metadata=metadata}
+    return {run=run,metadata=metadata,memberUI=memberUI}
 end
