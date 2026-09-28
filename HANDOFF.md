@@ -1,33 +1,35 @@
 # Project Handoff
 
 ## Current Goal
-Prove native linked-Preset Universal/Global versus Selective applicability using the user-prepared grandMA3 2.5.0.3 controls, without resolver integration.
+Integrate the proven Rev8.1 Relative rule and linked-Preset PRESETMODE classification into the Recipe Reverse resolver for the Cue 8 diagnostic walk, without changing the oracle or production.
 
 ## Current Working State
-Rev10.1 observer acquires A/B directly from Preset 25.9014's ValueSource linked handles: it reports handle identity, class, Name, Index, native address, parent chain, ValueSource Preset property type, GetDependencies, and CompareHandle pool validation, then runs the same C/D applicability inspection. No ShowData path resolution, no Cue/Part scan, marker, wait, production or resolver change. Local regressions pass. Native validation is pending.
+Rev11 templates built into the Reverse Resolver AB diagnostic; all local regressions green (Rev3-Rev8.1, both A/B suites, applicability observer). No production, resolver-oracle, marker, wait, Cue/Part history, or show-data change. Native validation is pending.
 
 ## Latest Real-World User Test
-Rev10 native run was INCONCLUSIVE: A/B acquisition via `ObjectList('ShowData.DataPools...')` failed with `API_ObjectList: Invalid Syntax`, so both cases were UNAVAILABLE. The linked handles themselves were observed (Step 1 `#40000C7D` known Universal/Global, Step 2 `#5400041A2` known Selective). Cases C (1.28) and D (1.14) confirmed Universal natively: PRESETMODE=Universal, preset_store_mode=3, selective=false.
+Rev10.1 native run proved on 2.5.0.3: case A PRESETMODE=Universal, case B PRESETMODE=Selective, C/D Universal, case B member_count=18 keys 130-147 matching XML. Case A linked object is class=Preset name="100" index=11 toaddr="Preset 1.11"; the validation-only "Preset 1.100" lookup did not CompareHandle-match, so the DIRECT linked handle is authoritative. Rev8.1 proved the ValueRelative triple rule: un-authored REL shows RawValueRel 0 with empty direct/Get/display; authored REL zero shows numeric zero with 0.00 display.
 
 ## Verified Facts
-XML authoring ground truth is user-supplied. Universal C/D still produced by-fixtures entries, so by-fixtures key presence alone must not prove Selective membership. No native applicability discriminator or typed member reconstruction has yet been proven. IDs are selectors, never classifier inputs.
+Only the two proven rules are integrated. PRESETMODE is the primary discriminator; record flags are corroborating evidence only. Selective member applicability stays unsafe; by-fixtures keys are not canonical fixture/subfixture/cell identities. ABS zero stays unpromoted. Unknown/unreadable mode stays unsafe.
 
 ## Current Problem
-Acquire A/B natively from linked handles; determine whether `#5400041A2` is the Preset, a proxy, or another reference representation; determine which native mode/flag fields discriminate Universal/Global from Selective and whether the native view reconstructs Selective members 130-147 while preserving fixture/subfixture/cell identity.
+Confirm exact Cue 8 agreement (25.9006/25.9007/25.9009/25.9010) in a real grandMA3 native Rev11 run: 25.9006/25.9007 via Universal linked 1.28/1.14, 25.9009/25.9010 via the ValueRelative rule.
 
 ## Known Failed Attempts
-Rev6/Rev7 treated linked selective/member applicability as unsafe. ABS-only linked metadata or Preset names must not determine applicability. Rev10 re-resolved A/B from exported ShowData path strings; grandMA3 rejected that syntax natively. Do not re-resolve linked handles from export paths.
+Rev6/Rev7 treated linked selective/member applicability as unsafe. Rev10 re-resolved A/B from exported ShowData path strings; grandMA3 rejected that syntax. Do not re-resolve linked handles from export paths or use the failed pool-label lookup as evidence.
 
 ## Important Files
-- `tools/templates/linked_preset_applicability.lua`
-- `diagnostics/linked_preset_applicability_2_5_0_3.xml`
-- `tools/run_linked_preset_applicability.py`
-- `tests/linked_preset_applicability.lua`
+- `tools/templates/cue_wide_recipe_field_semantics.lua`
+- `tools/templates/cue_wide_recipe_metadata_bridge.lua`
+- `tools/templates/cue_wide_recipe_reverse_ab_core.lua`
+- `diagnostics/cue_wide_recipe_reverse_resolver_ab_2_5_0_3.xml`
+- `tools/run_cue_wide_recipe_reverse_ab.py`
+- `tests/cue_wide_recipe_reverse_ab.lua`
 
 ## Current Branch / Commit
-`rev6-native`, Rev10.1 acquisition-fix checkpoint. Superseded uncommitted Rev9 raw-REL integration is preserved in a local stash; the older dirty `qwen` worktree is untouched.
+`rev6-native`, Rev11 integration checkpoint. Superseded uncommitted Rev9 raw-REL integration is preserved in a local stash; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
-Run the updated Linked Preset Applicability Control plugin in grandMA3 2.5.0.3; capture all `[LinkedApplicability]` lines, especially `LINKED_HANDLE`, `LINK_PARENT`, `LINK_DEPENDENCY`, `LINK_RESOLUTION`, `LINK_VALIDATION`, and case B `PRESET_MEMBER_VIEW` against members 130-147. Do not integrate into the resolver before review.
+Deploy the rebuilt Reverse Resolver AB diagnostic and run it natively against Cue 8 on 2.5.0.3; capture the RESULT/REV6_RESULT/REV7_RESULT classifications, BRIDGED/REV6/REV7 diff sets, blocker reasons, and the timing/GetPresetData summary lines. Compare final refs against 25.9006/25.9007/25.9009/25.9010. Do not integrate into production before review.
 
 REAL-WORLD VALIDATION PENDING

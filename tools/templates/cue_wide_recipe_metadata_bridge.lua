@@ -45,6 +45,21 @@ local function newReferenceMetadataBridge(api)
   if type(v)~='number' and type(v)~='string' then return false end
   local n=tonumber(v); return n~=nil and n==n and math.abs(n)<math.huge
  end
+ -- Rev11: Universal/Global linked Presets need no fixture-specific membership
+ -- proof. Only member-applicability evidence is excused; every other reason,
+ -- and the independent Attribute/Feature/Layer checks, still blocks.
+ local memberApplicabilityEvidence={SELECTIVE_MEMBER_APPLICABILITY_UNPROVEN=true,INDIVIDUAL_MEMBER_APPLICABILITY_UNPROVEN=true,GRID_POSITION_EFFECT_UNPROVEN=true,GRID_MATRIX_EFFECT_UNPROVEN=true,ACTIVE_GRID_POSITION_APPLICABILITY_UNPROVEN=true}
+ local function onlyMemberApplicabilityEvidence(m)
+  if type(m)~='table' or type(m.evidence)~='table' then return false end
+  local any=false
+  for k in pairs(m.evidence) do if not memberApplicabilityEvidence[k] then return false end; any=true end
+  return any
+ end
+ local function linkedPresetMode(linked)
+  local mode=api.safe(function() return linked.PresetMode end)
+  if mode==nil then mode=api.safe(function() return linked:Get('PresetMode') end) end
+  return mode
+ end
  local function finish(m)
   local has=false; for _ in pairs(m.lanes) do has=true end
   if has and not next(m.evidence) then
@@ -159,7 +174,20 @@ local function newReferenceMetadataBridge(api)
     if props.preset and props.preset.raw~=nil and tostring(props.preset.raw)~='' then
      if api.isObject(linked) and api.class(linked):lower()=='preset' then
       m.dependencies=m.dependencies+1; m.source='MIXED'; linkedMeta=dependency(linked)
-      if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      -- Rev10.1 native note: validation-only pool labels may not
+      -- CompareHandle-match; the DIRECT linked handle stays authoritative.
+      local presetMode=linkedPresetMode(linked)
+      if presetMode=='Universal' then
+       m.observations['LINKED_PRESET_MODE_UNIVERSAL']=true
+       if linkedMeta.completeness~='COMPLETE' and not onlyMemberApplicabilityEvidence(linkedMeta) then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      elseif presetMode=='Selective' then
+       m.observations['LINKED_PRESET_MODE_SELECTIVE']=true
+       reason(m,'SELECTIVE_MEMBER_MAPPING_UNPROVEN')
+       if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      else
+       m.observations['LINKED_PRESET_MODE_UNPROVEN']=true
+       if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      end
       if fg and not linkedMeta.features[fg] then reason(m,'LINKED_PRESET_FEATURE_MISMATCH') end
      else reason(m,'LINKED_PRESET_HANDLE_UNRESOLVED') end
     end
@@ -179,8 +207,14 @@ local function newReferenceMetadataBridge(api)
       if inherited and finite(inherited.raw) then p=inherited; v=inherited.raw; m.observations['SHAPE_VALUESOURCE_INHERITANCE_'..layer]=true end
      end
      if p and finite(v) then
-      if tonumber(v)==0 and not depLane and proof and proof.rawLayer(layer,v,linkedMeta,fg,effective,props)=='ABSENT' then
+      local verdict=tonumber(v)==0 and not depLane and proof and proof.rawLayer(layer,v,linkedMeta,fg,effective,props,h) or nil
+      if verdict=='ABSENT' then
        m.observations['RAW_'..layer..'_ZERO_NOT_AUTHORED_PROVEN']=true
+      elseif verdict=='AUTHORED' and fg then
+       m.observations['RAW_'..layer..'_ZERO_AUTHORED_PROVEN']=true
+       admitted=admitted+1; m.layers[layer]=true; local key=fg..'|'..layer
+       stepValues[key]=stepValues[key] or {}; stepValues[key][step]=stepValues[key][step] or {}
+       stepValues[key][step][#stepValues[key][step]+1]=finite(effective) and effective or v
       elseif tonumber(v)==0 and not depLane then reason(m,'ZERO_RAW_LAYER_AMBIGUOUS_'..layer)
       elseif linkedMeta and not depLane then reason(m,'LINKED_PRESET_LAYER_MISMATCH_'..layer)
       elseif not finite(effective) and not depLane then reason(m,'EFFECTIVE_LAYER_UNPROVEN_'..layer)

@@ -267,6 +267,78 @@ check(r.bridgedClassifications.BRIDGED_REVERSE_EXACT_MATCH,'bridged reverse matc
 check(has('ORDINARY_REFERENCE_SEMANTICS_SUMMARY') and has('PHASER_BRIDGE_SUMMARY') and has('BRIDGED_DIFF'),'required compact bridge summaries')
 joinedLogs=table.concat(logs,'\n')
 check(assert(joinedLogs:find('BASELINE_METADATA_FINALIZED',1,true))<assert(joinedLogs:find('BRIDGED_REVERSE_FINALIZED',1,true)) and assert(joinedLogs:find('BRIDGED_REVERSE_FINALIZED',1,true))<assert(joinedLogs:find('ORACLE_START',1,true)),'baseline then bridge finalized before oracle')
+-- Rev11: linked Universal preset needs no fixture-specific membership proof.
+-- Controlled 25.9006/Dimmer 1.28 shape: PARTIAL only from member-level evidence.
+p=setup(); metadataReads=0; oracleReads=0
+local uni=phaser(371,'Absolute','Dimmer',2); uni.db=91011
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local uniLinked=obj('Preset','Preset linked universal'); uniLinked.db=91012; uniLinked.PresetMode='Universal'
+references[uni.db]={}
+references[uniLinked.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=0,gridposmatr={1}}}
+for _,step in ipairs(uni.contents[1].contents) do
+ local source=step.contents[1]; source.Preset=uniLinked; source.props[#source.props+1]='Preset'
+end
+row(p,group(707,{11,12}),uni)
+data[p]={[1]={abs_preset=uni,[1]={absolute=100},[2]={absolute=0}}}
+r=run()
+check(has('LINKED_PRESET_MODE_UNIVERSAL') and not has('LINKED_PRESET_METADATA_UNSAFE'),'universal linked preset needs no member mapping proof')
+check(r.bridgedClassifications.BRIDGED_REVERSE_EXACT_MATCH,'universal bridge matches oracle')
+check(r.rev6Classes.REV6_BRIDGED_EXACT_MATCH and not r.rev6Classes.REV6_REFERENCE_UNSAFE,'universal rev6 resolves')
+check(r.rev7Classes.REV7_BRIDGED_EXACT_MATCH and not r.rev7Classes.REV7_REFERENCE_UNSAFE,'universal rev7 resolves')
+-- Rev11: Selective mode is recognized but member mapping stays blocked.
+p=setup(); metadataReads=0; oracleReads=0
+local sel=phaser(374,'Absolute','Dimmer',2); sel.db=91015
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local selLinked=obj('Preset','Preset linked selective'); selLinked.db=91016; selLinked.PresetMode='Selective'
+references[sel.db]={}
+references[selLinked.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=0}}
+for _,step in ipairs(sel.contents[1].contents) do
+ local source=step.contents[1]; source.Preset=selLinked; source.props[#source.props+1]='Preset'
+end
+row(p,group(710,{11,12}),sel)
+data[p]={[1]={abs_preset=sel,[1]={absolute=100},[2]={absolute=0}}}
+r=run()
+check(has('LINKED_PRESET_MODE_SELECTIVE') and has('SELECTIVE_MEMBER_MAPPING_UNPROVEN'),'selective mode recognized, members unresolved')
+check(next(r.bridgeFinal)==nil,'selective member mapping stays out of the active set')
+check(r.rev6Classes.REV6_BRIDGED_MISSING_REFERENCE and next(r.rev6Final)==nil,'selective rev6 stays missing')
+check(r.rev7Classes.REV7_BRIDGED_MISSING_REFERENCE and next(r.rev7Final)==nil,'selective rev7 stays missing')
+-- Rev11: un-authored REL zero is absent, not ambiguous (25.9009 shape).
+p=setup(); metadataReads=0; oracleReads=0
+local relBlank=phaser(372,'Absolute','Dimmer',2); relBlank.db=91013
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local blankAbs=0
+for _,step in ipairs(relBlank.contents[1].contents) do
+ blankAbs=blankAbs+1; local source=step.contents[1]
+ source.RawValueAbs=blankAbs==1 and 100 or 50; source.ValueAbsolute=source.RawValueAbs
+ source.RawValueRel=0; source.ValueRelative=''
+end
+references[relBlank.db]={}
+row(p,group(708,{11,12}),relBlank)
+data[p]={[1]={abs_preset=relBlank,[1]={absolute=100},[2]={absolute=0}}}
+r=run()
+check(has('REL_NOT_AUTHORED_PROVEN:2'),'blank relative zero classified not-authored')
+check(r.rev6Classes.REV6_BRIDGED_EXACT_MATCH and not r.rev6Classes.REV6_REFERENCE_UNSAFE,'blank-rel rev6 resolves')
+check(r.rev7Classes.REV7_BRIDGED_EXACT_MATCH and not r.rev7Classes.REV7_REFERENCE_UNSAFE,'blank-rel rev7 resolves')
+-- Rev11: authored REL zero is admitted, not ambiguous (25.9010 shape).
+p=setup(); metadataReads=0; oracleReads=0
+local relAuth=phaser(373,'Absolute','Dimmer',2); relAuth.db=91014
+registry['FeatureGroup Dimmer'].db=metaFG.db
+env.Enums={Roles={Display='display'}}
+local stepNo=0
+for _,step in ipairs(relAuth.contents[1].contents) do
+ stepNo=stepNo+1; local source=step.contents[1]
+ source.RawValueAbs=stepNo==1 and 100 or 50; source.ValueAbsolute=source.RawValueAbs
+ source.RawValueRel=stepNo==1 and 0 or 10; source.ValueRelative=stepNo==1 and 0 or 10
+ source.Get=function(s,k,role) if role~=nil then return '0.00' end; return rawget(s,k) end
+end
+references[relAuth.db]={}
+row(p,group(709,{11,12}),relAuth)
+data[p]={[1]={abs_preset=relAuth,[1]={absolute=100},[2]={absolute=0}}}
+r=run()
+env.Enums=nil
+check(has('REL_AUTHORED_PROVEN:1'),'authored relative zero classified authored')
+check(r.rev6Classes.REV6_BRIDGED_EXACT_MATCH and not r.rev6Classes.REV6_REFERENCE_UNSAFE,'authored-rel rev6 resolves')
+check(r.rev7Classes.REV7_BRIDGED_EXACT_MATCH and not r.rev7Classes.REV7_REFERENCE_UNSAFE,'authored-rel rev7 resolves')
 env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle=oldRead,oldAttribute,oldCompare
 env.HandleToInt=nil
 check(forbidden==0,'no mutation, channel expansion, UI, programmer or marker APIs')

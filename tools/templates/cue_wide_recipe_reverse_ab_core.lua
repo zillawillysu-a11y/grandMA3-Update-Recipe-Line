@@ -387,7 +387,7 @@ log('BRIDGED_REJECTED_SUMMARY moving_rows_with_supersession=%d shown_overlap_gro
 log('REV5_BRIDGE_BASELINE finalized=true refs=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d',count(bridgeFinal),bridgeStats.complete,bridgeStats.partial,bridgeStats.unknown)
 phase='SEMANTICS'
 local semanticsStart=now()
-local proof=newReferenceFieldSemantics({identity=metadataCache.identity})
+local proof=newReferenceFieldSemantics({identity=metadataCache.identity,safe=safe})
 local rev6Bridge=newReferenceMetadataBridge({safe=safe,class=class,isObject=isObjectReference,identity=metadataCache.identity,
  metadata=auditor.metadata,desc=path,attributeByUIChannel=_G.GetAttributeByUIChannel,fieldSemantics=proof})
 local rev6ByIdentity,rev6Rows,rev6Result,rev6Final={},{},{},{}
@@ -490,8 +490,8 @@ for i,p in ipairs(rawRelAudit.patterns) do if i<=80 then
   p.count,text(p.identity),text(p.step),text(p.attribute),text(p.featureGroup),text(p.absEnumerated),p.absType,p.absValue,text(p.rawEnumerated),p.rawType,p.rawValue,text(p.absolute),text(p.relative),text(p.layer),text(p.linked),text(p.linkedLayers),text(p.mask),text(p.effective),p.linkedComplete,text(p.shape),p.classification,p.evidence)
 end end
 log('RAW_REL_ZERO_PROOF_SUMMARY REL_AUTHORED_PROVEN=%d REL_NOT_AUTHORED_PROVEN=%d REL_AMBIGUOUS=%d zero_promotions=0 additional_GetPresetData_calls=0 raw_rel_audit_ms=%s',rawRelAudit.states.REL_AUTHORED_PROVEN,rawRelAudit.states.REL_NOT_AUTHORED_PROVEN,rawRelAudit.states.REL_AMBIGUOUS,text(rawRelAuditElapsed))
--- No local vendor rule or native ValueSource active mask establishes the
--- meaning of numeric zero. Reuse Rev6 classifications without promoting it.
+-- Rev11: the proven Rev8.1 ValueRelative triple rule classifies REL zero as
+-- authored or not-authored inside the Rev6 bridge; ABS zero stays unpromoted.
 local rev7MetadataStart=now()
 local rev7Rows={}
 for _,row in ipairs(rows) do

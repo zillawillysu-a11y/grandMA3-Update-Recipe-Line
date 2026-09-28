@@ -115,12 +115,26 @@ local function newReferenceFieldSemantics(api)
   if next(m.evidence) then m.completeness='PARTIAL'; m.motion='UNSAFE'; m.layerScopeKnown=false end
  end
  local rawStates={REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0,ABS_AUTHORED_PROVEN=0,ABS_NOT_AUTHORED_PROVEN=0,ABS_AMBIGUOUS=0}
- local function rawLayer(layer,v,linked,fg,effective,props)
+ local function emptyText(x) return x==nil or (type(x)=='string' and x:match('^%s*$')~=nil) end
+ local function rawLayer(layer,v,linked,fg,effective,props,node)
   local scope=props and props.layer and props.layer.raw
   -- No 2.5 reference defines ValueSource Layer property or raw zero encoding.
   -- Even an apparently opposite Layer label is only an audit clue.
+  -- Rev11: the proven Rev8.1 native rule classifies REL numeric zero from the
+  -- ValueRelative direct/Get/display triple. ABS zero stays unpromoted.
   local state='AMBIGUOUS'
+  local reader=api.safe
+  if layer=='REL' and type(v)=='number' and v==0 and node~=nil and type(reader)=='function' then
+   local direct=reader(function() return node.ValueRelative end)
+   local getter=reader(function() return node:Get('ValueRelative') end)
+   local displayRole=((_G.Enums or {}).Roles or {}).Display
+   local display=displayRole and reader(function() return node:Get('ValueRelative',displayRole) end)
+   if emptyText(direct) and emptyText(getter) and emptyText(display) then state='NOT_AUTHORED_PROVEN'
+   elseif direct==0 and getter==0 and tonumber(display)==0 then state='AUTHORED_PROVEN' end
+  end
   rawStates[layer..'_'..state]=rawStates[layer..'_'..state]+1
+  if state=='NOT_AUTHORED_PROVEN' then return 'ABSENT' end
+  if state=='AUTHORED_PROVEN' then return 'AUTHORED' end
   return nil
  end
  local function summary()

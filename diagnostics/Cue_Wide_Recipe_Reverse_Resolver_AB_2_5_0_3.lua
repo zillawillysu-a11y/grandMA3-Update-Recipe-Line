@@ -1414,6 +1414,21 @@ local function newReferenceMetadataBridge(api)
   if type(v)~='number' and type(v)~='string' then return false end
   local n=tonumber(v); return n~=nil and n==n and math.abs(n)<math.huge
  end
+ -- Rev11: Universal/Global linked Presets need no fixture-specific membership
+ -- proof. Only member-applicability evidence is excused; every other reason,
+ -- and the independent Attribute/Feature/Layer checks, still blocks.
+ local memberApplicabilityEvidence={SELECTIVE_MEMBER_APPLICABILITY_UNPROVEN=true,INDIVIDUAL_MEMBER_APPLICABILITY_UNPROVEN=true,GRID_POSITION_EFFECT_UNPROVEN=true,GRID_MATRIX_EFFECT_UNPROVEN=true,ACTIVE_GRID_POSITION_APPLICABILITY_UNPROVEN=true}
+ local function onlyMemberApplicabilityEvidence(m)
+  if type(m)~='table' or type(m.evidence)~='table' then return false end
+  local any=false
+  for k in pairs(m.evidence) do if not memberApplicabilityEvidence[k] then return false end; any=true end
+  return any
+ end
+ local function linkedPresetMode(linked)
+  local mode=api.safe(function() return linked.PresetMode end)
+  if mode==nil then mode=api.safe(function() return linked:Get('PresetMode') end) end
+  return mode
+ end
  local function finish(m)
   local has=false; for _ in pairs(m.lanes) do has=true end
   if has and not next(m.evidence) then
@@ -1528,7 +1543,20 @@ local function newReferenceMetadataBridge(api)
     if props.preset and props.preset.raw~=nil and tostring(props.preset.raw)~='' then
      if api.isObject(linked) and api.class(linked):lower()=='preset' then
       m.dependencies=m.dependencies+1; m.source='MIXED'; linkedMeta=dependency(linked)
-      if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      -- Rev10.1 native note: validation-only pool labels may not
+      -- CompareHandle-match; the DIRECT linked handle stays authoritative.
+      local presetMode=linkedPresetMode(linked)
+      if presetMode=='Universal' then
+       m.observations['LINKED_PRESET_MODE_UNIVERSAL']=true
+       if linkedMeta.completeness~='COMPLETE' and not onlyMemberApplicabilityEvidence(linkedMeta) then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      elseif presetMode=='Selective' then
+       m.observations['LINKED_PRESET_MODE_SELECTIVE']=true
+       reason(m,'SELECTIVE_MEMBER_MAPPING_UNPROVEN')
+       if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      else
+       m.observations['LINKED_PRESET_MODE_UNPROVEN']=true
+       if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      end
       if fg and not linkedMeta.features[fg] then reason(m,'LINKED_PRESET_FEATURE_MISMATCH') end
      else reason(m,'LINKED_PRESET_HANDLE_UNRESOLVED') end
     end
@@ -1548,8 +1576,14 @@ local function newReferenceMetadataBridge(api)
       if inherited and finite(inherited.raw) then p=inherited; v=inherited.raw; m.observations['SHAPE_VALUESOURCE_INHERITANCE_'..layer]=true end
      end
      if p and finite(v) then
-      if tonumber(v)==0 and not depLane and proof and proof.rawLayer(layer,v,linkedMeta,fg,effective,props)=='ABSENT' then
+      local verdict=tonumber(v)==0 and not depLane and proof and proof.rawLayer(layer,v,linkedMeta,fg,effective,props,h) or nil
+      if verdict=='ABSENT' then
        m.observations['RAW_'..layer..'_ZERO_NOT_AUTHORED_PROVEN']=true
+      elseif verdict=='AUTHORED' and fg then
+       m.observations['RAW_'..layer..'_ZERO_AUTHORED_PROVEN']=true
+       admitted=admitted+1; m.layers[layer]=true; local key=fg..'|'..layer
+       stepValues[key]=stepValues[key] or {}; stepValues[key][step]=stepValues[key][step] or {}
+       stepValues[key][step][#stepValues[key][step]+1]=finite(effective) and effective or v
       elseif tonumber(v)==0 and not depLane then reason(m,'ZERO_RAW_LAYER_AMBIGUOUS_'..layer)
       elseif linkedMeta and not depLane then reason(m,'LINKED_PRESET_LAYER_MISMATCH_'..layer)
       elseif not finite(effective) and not depLane then reason(m,'EFFECTIVE_LAYER_UNPROVEN_'..layer)
@@ -1710,12 +1744,26 @@ local function newReferenceFieldSemantics(api)
   if next(m.evidence) then m.completeness='PARTIAL'; m.motion='UNSAFE'; m.layerScopeKnown=false end
  end
  local rawStates={REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0,ABS_AUTHORED_PROVEN=0,ABS_NOT_AUTHORED_PROVEN=0,ABS_AMBIGUOUS=0}
- local function rawLayer(layer,v,linked,fg,effective,props)
+ local function emptyText(x) return x==nil or (type(x)=='string' and x:match('^%s*$')~=nil) end
+ local function rawLayer(layer,v,linked,fg,effective,props,node)
   local scope=props and props.layer and props.layer.raw
   -- No 2.5 reference defines ValueSource Layer property or raw zero encoding.
   -- Even an apparently opposite Layer label is only an audit clue.
+  -- Rev11: the proven Rev8.1 native rule classifies REL numeric zero from the
+  -- ValueRelative direct/Get/display triple. ABS zero stays unpromoted.
   local state='AMBIGUOUS'
+  local reader=api.safe
+  if layer=='REL' and type(v)=='number' and v==0 and node~=nil and type(reader)=='function' then
+   local direct=reader(function() return node.ValueRelative end)
+   local getter=reader(function() return node:Get('ValueRelative') end)
+   local displayRole=((_G.Enums or {}).Roles or {}).Display
+   local display=displayRole and reader(function() return node:Get('ValueRelative',displayRole) end)
+   if emptyText(direct) and emptyText(getter) and emptyText(display) then state='NOT_AUTHORED_PROVEN'
+   elseif direct==0 and getter==0 and tonumber(display)==0 then state='AUTHORED_PROVEN' end
+  end
   rawStates[layer..'_'..state]=rawStates[layer..'_'..state]+1
+  if state=='NOT_AUTHORED_PROVEN' then return 'ABSENT' end
+  if state=='AUTHORED_PROVEN' then return 'AUTHORED' end
   return nil
  end
  local function summary()
@@ -2195,7 +2243,7 @@ log('BRIDGED_REJECTED_SUMMARY moving_rows_with_supersession=%d shown_overlap_gro
 log('REV5_BRIDGE_BASELINE finalized=true refs=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d',count(bridgeFinal),bridgeStats.complete,bridgeStats.partial,bridgeStats.unknown)
 phase='SEMANTICS'
 local semanticsStart=now()
-local proof=newReferenceFieldSemantics({identity=metadataCache.identity})
+local proof=newReferenceFieldSemantics({identity=metadataCache.identity,safe=safe})
 local rev6Bridge=newReferenceMetadataBridge({safe=safe,class=class,isObject=isObjectReference,identity=metadataCache.identity,
  metadata=auditor.metadata,desc=path,attributeByUIChannel=_G.GetAttributeByUIChannel,fieldSemantics=proof})
 local rev6ByIdentity,rev6Rows,rev6Result,rev6Final={},{},{},{}
@@ -2298,8 +2346,8 @@ for i,p in ipairs(rawRelAudit.patterns) do if i<=80 then
   p.count,text(p.identity),text(p.step),text(p.attribute),text(p.featureGroup),text(p.absEnumerated),p.absType,p.absValue,text(p.rawEnumerated),p.rawType,p.rawValue,text(p.absolute),text(p.relative),text(p.layer),text(p.linked),text(p.linkedLayers),text(p.mask),text(p.effective),p.linkedComplete,text(p.shape),p.classification,p.evidence)
 end end
 log('RAW_REL_ZERO_PROOF_SUMMARY REL_AUTHORED_PROVEN=%d REL_NOT_AUTHORED_PROVEN=%d REL_AMBIGUOUS=%d zero_promotions=0 additional_GetPresetData_calls=0 raw_rel_audit_ms=%s',rawRelAudit.states.REL_AUTHORED_PROVEN,rawRelAudit.states.REL_NOT_AUTHORED_PROVEN,rawRelAudit.states.REL_AMBIGUOUS,text(rawRelAuditElapsed))
--- No local vendor rule or native ValueSource active mask establishes the
--- meaning of numeric zero. Reuse Rev6 classifications without promoting it.
+-- Rev11: the proven Rev8.1 ValueRelative triple rule classifies REL zero as
+-- authored or not-authored inside the Rev6 bridge; ABS zero stays unpromoted.
 local rev7MetadataStart=now()
 local rev7Rows={}
 for _,row in ipairs(rows) do
