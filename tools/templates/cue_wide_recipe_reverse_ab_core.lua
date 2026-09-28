@@ -868,6 +868,14 @@ local truthOK,truth=pcall(function()
   getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel,classHandle=class})
  if capOK then log('NATIVE_ATTRIBUTE_CAPABILITY_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(capStart,now())))
  else log('NATIVE_ATTRIBUTE_CAPABILITY_ERROR error=%s',text(capResult)) end
+ local selStart=now()
+ local selPaths={}; for _,entry in ipairs(selected.entries or {}) do if entry.key then selPaths[#selPaths+1]=entry.key end end
+ local selOK,selResult=pcall(__selectiveMemberApplicabilityProbe,{records=attribution.rows,views=observation.views,referenceRaw=metadataCache.raw,proofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,globalPaths=selPaths},{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
+  getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle,toAddr=_G.ToAddr,
+  getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel,classHandle=class})
+ if selOK then log('SELECTIVE_MEMBER_MAPPING_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(selStart,now())))
+ else log('SELECTIVE_MEMBER_MAPPING_ERROR error=%s',text(selResult)) end
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
   observation.partReads,text(ms(truthStart,now())),text(selected.pass))
  return observation

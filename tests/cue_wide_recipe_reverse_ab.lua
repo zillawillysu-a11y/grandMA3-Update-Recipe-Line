@@ -423,6 +423,7 @@ check(has('COOKED_MEMBER_KEY_SUMMARY problematic_lanes=') and has('COOKED_MEMBER
 check(has('COOKED_HIERARCHICAL_ADDRESS_SUMMARY problematic_lanes=') and has('COOKED_HIERARCHICAL_ADDRESS_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'hierarchical observer reuses cooked Part cache')
 check(has('OBJECTLIST_MEMBER_KEY_SUMMARY problematic_lanes=') and has('NATIVE_MEMBER_ADDRESS_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'native address observer reuses cooked Part cache')
 check(has('NATIVE_ATTRIBUTE_CAPABILITY_SUMMARY surviving_global_lanes=') and has('NATIVE_ATTRIBUTE_CAPABILITY_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'capability observer reuses cooked and reference caches')
+check(has('SELECTIVE_MEMBER_MAPPING_SUMMARY rows_expected=3') and has('SELECTIVE_MEMBER_MAPPING_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'selective observer reuses cooked and reference caches')
 check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate unchanged by signature observer')
 check(has('duplicate_targets= pass=true'),'Rev13 target sanity passes')
 check(next(r.rev7Final)==nil,'Rev7 baseline final refs unchanged by target selection')
