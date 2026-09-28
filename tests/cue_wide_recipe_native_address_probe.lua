@@ -1,10 +1,10 @@
 local f=assert(io.open('tools/templates/cue_wide_recipe_native_address_probe.lua','rb'))
 local source=f:read('*a'); f:close(); assert(load(source))()
-local function handle(id,addr,addrNative,toaddr,desc)
+local function handle(id,addr,addrNative,toaddr,desc,noMethod)
  local h={id=id,addr=addr,addrNative=addrNative,toaddr=toaddr,desc=desc}
  function h:Addr() return self.addr end
  function h:AddrNative() return self.addrNative end
- function h:ToAddr() return self.toaddr end
+ if not noMethod then function h:ToAddr() return self.toaddr end end
  return h
 end
 local byAddr={}
@@ -27,51 +27,67 @@ local function run(ids,buckets)
 end
 local function bucket() return {Dimmer={abs_preset=preset}} end
 local function has(pat) for _,l in ipairs(logs) do if l:find(pat,1,true) then return true end end return false end
--- 1. native Addr maps exact cooked key
-handles[1]=handle(1,'401.1','401.1',nil,'Fixture 401.1 [#1]'); register(handles[1])
-local r=run({1},{['401.1']=bucket()})
-assert(r.classification=='NATIVE_HIERARCHICAL_MEMBER_KEY_PROVEN',r.classification)
-assert(r.summary.roundtrip==1 and r.summary.bucket==1 and r.summary.collision==0)
-assert(has('NATIVE_MEMBER_ADDRESS_SAMPLE') and has('normalized_fixture_address=401.1'))
-assert(has('cooked_bucket_exists=true') and has('expected_attribute_present=true'))
-assert(has('addr_roundtrip_same_handle=true'))
--- 2. nested SubFixture native address with non-bare raw form
-handles[2]=handle(2,nil,'Fixture 201.1.1',nil,'Fixture 201.1.1 [#2]'); register(handles[2])
-r=run({2},{['201.1.1']=bucket()})
-assert(r.classification=='NATIVE_HIERARCHICAL_MEMBER_KEY_PROVEN',r.classification)
-assert(has('normalized_fixture_address=201.1.1'))
--- 3. FromAddr round-trip proves same handle (asserted via summary above); wrong handle fails
-byAddr['401.1']=handle(99,'401.1','401.1',nil,'other')
-r=run({1},{['401.1']=bucket()})
+-- 1. full DB Addr path + ToAddr Fixture 201.1.1 => key must be 201.1.1
+handles[93]=handle(93,'14.9.7.1.2.3.201.1.1','ShowData.LivePatch.Stages.Stage 1.Fixtures.Plate.Plate_Pixel_Group_1','Fixture 201.1.1','Fixture 201.1.1 [#93]')
+register(handles[93])
+local r=run({93},{['201.1.1']=bucket()})
+assert(r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN',r.classification)
+assert(has('toaddr_fixture_key=201.1.1') and has('toaddr_roundtrip_same_handle=true'))
+assert(has('cooked_bucket_exists=true') and has('expected_preset_link_present=true'))
+-- 2. arbitrary numeric Addr must NOT override ToAddr
+handles[7]=handle(7,'14.9.7.9.9.9','ShowData.Other','Fixture 5.2','Fixture 5.2 [#7]'); register(handles[7])
+r=run({7},{['5.2']=bucket()})
+assert(r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN',r.classification)
+assert(has('toaddr_fixture_key=5.2'))
+-- 3. AddrNative failure must NOT suppress ToAddr round-trip test
+byAddr['ShowData.Other']=nil
+r=run({7},{['5.2']=bucket()})
+assert(r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN',r.classification)
+assert(r.summary.roundtrip==1)
+byAddr['ShowData.Other']=handles[7]
+-- 4. FromAddr(ToAddr()) same handle => proven (covered above); wrong handle fails
+byAddr['Fixture 5.2']=handle(99,'x','y','Fixture 5.2','other')
+r=run({7},{['5.2']=bucket()})
 assert(r.classification=='UNPROVEN' and r.summary.roundtrip==0)
-byAddr['401.1']=handles[1]
--- 4. bucket exists but Attribute absent => member key proven, Attribute unresolved
-handles[3]=handle(3,'401.4','401.4',nil,'Fixture 401.4 [#3]'); register(handles[3])
+byAddr['Fixture 5.2']=handles[7]
+-- global ToAddr fallback when method unavailable
+handles[8]=handle(8,'14.1.1','ShowData.G','Fixture 6.1','Fixture 6.1 [#8]',true); register(handles[8])
+r=run({8},{['6.1']=bucket()})
+assert(r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN',r.classification)
+assert(has('toaddr_fixture_key=6.1'))
+-- 5. cooked bucket exists / Attribute absent => member key proven, Attribute unresolved
+handles[3]=handle(3,'14.9.7.1.2.3.401.4','ShowData.N','Fixture 401.4','Fixture 401.4 [#3]'); register(handles[3])
 r=run({3},{['401.4']={Color={abs_preset=preset}}})
-assert(r.summary.bucket==1 and r.summary.attrAbsent==1)
+assert(r.summary.bucket==1 and r.summary.attrAbsent==1 and r.summary.missing==0)
 assert(has('classification=MEMBER_KEY_PROVEN_ATTRIBUTE_UNRESOLVED'))
-assert(r.classification=='NATIVE_HIERARCHICAL_MEMBER_KEY_PROVEN')
--- 5. sf_index points to unrelated valid bucket => accidental collision, member still proven
-handles[9]=handle(9,'201.1.2','201.1.2',nil,'Fixture 201.1.2 [#9]'); register(handles[9])
+assert(r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN',r.classification)
+-- bucket missing is a different problem
+r=run({3},{})
+assert(r.summary.missing==1 and r.summary.bucket==0)
+assert(has('classification=BUCKET_MISSING'))
+assert(r.classification=='UNPROVEN')
+-- 6. sf_index unrelated valid bucket => accidental collision only
+handles[9]=handle(9,'14.9.7.1.2.3.201.1.2','ShowData.M','Fixture 201.1.2','Fixture 201.1.2 [#9]'); register(handles[9])
 r=run({9},{['201.1.2']=bucket(),['9']=bucket()})
 assert(r.collisions.sf>=1 and r.collisions.same==0)
 assert(has('classification=SF_INDEX_ACCIDENTAL_BUCKET_COLLISION'))
-assert(r.summary.collision==0)
-handles[9]=nil; byAddr['9']=nil
--- 6. actual duplicate native key => collision / UNPROVEN
-handles[4]=handle(4,'201.1.1','201.1.1',nil,'Fixture 201.1.1 [#4]'); register(handles[4])
-byAddr['201.1.1']=handles[4]
-r=run({2,4},{['201.1.1']=bucket()})
+assert(r.summary.collision==0 and r.classification=='NATIVE_TOADDR_MEMBER_KEY_PROVEN')
+handles[9]=nil; byAddr['Fixture 201.1.2']=nil; byAddr['9']=nil; byAddr['14.9.7.1.2.3.201.1.2']=nil; byAddr['ShowData.M']=nil
+-- 7. true duplicate ToAddr key => collision / UNPROVEN
+handles[4]=handle(4,'14.9.7.1.2.3.201.1.1','ShowData.D','Fixture 201.1.1','Fixture 201.1.1 [#4]'); register(handles[4])
+byAddr['Fixture 201.1.1']=handles[4]
+r=run({93,4},{['201.1.1']=bucket()})
 assert(r.summary.collision>0 and r.classification=='UNPROVEN')
-byAddr['201.1.1']=handles[2]; handles[4]=nil
--- 7-9. cache reuse / truth isolation: no GetPresetData, views unmodified, diagnostic-only markers
-local buckets={['401.1']=bucket()}
+byAddr['Fixture 201.1.1']=handles[93]; handles[4]=nil
+-- 8-11. cache reuse / truth isolation: no GetPresetData, views unmodified, diagnostic-only markers
+local buckets={['201.1.1']=bucket()}
 local snapshot={}; for k,v in pairs(buckets) do snapshot[k]=v end
-r=run({1},buckets)
+r=run({93},buckets)
 assert(calls.presetData==0)
 for k,v in pairs(buckets) do assert(snapshot[k]==v) end
 assert(has('diagnostic_only=true'))
-assert(has('GLOBAL_NATIVE_MEMBER_KEY_ALTERNATE') and has('mapped_lanes=1'))
+assert(has('GLOBAL_TOADDR_MEMBER_KEY_ALTERNATE') and has('mapped_lanes=1'))
 assert(has('OLD_SF_INDEX_COLLISION_SUMMARY') and has('classification=NO_RESIDUAL'))
+assert(has('TOADDR_MEMBER_KEY_SAMPLE') and has('TOADDR_MEMBER_KEY_SUMMARY'))
 _G.GetPresetData=nil
-print('PASS native Addr exact key, nested address, round-trip, attribute-unresolved, sf collision, duplicate collision, cache reuse')
+print('PASS toaddr primary key, numeric Addr ignored, native failure isolated, round-trip, attribute-unresolved, bucket-missing, sf collision, duplicate collision, cache reuse')
