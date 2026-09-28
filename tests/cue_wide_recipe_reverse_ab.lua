@@ -412,6 +412,10 @@ r=run()
 local classCount=0
 for _,line in ipairs(logs) do if line:find('GLOBAL_APPLICABILITY_CLASS reference=',1,true) then classCount=classCount+1 end end
 check(classCount==5 and has('REV13_GLOBAL_TARGET_SUMMARY expected=5 found=5 classified=5'),'all five canonical targets classified despite description suffix')
+local deltaCount=0
+for _,line in ipairs(logs) do if line:find('GLOBAL_SIGNATURE_DELTA reference=',1,true) then deltaCount=deltaCount+1 end end
+check(deltaCount==4 and has('GLOBAL_SIGNATURE_COMPONENT reference=Preset 4.1'),'Rev13.1 observes four targets without changing classification')
+check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate unchanged by signature observer')
 check(has('duplicate_targets= pass=true'),'Rev13 target sanity passes')
 check(next(r.rev7Final)==nil,'Rev7 baseline final refs unchanged by target selection')
 registry['Preset 4.23']=nil

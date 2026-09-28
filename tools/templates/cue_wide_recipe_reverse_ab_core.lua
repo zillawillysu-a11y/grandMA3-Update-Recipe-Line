@@ -759,6 +759,18 @@ local rev13OK,rev13=pcall(function()
   if key and #entry.rows>0 then classified=classified+1 end
   log('GLOBAL_APPLICABILITY_CLASS reference=%s rows=%d store_mode=%s selective=%s motion_static_proven=%s grid_mask_shape=%s individual_mask_shape=%s value_mask_shape=%s effective_step_shape=%s layer=%s semantic_shape=%s matches_native_proven_class=%s remaining_reasons=%s',
    label,#entry.rows,joined(p.modes),joined(p.selective),text(static and static.motionStaticProven),joined(p.gridMasks),joined(p.individualMasks),joined(p.valueMasks),joined(p.steps),joined(p.layers),p.semanticShape,text(allowed),joined(p.reasons))
+  if selected.pass and label~='Preset 4.4' then
+   local deltaOK,delta=pcall(__rev131SignatureDelta,control,raw)
+   if deltaOK then
+    log('GLOBAL_SIGNATURE_DELTA reference=%s different_components=%s key_identity_only_components=%s semantic_value_components=%s value_difference_components=%s structural_components=%s control_channel_count=%d candidate_channel_count=%d classification=OBSERVATION_ONLY',
+     label,table.concat(delta.different,','),table.concat(delta.keyOnly,','),table.concat(delta.semanticValue,','),table.concat(delta.valueDifferences,','),table.concat(delta.structural,','),delta.controlChannels,delta.candidateChannels)
+    for _,component in ipairs(delta.components) do
+     log('GLOBAL_SIGNATURE_COMPONENT reference=%s component=%s control_type=%s candidate_type=%s control_count=%d candidate_count=%d key_sets_equal=%s value_type_shape_equal=%s semantic_status=%s',
+      label,component.component,component.controlType,component.candidateType,component.controlCount,component.candidateCount,
+      text(component.keySetsEqual),text(component.valueTypeShapeEqual),component.status)
+    end
+   else log('GLOBAL_SIGNATURE_DELTA_ERROR reference=%s error=%s',label,text(delta)) end
+  end
  end
  local targetPass=selected.pass and classified==#paths
  log('REV13_GLOBAL_TARGET_SUMMARY expected=%d found=%d classified=%d missing_targets=%s duplicate_targets=%s pass=%s',

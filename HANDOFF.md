@@ -2,15 +2,15 @@
 
 ## Current Goal
 
-Native validate the diagnostic-only Rev13 Global ordinary applicability classifier and isolated alternate. Production, shared Rev7 semantics, oracle, UI marker, Selective Presets, and Preset 25.9008 are out of scope.
+Native validate the Rev13.1 signature delta observer for four Global ordinary Presets versus Preset 4.4. Production, Rev7, Rev13 classification and compatibility gate, oracle, Selective Presets, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-The controlled Global Grid A/B probe passed natively. Rev13 target selection now resolves five Preset paths to native handles and joins by `metadataCache.identity`, with exactly-five sanity output. Missing or duplicate targets make its alternate INCONCLUSIVE. The classifier and fixture/Attribute compatibility gate are unchanged; Rev7 remains untouched. Native rerun is pending.
+Rev13 target wiring passed natively. Rev13.1 adds only a cached-metadata observer that compares component signatures for Presets 4.1, 4.23, 6.10, and 21.5 against 4.4. It separates key identity, value, structure, and cardinality differences. The Rev13 classifier, eligible rows, compatibility gate, and Rev7 remain unchanged. Native Rev13.1 rerun is pending.
 
 ## Latest Real-World User Test
 
-Latest Rev13 native Cue 8 run: Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19. Rev13 alternate reported zero eligible rows and 19 survivors, but printed no `GLOBAL_APPLICABILITY_CLASS`. Native `desc(ref)` includes a `[#...]` suffix, so full display-string equality missed all five targets.
+Latest Rev13 native Cue 8 run: target summary expected=5, found=5, classified=5, pass=true. Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19. All five are Global, non-selective, motion-static proven, with the same printed masks, single step, and ABS layer. Preset 4.4 matches its control signature; the other four differ in unprinted signature components. No rows were promoted.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Latest Rev13 native Cue 8 run: Rev7 remained four refs, missing=0, extra=0, fina
 
 ## Current Problem
 
-Rev13 must natively confirm all five targets are found/classified. The corrected target wiring is locally tested, not yet native verified. No production gate change is authorized.
+Identify which cached metadata components cause the four Rev13 signature mismatches. No production gate change is authorized.
 
 ## Known Failed Attempts
 
@@ -38,8 +38,8 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `4e098ed`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `b8c9552`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Confirm `REV13_GLOBAL_TARGET_SUMMARY expected=5 found=5 classified=5 pass=true`, five `GLOBAL_APPLICABILITY_CLASS` lines, and unchanged Rev7 results. Review shape reasons before any further rule.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review four `GLOBAL_SIGNATURE_DELTA` summaries and bounded component lines, alongside unchanged Rev13 alternate and Rev7 results. Do not change classifier semantics from observer output alone.
