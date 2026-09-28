@@ -849,6 +849,12 @@ local truthOK,truth=pcall(function()
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,getSubfixture=_G.GetSubfixture})
  if keyOK then log('COOKED_MEMBER_KEY_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(keyStart,now())))
  else log('COOKED_MEMBER_KEY_PROBE_ERROR error=%s',text(keyResult)) end
+ local hierarchyStart=now()
+ local hierarchyOK,hierarchyResult=pcall(__cookedHierarchicalKeyProbe,observation.problematic,observation.views,{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
+  getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle})
+ if hierarchyOK then log('COOKED_HIERARCHICAL_ADDRESS_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(hierarchyStart,now())))
+ else log('COOKED_HIERARCHICAL_ADDRESS_ERROR error=%s',text(hierarchyResult)) end
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
   observation.partReads,text(ms(truthStart,now())),text(selected.pass))
  return observation

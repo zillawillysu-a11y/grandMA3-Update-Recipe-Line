@@ -2,15 +2,15 @@
 
 ## Current Goal
 
-Native validate a diagnostic cooked member-key representation probe for the 1,176 lanes blocked by member identity. Production, Rev7, attribution, Rev13 eligibility, Selective Presets, UI marker, Group matching, Attribute capability, and Preset 25.9008 are out of scope.
+Native validate a read-only hierarchical Fixture address probe for the 1,176 lanes blocked by member identity. Production, Rev7, attribution, Rev13 eligibility, Selective Presets, UI marker, Group matching, Attribute capability, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-Wildcard-to-ABS truth refinement passed natively. The new side observer collects all problematic members, their parent hierarchy, candidate native cooked keys, and bounded `by_fixtures` key distributions. A shape is proven only when exactly one candidate relation covers every case with expected Attribute evidence and has no member-key collision. It reuses the truth observer's cooked Part cache and cannot alter truth, Rev7, or Rev13.
+The side observer now compares display-derived hierarchical Fixture addresses with independent native address properties and parent-child ordinal evidence. It requires cooked bucket Attribute evidence and unique reverse mapping; display-only matches remain diagnostic. It reports the 16 old-candidate residual cases separately and reuses the truth observer's cooked Part cache. Truth, Rev7, and Rev13 remain unchanged.
 
 ## Latest Real-World User Test
 
-Latest native Cue 8 truth probe: 1,406 surviving lanes, all 1,406 refined to ABS, zero refinement failures and zero different-Preset lanes. The 15 rows remain INCONCLUSIVE: five Preset 4.4 rows account for 1,176 `MEMBER_KEY_UNPROVEN` lanes (112, 210, 210, 336, 308); the other 183 unresolved lanes are `ATTRIBUTE_CAPABILITY_UNPROVEN`. Four unique source CueParts were read. Rev7 and Rev13 remain unchanged.
+Latest native Cue 8 member-key probe: cooked `by_fixtures` keys are strings such as `216.1.10`; problematic SubFixtures have direct FID/CID nil while parent or ancestor Fixtures carry FID. The old candidates mapped no proven shape; 16 cases had some old candidate evidence and 1,160 were unmapped. Truth refined all 1,406 lanes to ABS; 183 Attribute-capability lanes remain out of scope. Rev7 and Rev13 remain unchanged.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Latest native Cue 8 truth probe: 1,406 surviving lanes, all 1,406 refined to ABS
 
 ## Current Problem
 
-Native rerun must reveal whether the 1,176 member-key lanes have a unique cooked bucket relation. The 183 Attribute-capability lanes remain separately unresolved. No production or Group matcher change is authorized.
+Native rerun must show whether hierarchical addresses explain the 1,176 member-key lanes with independent native evidence. The 183 Attribute-capability lanes remain separately unresolved. No production or Group matcher change is authorized.
 
 ## Known Failed Attempts
 
@@ -30,16 +30,18 @@ Treating Global grid/individual metadata as automatically harmless has no native
 ## Important Files
 
 - `tools/templates/cue_wide_recipe_member_key_probe.lua`
+- `tools/templates/cue_wide_recipe_hierarchical_key_probe.lua`
 - `tools/templates/cue_wide_recipe_global_truth.lua`
 - `tools/templates/cue_wide_recipe_reverse_ab_core.lua`
 - `tests/cue_wide_recipe_member_key_probe.lua`
+- `tests/cue_wide_recipe_hierarchical_key_probe.lua`
 - `tools/run_cue_wide_recipe_reverse_ab.py`
 - `tools/deploy_cue_wide_recipe_reverse_ab.py`
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `78f3d4e`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `95e69a6`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review `COOKED_PART_KEY_SHAPE`, `COOKED_MEMBER_KEY_SHAPE/SAMPLE/SUMMARY`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review `COOKED_HIERARCHICAL_ADDRESS_SHAPE/SAMPLE/SUMMARY`, `COOKED_OLD_CANDIDATE_RESIDUAL`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries.

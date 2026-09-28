@@ -420,6 +420,7 @@ for _,line in ipairs(logs) do if line:find('GLOBAL_NORMALIZED_SEMANTIC_CLASS ref
 check(normalizedCount==5 and has('GLOBAL_DICT_INDEX_AUDIT reference=Preset 4.4'),'Rev13.2 observes all five cached references')
 check(has('GLOBAL_RECIPE_APPLICABILITY_SUMMARY rows_expected=15') and has('diagnostic_only=true cooked_part_reads=1'),'truth observer reads current Cue Part once')
 check(has('COOKED_MEMBER_KEY_SUMMARY problematic_lanes=') and has('COOKED_MEMBER_KEY_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'member key probe reuses cooked Part cache')
+check(has('COOKED_HIERARCHICAL_ADDRESS_SUMMARY problematic_lanes=') and has('COOKED_HIERARCHICAL_ADDRESS_TIMING observer_ms=') and has('extra_GetPresetData_calls=0'),'hierarchical observer reuses cooked Part cache')
 check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate unchanged by signature observer')
 check(has('duplicate_targets= pass=true'),'Rev13 target sanity passes')
 check(next(r.rev7Final)==nil,'Rev7 baseline final refs unchanged by target selection')
