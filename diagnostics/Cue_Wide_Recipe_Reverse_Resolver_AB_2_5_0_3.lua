@@ -1735,6 +1735,77 @@ local function newReferenceFieldSemantics(api)
  return {accept=accept,ordinary=ordinary,rawLayer=rawLayer,observe=observe,summary=summary}
 end
 
+-- Rev7 observation only. No value-zero inference enters the candidate.
+local function newRawRelZeroAudit(api)
+ local patterns,order,states,linkedCache={},{},{REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0},{}
+ local function shown(v)
+  if v==nil then return '<nil>' end
+  if type(v)=='string' and v=='' then return '<empty>' end
+  return tostring(v):gsub('[\r\n|]',' '):sub(1,80)
+ end
+ local function patternValue(v)
+  if type(v)=='number' and v~=0 then return '<nonzero-number>' end
+  return shown(v)
+ end
+ local function probe(h,key)
+  local direct=api.safe(function() return h[key] end)
+  local getter=api.safe(function() return h:Get(key) end)
+  return 'direct='..type(direct)..':'..shown(direct)..',get='..type(getter)..':'..shown(getter)
+ end
+ local function linkedEvidence(h)
+  if not api.isObject(h) or api.class(h):lower()~='preset' then return '<none>','<none>','<none>','<none>' end
+  local id=api.identity(h)
+  if id and linkedCache[id] then return table.unpack(linkedCache[id]) end
+  local raw=id and api.raw[id]
+  local info=type(raw)=='table' and api.ordinary(raw) or nil
+  local masks,effective={},{}
+  if type(raw)=='table' then for ui,p in pairs(raw) do if type(ui)=='number' and type(p)=='table' then
+   masks[tostring(p.mask_active_value)]=true
+   local step=p[1]
+   if type(step)=='table' then effective['ABS:'..type(step.absolute)..'/REL:'..type(step.relative)]=true end
+  end end end
+  local result={info and api.joined(info.layers) or '<unknown>',api.joined(masks),api.joined(effective),info and info.completeness or 'UNKNOWN'}
+  if id then linkedCache[id]=result end
+  return table.unpack(result)
+ end
+ local function observe(node,step,linked)
+  local m=api.metadata(node)
+  local r=m.rawvaluerel; local v=r and r.raw
+  local a=m.rawvalueabs; local av=a and a.raw
+  local layer=m.layer or m.valuelayer
+  local relProbe,absProbe=probe(node,'ValueRelative'),probe(node,'ValueAbsolute')
+  local shape=m.shape and m.shape.raw~=nil and shown(m.shape.raw)~='<empty>'
+  local attr=(m.attributes or m.attribute) and (m.attributes or m.attribute).raw
+  local feature=api.isObject(attr) and api.safe(function() return attr.Feature end)
+  local fg=api.isObject(feature) and api.safe(function() return feature:Parent() end)
+  local linkedLayers,mask,effective,complete=linkedEvidence(linked)
+  local classification,evidence='REL_AMBIGUOUS','RawValueRel zero encoding has no independent active-lane discriminator'
+  if type(v)=='number' and v~=0 then
+   classification='REL_AUTHORED_PROVEN'; evidence='vendor keypad maps ValueRelative to RawValueRel; nonzero raw numeric value'
+  elseif type(v)=='string' and v:lower()=='none' then
+   classification='REL_NOT_AUTHORED_PROVEN'; evidence='explicit None special suppresses this raw lane'
+  elseif type(v)=='string' and v=='' then
+   evidence='empty getter/raw display observed; native storage versus getter fallback unproven'
+  end
+  -- Numeric zero is deliberately never promoted by Layer labels, getter zero,
+  -- a linked Preset mask, or a complete linked Preset with no REL lane.
+  local signature=table.concat({type(v),patternValue(v),type(av),patternValue(av),relProbe,absProbe,shown(layer and layer.raw),linkedLayers,mask,effective,complete,tostring(shape),classification},'|')
+  local p=patterns[signature]
+  if not p then
+   p={count=0,identity=api.identity(node),step=step,attribute=shown(attr),featureGroup=api.isObject(fg) and api.identity(fg) or '<unknown>',
+    rawType=type(v),rawValue=shown(v),rawEnumerated=r~=nil,absType=type(av),absValue=shown(av),absEnumerated=a~=nil,
+    relative=relProbe,absolute=absProbe,
+    layer='Layer{enumerated='..tostring(m.layer~=nil)..',type='..tostring(m.layer and m.layer.type)..',info='..shown(m.layer and m.layer.info)..',raw='..shown(m.layer and m.layer.raw)..','..probe(node,'Layer')..'};ValueLayer{enumerated='..tostring(m.valuelayer~=nil)..',type='..tostring(m.valuelayer and m.valuelayer.type)..',info='..shown(m.valuelayer and m.valuelayer.info)..',raw='..shown(m.valuelayer and m.valuelayer.raw)..','..probe(node,'ValueLayer')..'}',
+    linked=linked and api.identity(linked) or '<none>',linkedLayers=linkedLayers,mask=mask,effective=effective,linkedComplete=complete,
+    shape=shape,classification=classification,evidence=evidence}
+   patterns[signature]=p; order[#order+1]=p
+  end
+  p.count=p.count+1; states[classification]=states[classification]+1
+  return classification
+ end
+ return {observe=observe,patterns=order,states=states}
+end
+
 local rawData=_G.GetPresetData
 assert((safe(BuildDetails) or {}).BigVersion=='2.5.0.3','Requires grandMA3 2.5.0.3')
 local sequence,cue=safe(_G.SelectedSequence),safe(_G.GetCurrentCue)
@@ -1792,7 +1863,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=6_REFERENCE_FIELD_SEMANTICS_PROOF target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_BASELINE_METADATA_THEN_REV5_BRIDGE_THEN_REV6_SEMANTICS_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=7_RAW_REL_ZERO_SEMANTICS_PROOF target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_REV4_BASELINE_THEN_REV5_BRIDGE_THEN_REV6_SEMANTICS_THEN_REV7_RAW_REL_PROOF_THEN_REV7_REVERSE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -2205,8 +2276,61 @@ log('REV6_BRIDGED_METADATA_SUMMARY COMPLETE=%d PARTIAL=%d UNKNOWN=%d semantics_m
 log('REV6_BRIDGED_REVERSE_FINALIZED valid=%s refs=%d error=%s rows=%d lanes=%d static_terminators=%d moving_rows=%d unsafe_rows=%d reverse_ms=%s',text(rev6OK),count(rev6Final),text(rev6Error),#rev6Rows,rev6Result.lanesResolved or 0,rev6Result.staticRows or 0,rev6Result.movingRows or 0,#rev6Result.unsafe,text(rev6ReverseElapsed))
 identityOutput('REV6_BRIDGED_REVERSE_FINAL',rev6Final)
 for _,entry in pairs(rev6Result.refs) do log('REV6_ACTIVE reference=%s surviving_member_count=%d',desc(entry.ref),count(entry.members)) end
+rev6Result.rev7=(function()
+phase='RAW_REL_AUDIT'
+local rev7PathStart=now()
+local rawRelAuditStart=now()
+local rawRelAudit=newRawRelZeroAudit({safe=safe,isObject=isObjectReference,class=class,identity=metadataCache.identity,
+ metadata=auditor.metadata,raw=metadataCache.raw,ordinary=rev6Bridge.ordinary,joined=joined})
+local seenSource={}
+for _,row in ipairs(rows) do for _,a in ipairs((row.structural or {}).audits or {}) do
+ local h=a.node; local key=h and metadataCache.identity(h)
+ if key and not seenSource[key] and class(h):lower()=='phaserrecipevaluesource' then
+  seenSource[key]=true
+  local step=safe(function() return h:Parent():Index() end)
+  rawRelAudit.observe(h,step,a.presetHandle)
+ end
+end end
+local rawRelAuditElapsed=ms(rawRelAuditStart,now())
+log('RAW_REL_ZERO_PATTERN_SUMMARY patterns=%d observations=%d shown=%d omitted=%d zero_encoding_proven=false',#rawRelAudit.patterns,count(seenSource),math.min(80,#rawRelAudit.patterns),math.max(0,#rawRelAudit.patterns-80))
+for i,p in ipairs(rawRelAudit.patterns) do if i<=80 then
+ log('RAW_REL_ZERO_PATTERN occurrences=%d ValueSource=%s Step=%s Attribute=%s FeatureGroup=%s RawValueAbs_enumerated=%s RawValueAbs_type=%s RawValueAbs=%s RawValueRel_enumerated=%s raw_type=%s raw_value=%s value_absolute=%s value_relative=%s layer_property=%s linked_preset=%s linked_layers=%s active_value_mask=%s linked_effective=%s linked_complete=%s Shape=%s classification=%s evidence=%s',
+  p.count,text(p.identity),text(p.step),text(p.attribute),text(p.featureGroup),text(p.absEnumerated),p.absType,p.absValue,text(p.rawEnumerated),p.rawType,p.rawValue,text(p.absolute),text(p.relative),text(p.layer),text(p.linked),text(p.linkedLayers),text(p.mask),text(p.effective),p.linkedComplete,text(p.shape),p.classification,p.evidence)
+end end
+log('RAW_REL_ZERO_PROOF_SUMMARY REL_AUTHORED_PROVEN=%d REL_NOT_AUTHORED_PROVEN=%d REL_AMBIGUOUS=%d zero_promotions=0 additional_GetPresetData_calls=0 raw_rel_audit_ms=%s',rawRelAudit.states.REL_AUTHORED_PROVEN,rawRelAudit.states.REL_NOT_AUTHORED_PROVEN,rawRelAudit.states.REL_AMBIGUOUS,text(rawRelAuditElapsed))
+-- No local vendor rule or native ValueSource active mask establishes the
+-- meaning of numeric zero. Reuse Rev6 classifications without promoting it.
+local rev7MetadataStart=now()
+local rev7Rows={}
+for _,row in ipairs(rows) do
+ local key=row.ref and metadataCache.identity(row.ref)
+ local info=key and rev6ByIdentity[key] or {features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={REFERENCE_UNAVAILABLE=true}}
+ local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,members=row.members,
+  features=info.features,layers=info.layers,lanes=info.lanes,moving=info.motion=='MOVING' or info.motion=='GENERATOR',unsafe={},evidence=joined(info.evidence)}
+ if not copy.members then copy.unsafe[#copy.unsafe+1]='FAST_PATH_UNSAFE_SELECTION' end
+ if info.completeness~='COMPLETE' then
+  copy.unsafe[#copy.unsafe+1]='REV7_REFERENCE_UNSAFE'
+  if not info.featureScopeKnown or not next(info.features or {}) then copy.features=nil end
+  if not info.layerScopeKnown or not next(info.layers or {}) then copy.layers=nil end
+ end
+ rev7Rows[#rev7Rows+1]=copy
+end
+local rev7MetadataElapsed=ms(rev7MetadataStart,now())
+local rev7ReverseStart=now()
+local rev7OK,rev7Result=pcall(recipeReverseResolve,rev7Rows)
+local rev7ReverseElapsed=ms(rev7ReverseStart,now())
+local rev7Error
+if not rev7OK then rev7Error=rev7Result; rev7Result=nil end
+rev7Result=rev7Result or {refs={},unsafe={}}
+local rev7Final={}; for rid,entry in pairs(rev7Result.refs) do rev7Final[rid]=entry.ref end
+log('REV7_PHASER_MOTION_SUMMARY phaser_references=%d motion_proven=%d zero_promotions=0',rev6Stats.phaser,rev6Stats.moving)
+log('REV7_BRIDGED_METADATA_SUMMARY COMPLETE=%d PARTIAL=%d UNKNOWN=%d metadata_ms=%s cache_reused=true additional_GetPresetData_calls=0',rev6Stats.complete,rev6Stats.partial,rev6Stats.unknown,text(rev7MetadataElapsed))
+log('REV7_BRIDGED_REVERSE_FINALIZED valid=%s refs=%d error=%s rows=%d lanes=%d static_terminators=%d moving_rows=%d unsafe_rows=%d final_refs=%d reverse_ms=%s total_rev7_path_ms=%s',text(rev7OK),count(rev7Final),text(rev7Error),#rev7Rows,rev7Result.lanesResolved or 0,rev7Result.staticRows or 0,rev7Result.movingRows or 0,#rev7Result.unsafe,count(rev7Final),text(rev7ReverseElapsed),text(ms(rev7PathStart,now())))
+identityOutput('REV7_BRIDGED_REVERSE_FINAL',rev7Final)
+return {audit=rawRelAudit,rows=rev7Rows,result=rev7Result,final=rev7Final,ok=rev7OK}
+end)()
 phase='ORACLE'
-log('ORACLE_START native_finalized=true metadata_finalized=true rev5_bridge_finalized=true rev6_finalized=true')
+log('ORACLE_START native_finalized=true metadata_finalized=true rev5_bridge_finalized=true rev6_finalized=true rev7_finalized=true')
 local oracleLogs=0
 oracleLogSink=function(line)
  oracleLogs=oracleLogs+1
@@ -2325,7 +2449,24 @@ for _,row in ipairs(rev6Rows) do if (rev6Missing[row.refId] or rev6Extra[row.ref
 end end
 log('REV6_BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count(rev6Missing) or 'UNVERIFIED',oracleOK and count(rev6Extra) or 'UNVERIFIED',joined(rev6Classes))
 log('REV6_RESULT classification=%s refs=%d oracle_refs=%d unsafe_rows=%d safe_integration=false',joined(rev6Classes),count(rev6Final),count(oracle),#rev6Result.unsafe)
+rev6Result.rev7Diff=(function()
+local rev7Missing,rev7Extra,rev7Classes={},{},{}
+if not rev6Result.rev7.ok or not oracleOK or not stable then rev7Classes.UNVERIFIED=true
+else
+ for rid,ref in pairs(oracle) do if not rev6Result.rev7.final[rid] then rev7Missing[rid]=ref end end
+ for rid,ref in pairs(rev6Result.rev7.final) do if not oracle[rid] then rev7Extra[rid]=ref end end
+ if not next(rev7Missing) and not next(rev7Extra) then rev7Classes.REV7_BRIDGED_EXACT_MATCH=true end
+ if next(rev7Missing) then rev7Classes.REV7_BRIDGED_MISSING_REFERENCE=true end
+ if next(rev7Extra) then rev7Classes.REV7_BRIDGED_EXTRA_REFERENCE=true end
+end
+if #rev6Result.rev7.result.unsafe>0 or rev6Stats.partial>0 or rev6Stats.unknown>0 then rev7Classes.REV7_REFERENCE_UNSAFE=true end
+identityOutput('REV7_BRIDGED_DIFF_MISSING',rev7Missing,16)
+identityOutput('REV7_BRIDGED_DIFF_EXTRA',rev7Extra,16)
+log('REV7_BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count(rev7Missing) or 'UNVERIFIED',oracleOK and count(rev7Extra) or 'UNVERIFIED',joined(rev7Classes))
+log('REV7_RESULT classification=%s refs=%d oracle_refs=%d moving_rows=%d static_terminators=%d unsafe_rows=%d final_refs=%d safe_integration=false',joined(rev7Classes),count(rev6Result.rev7.final),count(oracle),rev6Result.rev7.result.movingRows or 0,rev6Result.rev7.result.staticRows or 0,#rev6Result.rev7.result.unsafe,count(rev6Result.rev7.final))
+return {missing=rev7Missing,extra=rev7Extra,classes=rev7Classes}
+end)()
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
-return {rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
+return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end

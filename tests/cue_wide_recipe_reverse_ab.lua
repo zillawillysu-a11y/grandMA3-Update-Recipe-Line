@@ -187,7 +187,7 @@ env.GetPresetData=function(target,phasersOnly,byFixtures)
   check(phasersOnly==false and byFixtures==false,'reference call flags')
   metadataReads=metadataReads+1; return references[target.db]
  end
- check(has('METADATA_REVERSE_FINALIZED') and has('BRIDGED_REVERSE_FINALIZED') and has('REV6_BRIDGED_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until Rev6 finalized')
+ check(has('METADATA_REVERSE_FINALIZED') and has('BRIDGED_REVERSE_FINALIZED') and has('REV6_BRIDGED_REVERSE_FINALIZED') and has('REV7_BRIDGED_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until Rev7 finalized')
  oracleReads=oracleReads+1; calls=calls+1; return data[target] or {}
 end
 p=setup(); g=group(701,{11,12}); a=obj('Preset','Preset arbitrary'); a.db=91001
@@ -208,8 +208,10 @@ local oraclePos=assert(joinedLogs:find('ORACLE_START',1,true))
 check(nativePos<cachePos and cachePos<finalizedPos and finalizedPos<oraclePos,'strict three-path finalization order')
 local rev5Pos=assert(joinedLogs:find('REV5_BRIDGE_BASELINE',1,true))
 local rev6Pos=assert(joinedLogs:find('REV6_BRIDGED_REVERSE_FINALIZED',1,true))
-check(finalizedPos<rev5Pos and rev5Pos<rev6Pos and rev6Pos<oraclePos,'Rev6 finalizes after Rev5 and before oracle')
+local rev7Pos=assert(joinedLogs:find('REV7_BRIDGED_REVERSE_FINALIZED',1,true))
+check(finalizedPos<rev5Pos and rev5Pos<rev6Pos and rev6Pos<rev7Pos and rev7Pos<oraclePos,'Rev7 finalizes after Rev6 and before oracle')
 check(r.rev6OK and r.rev6Final~=nil and r.fastCalls==0,'Rev6 candidate never sees oracle or cooked history')
+check(r.rev7OK and r.rev7Final~=nil and r.rev7Final~=r.rev6Final and metadataReads==1 and has('RAW_REL_ZERO_PROOF_SUMMARY'),'Rev7 independent candidate reuses Rev6 reference reads')
 -- Aliases across Cues read once, resolve memberships before ref identity collapse.
 p=setup(); metadataReads=0; oracleReads=0
 row(p,group(702,{11,12}),a)
@@ -226,7 +228,7 @@ references[stop.db]={[1]={[1]={absolute=100}}}
 row(secondPart,group(704,{12}),stop,2)
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run(); entry=select(2,next(r.metadata.refs))
 check(entry and entry.members[11] and not entry.members[12] and r.metadata.staticRows==1,'ordinary static metadata terminates partial overlap')
-check(r.fastCalls==0 and logs[1]:find('revision=6_REFERENCE_FIELD_SEMANTICS_PROOF',1,true) and has('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
+check(r.fastCalls==0 and logs[1]:find('revision=7_RAW_REL_ZERO_SEMANTICS_PROOF',1,true) and has('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
 -- A second run must issue a new metadata read for each distinct reference.
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run()
 check(metadataReads==2 and r.metadataStats.calls==2,'run-local cache lifetime')
