@@ -3815,14 +3815,23 @@ function __phaser9008SplitProbe(ctx,api)
   local rem={} -- derived remaining blockers from split attribution
   if attOK and type(att)=='table' and type(att.rows)=='table' then
    for _,rec in ipairs(att.rows) do
-    if rec.category=='FINAL_SURVIVING_UNSAFE' and rec.ref then rem[refLabel(rec.ref)]=true end
+    if rec.category=='FINAL_SURVIVING_UNSAFE' and rec.ref then
+     -- Path B only: the synthetic residual REL barrier is closed by
+     -- blockedLanes==0 even though attribution still lists it. Exclude by
+     -- object identity from relBarriers, never by Preset name.
+     local isResidual=relBarriers[rec.row]==true
+     if not (isResidual and classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING') then
+      rem[refLabel(rec.ref)]=true
+     end
+    end
    end
   end
   local remList={}; for k in pairs(rem) do remList[#remList+1]=k end; table.sort(remList)
-  emit('TRACK_A_RESOLVER_CHECKPOINT member_identity=PROVEN global_ordinary=PROVEN selective=PROVEN phaser_9008_known_abs=PROVEN phaser_9008_unknown_rel=%s remaining_semantic_blockers=%s final_refs=%d oracle_refs=%d missing=%d extra=%d classification=TRACK_A_SEMANTICS_PROVEN diagnostic_only=true',
+  local trackClass=#remList==0 and 'TRACK_A_SEMANTICS_PROVEN' or 'TRACK_A_SEMANTICS_INCOMPLETE'
+  emit('TRACK_A_RESOLVER_CHECKPOINT member_identity=PROVEN global_ordinary=PROVEN selective=PROVEN phaser_9008_known_abs=PROVEN phaser_9008_unknown_rel=%s remaining_semantic_blockers=%s final_refs=%d oracle_refs=%d missing=%d extra=%d classification=%s diagnostic_only=true',
    finalUnres==0 and 'SAFE_SUPERSEDED' or 'SAFE_NONCONTRIBUTING',
    table.concat(remList,',')~='' and table.concat(remList,',') or '-',
-   count(splitFinal),count(ctx.oracle or {}),ctx.oracleOK and missing or -1,ctx.oracleOK and extra or -1)
+   count(splitFinal),count(ctx.oracle or {}),ctx.oracleOK and missing or -1,ctx.oracleOK and extra or -1,trackClass)
  end
  return {classification=classification,target=target,missing=missing,extra=extra}
 end

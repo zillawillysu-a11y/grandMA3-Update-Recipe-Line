@@ -84,7 +84,17 @@ local function stubResolve(rows)
  return res
 end
 local attRows={}
-local function stubAttributor(rows,result,final) return {rows=attRows} end
+local function stubAttributor(rows,result,final)
+ if type(attRows)=='table' and attRows.auto then
+  local out={}
+  for _,row in ipairs(rows) do
+   if row.evidence=='PHASER_9008_RESIDUAL_REL_BARRIER' then out[#out+1]={category='FINAL_SURVIVING_UNSAFE',ref=row.ref,row=row} end
+  end
+  for _,e in ipairs(attRows.extra or {}) do out[#out+1]=e end
+  return {rows=out}
+ end
+ return {rows=attRows}
+end
 local logs={}; local calls={presetData=0}
 local api={log=function(s) logs[#logs+1]=s end,identity=function(h) return h and 'DBI:'..h.id end,
  describe=function(h) return h and h.label end,
@@ -148,6 +158,8 @@ local olderREL=mkrow(olderR,40,{[11]=true},{layers={REL=true},lanes={[FG..'|REL'
 r=run({r9008row,olderREL},{att9008},cooked(r9008,false),{[10]=r9008})
 assert(r.classification=='PHASER_9008_REL_SEMANTICS_STILL_REQUIRED',r.classification)
 assert(has('blocked_references=older_REL') or has('older REL'))
+-- 4. STILL_REQUIRED emits no proven checkpoint
+assert(not has('TRACK_A_RESOLVER_CHECKPOINT'))
 -- 6. final_surviving_unsafe is attribution row count, not ref count
 attRows={{category='FINAL_SURVIVING_UNSAFE',ref=r9008},{category='FINAL_SURVIVING_UNSAFE',ref=olderA},{category='OTHER'}}
 r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008})
@@ -161,6 +173,16 @@ assert(has('blocked_older_candidate_lanes=1'))
 -- 8. Path A requires balanced supersession accounting
 r=run({newerRELRow,r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008,[31]=newerR})
 assert(has('rel_barrier_lanes=2 fully_superseded_lanes=2 final_unresolved_lanes=0'))
+-- 1. Path B: surviving synthetic barrier excluded by identity => PROVEN, empty
+attRows={auto=true}
+r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008})
+assert(r.classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING',r.classification)
+assert(has('remaining_semantic_blockers=-') and has('classification=TRACK_A_SEMANTICS_PROVEN'))
+-- 2. Path B plus unrelated surviving row => INCOMPLETE with that blocker
+attRows={auto=true,extra={{category='FINAL_SURVIVING_UNSAFE',ref=olderA}}}
+r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008})
+assert(has('remaining_semantic_blockers=older_ABS') and has('classification=TRACK_A_SEMANTICS_INCOMPLETE'))
+attRows={}
 -- 1. PARTIAL/UNSAFE bridge + ordinary-proven ABS => linked accepted
 assert(has('linked_presets=Preset_1.1,Preset_1.11'))
 -- 2. motionStaticProven=false => reject
