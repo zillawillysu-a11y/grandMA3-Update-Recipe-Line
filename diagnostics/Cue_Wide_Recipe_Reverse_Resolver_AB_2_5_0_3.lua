@@ -2368,6 +2368,162 @@ function __rev132SemanticNormalize(raw,control,identity)
   return out
 end
 
+-- Diagnostic truth probe only. It consumes Rev11.1 surviving lane keys and
+-- current-Cue cooked Part views; it never changes resolver inputs or gates.
+function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api)
+ local function safe(f,...) local ok,v=pcall(f,...); if ok then return v end end
+ local function emit(fmt,...) api.log(string.format(fmt,...)) end
+ local function name(h) return h and (safe(function() return h.Name end) or safe(function() return h:Get('Name') end)) end
+ local function ordered(t) local a={}; for k in pairs(t or {}) do a[#a+1]=k end; table.sort(a); return a end
+ local function count(t) local n=0; for _ in pairs(t or {}) do n=n+1 end; return n end
+ local function text(v) return v==nil and 'UNAVAILABLE' or tostring(v):gsub('[\r\n]',' '):sub(1,120) end
+ local byKey,refs={},{}
+ for _,entry in ipairs(targets or {}) do if entry.key then
+  byKey[entry.key]=entry.path; refs[entry.path]={rows=0,matched=0,mismatch=0,inconclusive=0} end end
+ local selected={}
+ for _,rec in ipairs(records or {}) do if rec.category=='FINAL_SURVIVING_UNSAFE' then
+  local key=rec.ref and safe(api.identity,rec.ref)
+  if key and byKey[key] then selected[#selected+1]={record=rec,label=byKey[key],key=key} end
+ end end
+ local views,partCount={},0
+ local seenParts={}
+ for _,part in ipairs(parts or {}) do
+  local key=safe(api.identity,part) or part
+  if not seenParts[key] then
+   seenParts[key]=true; partCount=partCount+1
+   if partCount<=64 then
+    local cooked=safe(api.getPresetData,part,false,true)
+    views[key]={part=part,buckets=type(cooked)=='table' and cooked.by_fixtures or nil}
+   end
+  end
+ end
+ local total={rows=0,matched=0,mismatch=0,inconclusive=0,surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0}
+ local mismatchShown,unsupportedShown=0,0
+ local memberKeys={}
+ for _,item in ipairs(selected) do
+  local rec,label,key=item.record,item.label,item.key
+  local row=rec.row
+  local view=views[safe(api.identity,row.part) or row.part]
+  local stats={surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0,members={},reasons={}}
+  local attrsByLane={}
+  local raw=referenceRaw[key]
+  if type(raw)=='table' then for ui,p in pairs(raw) do if type(ui)=='number' and type(p)=='table' then
+   local attr=p.attribute or (api.attributeByUI and safe(api.attributeByUI,ui))
+   local attrName=name(attr)
+   local feature=attr and safe(function() return attr.Feature end)
+   local fg=feature and safe(function() return feature:Parent() end)
+   local fgKey=fg and safe(api.identity,fg)
+   if fgKey and type(attrName)=='string' and attrName~='' then
+    for _,spec in ipairs({{'ABS','absolute'},{'REL','relative'}}) do
+     local step=p[1]
+     if type(step)=='table' and step[spec[2]]~=nil then
+      local lane='FG:'..fgKey..'|'..spec[1]
+      attrsByLane[lane]=attrsByLane[lane] or {}; attrsByLane[lane][attrName]=true
+     end
+    end
+   end
+  end end end
+  for _,survivingKey in ipairs(rec.surviving or {}) do
+   stats.surviving=stats.surviving+1
+   local split=type(survivingKey)=='string' and survivingKey:find('\0',1,true)
+   local member=split and tonumber(survivingKey:sub(1,split-1))
+   local lane=split and survivingKey:sub(split+1)
+   if member then stats.members[member]=true end
+   local attrs=lane and attrsByLane[lane]
+   local layer=lane and lane:match('|([^|]+)$')
+   local attrNames=ordered(attrs)
+   local matched,unsupported,unresolved,different=0,0,0,0
+   if not member or not attrs or #attrNames==0 or (layer~='ABS' and layer~='REL') or not view or partCount>64 then
+    unresolved=1; stats.reasons.LANE_OR_COOKED_VIEW_UNPROVEN=true
+   else
+    local fixture=api.getSubfixture and safe(api.getSubfixture,member)
+    local fid=fixture and safe(function() return fixture.FID end)
+    local cid=fixture and safe(function() return fixture.CID end)
+    local noCid=cid==nil or cid=='None' or (type(cid)=='number' and cid==0)
+    local fixtureKey=fid and tostring(fid)
+    if not fixtureKey or not noCid or (memberKeys[fixtureKey] and memberKeys[fixtureKey]~=member) then
+     unresolved=1; stats.reasons.MEMBER_KEY_UNPROVEN=true
+    else
+     memberKeys[fixtureKey]=member
+     for _,attribute in ipairs(attrNames) do
+      local found,observed=nil,nil
+      local ambiguous=false
+      for _,view in ipairs({view}) do
+       local buckets=view.buckets
+       if type(buckets)~='table' then ambiguous=true
+       else
+        local bucket=buckets[fixtureKey] or buckets[tonumber(fixtureKey)]
+        if bucket~=nil and type(bucket)~='table' then ambiguous=true
+        elseif type(bucket)=='table' and bucket[attribute]~=nil then
+         if type(bucket[attribute])~='table' or found then ambiguous=true
+         else found=bucket[attribute]; observed=view.part end
+        end
+       end
+      end
+      if ambiguous then unresolved=unresolved+1; stats.reasons.COOKED_ATTRIBUTE_MAPPING_UNPROVEN=true
+      elseif found then
+       local link=layer=='ABS' and found.abs_preset or found.rel_preset
+       local expected=safe(api.identity,rec.ref)
+       local actual=link and safe(api.identity,link)
+       if expected and actual==expected then matched=matched+1
+       elseif not expected or (link~=nil and not actual) then unresolved=unresolved+1; stats.reasons.PRESET_LINK_IDENTITY_UNPROVEN=true
+       else
+        different=different+1
+        if mismatchShown<16 then
+         mismatchShown=mismatchShown+1
+         emit('GLOBAL_RECIPE_APPLICABILITY_MISMATCH reference=%s member=%s feature=%s layer=%s attribute=%s expected_preset=%s observed_preset=%s reason=PRESET_LINK_DIFFERENT',
+          label,text(member),text(lane),layer,text(attribute),text(api.describe(rec.ref)),text(link and api.describe(link) or 'NONE'))
+        end
+       end
+      else
+       local capability=api.capability and safe(api.capability,fixture,attribute)
+       if capability=='UNSUPPORTED' then
+        unsupported=unsupported+1
+        if unsupportedShown<16 then
+         unsupportedShown=unsupportedShown+1
+         emit('GLOBAL_RECIPE_APPLICABILITY_UNSUPPORTED reference=%s member=%s feature=%s layer=%s attribute=%s classification=FIXTURE_ATTRIBUTE_UNSUPPORTED',
+          label,text(member),text(lane),layer,text(attribute))
+        end
+       else unresolved=unresolved+1; stats.reasons.ATTRIBUTE_CAPABILITY_UNPROVEN=true end
+      end
+     end
+    end
+   end
+   if matched+different>0 then stats.supported=stats.supported+1 end
+   if unsupported>0 then stats.unsupported=stats.unsupported+1 end
+   if different>0 then stats.different=stats.different+1
+   elseif unresolved>0 then stats.unresolved=stats.unresolved+1
+   elseif matched>0 then stats.linked=stats.linked+1
+   elseif unsupported>0 then -- proven unsupported attributes are neutral
+   else stats.unresolved=stats.unresolved+1 end
+  end
+  local class
+  if stats.different>0 then class='OBSERVED_APPLICABILITY_MISMATCH'
+  elseif stats.unresolved>0 or stats.surviving==0 then class='INCONCLUSIVE'
+  else class='RECIPE_SCOPE_MATCHED_AFTER_COMPATIBILITY' end
+  total.rows=total.rows+1
+  total.surviving=total.surviving+stats.surviving; total.supported=total.supported+stats.supported
+  total.linked=total.linked+stats.linked; total.unsupported=total.unsupported+stats.unsupported
+  total.different=total.different+stats.different; total.unresolved=total.unresolved+stats.unresolved
+  local ref=refs[label]; ref.rows=ref.rows+1
+  if class=='OBSERVED_APPLICABILITY_MISMATCH' then total.mismatch=total.mismatch+1; ref.mismatch=ref.mismatch+1
+  elseif class=='INCONCLUSIVE' then total.inconclusive=total.inconclusive+1; ref.inconclusive=ref.inconclusive+1
+  else total.matched=total.matched+1; ref.matched=ref.matched+1 end
+  emit('GLOBAL_RECIPE_APPLICABILITY_ROW reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s surviving_members=%d surviving_lanes=%d supported_lanes=%d expected_preset_link_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d unresolved_reasons=%s classification=%s',
+   label,text(api.describe(row.cue)),text(api.describe(row.part)),text(api.describe(row.recipe)),text(api.describe(row.group)),
+   count(stats.members),stats.surviving,stats.supported,stats.linked,stats.unsupported,stats.different,stats.unresolved,table.concat(ordered(stats.reasons),','),class)
+ end
+ local summaryClass=total.rows~=15 and 'INCONCLUSIVE' or
+  (total.mismatch>0 and 'OBSERVED_APPLICABILITY_MISMATCH' or
+   (total.inconclusive>0 and 'INCONCLUSIVE' or 'RECIPE_SCOPE_MATCHED_AFTER_COMPATIBILITY'))
+ emit('GLOBAL_RECIPE_APPLICABILITY_SUMMARY rows_expected=15 rows_checked=%d rows_matched=%d rows_mismatch=%d rows_inconclusive=%d surviving_lanes=%d supported_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d classification=%s diagnostic_only=true cooked_part_reads=%d',
+  total.rows,total.matched,total.mismatch,total.inconclusive,total.surviving,total.supported,total.unsupported,total.different,total.unresolved,summaryClass,math.min(partCount,64))
+ for _,label in ipairs(ordered(refs)) do local s=refs[label]
+  emit('GLOBAL_RECIPE_APPLICABILITY_REFERENCE reference=%s rows=%d matched=%d mismatch=%d inconclusive=%d',label,s.rows,s.matched,s.mismatch,s.inconclusive)
+ end
+ return {totals=total,classification=summaryClass,partReads=math.min(partCount,64)}
+end
+
 -- Rev7 observation only. No value-zero inference enters the candidate.
 local function newRawRelZeroAudit(api)
  local patterns,order,states,linkedCache={},{},{REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0},{}
@@ -3268,6 +3424,27 @@ local rev13OK,rev13=pcall(function()
  return {result=result,final=final,attribution=alt,eligible=eligibleCount}
 end)
 if not rev13OK then log('REV13_GLOBAL_ALTERNATE_ERROR error=%s',text(rev13)) end
+-- Independent cooked truth observation for the 15 final-surviving Global
+-- ordinary rows. It reads each row's source CuePart once after the oracle.
+local truthStart=now()
+local truthOK,truth=pcall(function()
+ local paths={'Preset 4.1','Preset 4.4','Preset 4.23','Preset 6.10','Preset 21.5'}
+ local selected=__rev13SelectGlobalTargets(paths,_G.ObjectList,metadataCache.identity,class,attribution.rows)
+ if not selected.pass then return {partReads=0,classification='INCONCLUSIVE',targetPass=false} end
+ local sourceParts={}
+ for _,entry in ipairs(selected.entries) do for _,row in ipairs(entry.rows) do
+  if row.part then sourceParts[#sourceParts+1]=row.part end
+ end end
+ local observation=__globalRecipeApplicabilityTruth(attribution.rows,selected.entries,sourceParts,metadataCache.raw,{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
+  getPresetData=rawData,getSubfixture=_G.GetSubfixture,attributeByUI=_G.GetAttributeByUIChannel,
+  -- No established native fixture-capability source: absence remains unknown.
+  capability=function() return 'UNKNOWN' end})
+ log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
+  observation.partReads,text(ms(truthStart,now())),text(selected.pass))
+ return observation
+end)
+if not truthOK then log('GLOBAL_RECIPE_APPLICABILITY_ERROR error=%s',text(truth)) end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
 return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}

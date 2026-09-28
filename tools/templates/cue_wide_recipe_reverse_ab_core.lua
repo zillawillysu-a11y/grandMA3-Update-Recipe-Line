@@ -827,6 +827,27 @@ local rev13OK,rev13=pcall(function()
  return {result=result,final=final,attribution=alt,eligible=eligibleCount}
 end)
 if not rev13OK then log('REV13_GLOBAL_ALTERNATE_ERROR error=%s',text(rev13)) end
+-- Independent cooked truth observation for the 15 final-surviving Global
+-- ordinary rows. It reads each row's source CuePart once after the oracle.
+local truthStart=now()
+local truthOK,truth=pcall(function()
+ local paths={'Preset 4.1','Preset 4.4','Preset 4.23','Preset 6.10','Preset 21.5'}
+ local selected=__rev13SelectGlobalTargets(paths,_G.ObjectList,metadataCache.identity,class,attribution.rows)
+ if not selected.pass then return {partReads=0,classification='INCONCLUSIVE',targetPass=false} end
+ local sourceParts={}
+ for _,entry in ipairs(selected.entries) do for _,row in ipairs(entry.rows) do
+  if row.part then sourceParts[#sourceParts+1]=row.part end
+ end end
+ local observation=__globalRecipeApplicabilityTruth(attribution.rows,selected.entries,sourceParts,metadataCache.raw,{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
+  getPresetData=rawData,getSubfixture=_G.GetSubfixture,attributeByUI=_G.GetAttributeByUIChannel,
+  -- No established native fixture-capability source: absence remains unknown.
+  capability=function() return 'UNKNOWN' end})
+ log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
+  observation.partReads,text(ms(truthStart,now())),text(selected.pass))
+ return observation
+end)
+if not truthOK then log('GLOBAL_RECIPE_APPLICABILITY_ERROR error=%s',text(truth)) end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
 return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}

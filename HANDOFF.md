@@ -2,15 +2,15 @@
 
 ## Current Goal
 
-Native validate the Rev13.2 semantic normalization and dict_index audit observers for five Global ordinary Presets. Production, Rev7, Rev13 classification and compatibility gate, oracle, Selective Presets, and Preset 25.9008 are out of scope.
+Native validate the diagnostic Global Recipe applicability truth probe on the 15 final-surviving Global ordinary rows. Production, Rev7, Rev13 classifier and eligibility, oracle, Selective Presets, UI marker, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-Rev13.1 observed only storage-like value and cardinality differences, with no semantic-value or structural differences. Rev13.2 adds cached-metadata-only semantic-core comparison and a bounded dict_index audit for all five refs. Grid values and unresolved dict_index meaning remain independent blockers. The Rev13 classifier, eligible rows, compatibility gate, and Rev7 remain unchanged. Native Rev13.2 rerun is pending.
+Rev13.2 found all five Global refs have matching semantic cores; dict_index remains unproven or cardinality-dependent. The new truth observer reads the cooked view of each surviving row's source CuePart once per unique Part, then evaluates only Rev11.1 surviving member/feature/layer keys. Absent cooked Attributes remain INCONCLUSIVE unless fixture capability is independently proven absent. The observer cannot change Rev7/Rev13 results. Native truth probe is pending.
 
 ## Latest Real-World User Test
 
-Latest Rev13.1 native Cue 8 run: target summary expected=5, found=5, classified=5, pass=true. Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19; Rev13 alternate eligible rows=0. Preset 4.1 differs from 4.4 only in gridpos/gridposmatr values. Presets 4.23, 6.10, and 21.5 additionally differ in channel cardinality and dict_index values. No semantic-value or structural differences were reported.
+Latest Rev13.2 native Cue 8 run: all five surviving Global refs have `semantic_core_match=true`. Preset 4.1 and 4.4 each have 66 unique dict_index values with UNPROVEN classification; Presets 4.23, 6.10, and 21.5 are CARDINALITY_DEPENDENT. Attribute and storage-source relations remain unproven. Rev7 remains four refs, missing=0, extra=0, final-surviving unsafe=19; Rev13 eligible_global_rows=0.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Latest Rev13.1 native Cue 8 run: target summary expected=5, found=5, classified=
 
 ## Current Problem
 
-Determine from native Rev13.2 output whether dict_index has a proven identity relation and which unresolved semantics remain. No production gate change is authorized.
+Native cooked evidence is needed to distinguish linked, unsupported, mismatched, and unresolved surviving lanes. No production gate change is authorized.
 
 ## Known Failed Attempts
 
@@ -38,8 +38,8 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `5a9ebdc`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `10a59ce`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review five `GLOBAL_DICT_INDEX_AUDIT` and five `GLOBAL_NORMALIZED_SEMANTIC_CLASS` lines, alongside unchanged Rev13 alternate and Rev7 results. Do not change classifier semantics from observer output alone.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review 15 `GLOBAL_RECIPE_APPLICABILITY_ROW` lines, its summary/reference lines, cooked Part read count, and unchanged Rev7/Rev13 results. Do not generalize beyond these surviving lanes.
