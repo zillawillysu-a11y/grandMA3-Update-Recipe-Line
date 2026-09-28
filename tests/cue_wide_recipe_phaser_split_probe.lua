@@ -115,9 +115,10 @@ local function cooked(absRef,relRef)
  if relRef~=nil then d.rel_preset=relRef end
  return {['201.1.1']={Dimmer=d},['201.1.2']={Dimmer=d}}
 end
-local function run(revRows,attRecs,buckets,oracle)
+local function run(revRows,attRecs,buckets,oracle,extra)
  logs={}
- local ctx={rev7Rows=revRows,rawRows=rawRows,attributionRows=attRecs,globalPaths={},selectiveRefs={},
+ extra=extra or {}
+ local ctx={rev7Rows=revRows,rawRows=rawRows,attributionRows=attRecs,globalPaths=extra.globalPaths or {},selectiveRefs=extra.selectiveRefs or {},
   bridgeInfo=bridgeInfo,ordinaryProofs=proofs,views={[partKey]={part=part,buckets=buckets}},
   oracle=oracle or {[10]=r9008},oracleOK=true}
  return __phaser9008SplitProbe(ctx,api)
@@ -207,6 +208,20 @@ assert(has('remaining_semantic_blockers=-') and has('classification=TRACK_A_SEMA
 attRows={auto=true,extra={{category='FINAL_SURVIVING_UNSAFE',ref=olderA}}}
 r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008})
 assert(has('remaining_semantic_blockers=older_ABS') and has('classification=TRACK_A_SEMANTICS_INCOMPLETE'))
+attRows={}
+-- 1+2+3+5+6. proven Global/Selective rows excluded; raw count stays, blockers empty
+local gRef=handle('Preset','Preset 4.1'); local sRef=handle('Preset','Preset 2.14'); local uRef=handle('Preset','Preset 9.9')
+local selRefs={['Preset_2.14']={unproven=0,different=0,rows=1}}
+attRows={auto=true,extra={{category='FINAL_SURVIVING_UNSAFE',ref=gRef},{category='FINAL_SURVIVING_UNSAFE',ref=sRef}}}
+r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008},
+ {globalPaths={'DBI:'..gRef.id},selectiveRefs=selRefs})
+assert(r.classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING',r.classification)
+assert(has('remaining_semantic_blockers=-') and has('classification=TRACK_A_SEMANTICS_PROVEN'))
+-- 4+7. unrelated row remains => INCOMPLETE
+attRows={auto=true,extra={{category='FINAL_SURVIVING_UNSAFE',ref=gRef},{category='FINAL_SURVIVING_UNSAFE',ref=sRef},{category='FINAL_SURVIVING_UNSAFE',ref=uRef}}}
+r=run({r9008row,olderABS},{att9008},cooked(r9008,false),{[10]=r9008},
+ {globalPaths={'DBI:'..gRef.id},selectiveRefs=selRefs})
+assert(has('remaining_semantic_blockers=Preset_9.9') and has('classification=TRACK_A_SEMANTICS_INCOMPLETE'))
 attRows={}
 -- 1. PARTIAL/UNSAFE bridge + ordinary-proven ABS => linked accepted
 assert(has('linked_presets=Preset_1.1,Preset_1.11'))

@@ -260,12 +260,17 @@ function __phaser9008SplitProbe(ctx,api)
   if attOK and type(att)=='table' and type(att.rows)=='table' then
    for _,rec in ipairs(att.rows) do
     if rec.category=='FINAL_SURVIVING_UNSAFE' and rec.ref then
-     -- Path B only: the synthetic residual REL barrier is closed by
-     -- blockedLanes==0 even though attribution still lists it. Exclude by
-     -- object identity from relBarriers, never by Preset name.
+     local rk=safe(api.identity,rec.ref)
+     local label=refLabel(rec.ref)
+     -- Rows whose semantics are already independently proven (Global /
+     -- Selective) are not blockers. Path B only: the synthetic residual
+     -- REL barrier is closed by blockedLanes==0 even though attribution
+     -- still lists it; exclude by object identity, never by Preset name.
      local isResidual=relBarriers[rec.row]==true
-     if not (isResidual and classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING') then
-      rem[refLabel(rec.ref)]=true
+     local provenRow=(rk and globalSet[rk]) or selProven[label]
+      or (isResidual and classification=='PHASER_9008_PARTIAL_SCOPE_PROVEN_REL_NONCONTRIBUTING')
+     if not provenRow then
+      rem[label]=true
      end
     end
    end
