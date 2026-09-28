@@ -1780,7 +1780,154 @@ local function newReferenceFieldSemantics(api)
   end
   return {fields=distributions,patterns=patterns,classifications=classifications,rawStates=rawStates,referenceCount=observed}
  end
- return {accept=accept,ordinary=ordinary,rawLayer=rawLayer,observe=observe,summary=summary}
+ local function attributeUnsafe(input)
+ local rows=input.rows or {}
+ local result=input.result or {}
+ local final=input.final or {}
+ local infoByKey=input.infoByKey or {}
+ local identify=input.identity or function() return nil end
+ local desc,joined,sample,count,text,log= input.desc,input.joined,input.sample,input.count,input.text,input.log
+ local emit=input.detail or log
+ local now,ms=input.now,input.ms
+ local t0=now()
+ local function key(member,lane) return tostring(member)..'\0'..tostring(lane) end
+ local function barrierKeys(row)
+  local keys={}
+  if row.members then
+   for member in pairs(row.members) do
+    if not row.features then
+     keys[key(member,'*')]=true
+    else
+     for feature in pairs(row.features) do
+      if not row.layers then
+       keys[key(member,feature..'|*')]=true
+      else
+       for layer in pairs(row.layers) do keys[key(member,feature..'|'..layer)]=true end
+      end
+     end
+    end
+   end
+  end
+  return keys
+ end
+ local decidedByKey={}
+ for _,a in ipairs(result.assignments or {}) do
+  local k=key(a.member,a.lane)
+  if decidedByKey[k]==nil then decidedByKey[k]=a.row end
+ end
+ local unresolvedByKey={}
+ for _,u in ipairs(result.unresolved or {}) do
+  local k=key(u.member,u.lane)
+  if unresolvedByKey[k]==nil then unresolvedByKey[k]=u.row end
+ end
+ local victims={}
+ for _,row in ipairs(rows) do
+  for _,sup in ipairs(row.superseded or {}) do
+   if sup.unsafe==true and type(sup.newer)=='table' then
+    local list=victims[sup.newer] or {}; victims[sup.newer]=list
+    list[#list+1]={victim=row,member=sup.member,lane=sup.lane}
+   end
+  end
+ end
+ local function motionOf(row)
+  local info=row.ref and infoByKey[identify(row.ref)]
+  if type(info)=='table' and info.motion~=nil then return tostring(info.motion) end
+  if row.moving then return 'moving' end
+  return 'UNKNOWN'
+ end
+ local function refOf(row) return row.refId~=nil and row.refId or nil end
+ local records={}
+ local reasonCounts={}
+ local refStats={}
+ for _,row in ipairs(result.unsafe or {}) do
+  local reasons={}
+  for _,r in ipairs(row.unsafe or {}) do reasons[#reasons+1]=tostring(r); reasonCounts[tostring(r)]=(reasonCounts[tostring(r)] or 0)+1 end
+  table.sort(reasons)
+  local keys=barrierKeys(row)
+  local nKeys=0; for _ in pairs(keys) do nKeys=nKeys+1 end
+  local surviving,neutralized,resolvers={},{},{}
+  for k in pairs(keys) do
+   if unresolvedByKey[k]==row then surviving[#surviving+1]=k
+   else
+    local decider=decidedByKey[k]
+    if decider~=nil and (decider.reverseIndex or 1e9)<(row.reverseIndex or 1e9) then
+     neutralized[#neutralized+1]=k; resolvers[decider]=true
+    elseif unresolvedByKey[k]~=nil then neutralized[#neutralized+1]=k; resolvers[unresolvedByKey[k]]=true
+    end
+   end
+  end
+  local blocked=victims[row] or {}
+  local refId=refOf(row)
+  local inFinal=refId~=nil and final[refId]~=nil
+  local category
+  if #surviving>0 or #blocked>0 or (inFinal and nKeys>0) then category='FINAL_SURVIVING_UNSAFE'
+  elseif nKeys==0 then category='NON_CONTRIBUTING_UNSAFE'
+  elseif #surviving==0 and #neutralized==nKeys then category='FULLY_SUPERSEDED_UNSAFE'
+  else category='ATTRIBUTION_UNKNOWN' end
+  local rec={row=row,ref=row.ref,refId=refId,inFinal=inFinal,reasons=reasons,motion=motionOf(row),
+   members=row.members and count(row.members) or 0,sample=row.members and sample(row.members) or '<none>',
+   features=joined(row.features),layers=joined(row.layers),nKeys=nKeys,
+   surviving=surviving,neutralized=neutralized,resolvers=resolvers,blocked=blocked,category=category}
+  records[#records+1]=rec
+  if refId~=nil then
+   local label=text(desc(row.ref))
+   local st=refStats[label] or {total=0,final_surviving=0,fully_superseded=0,non_contributing=0,unknown=0}
+   refStats[label]=st; st.total=st.total+1
+   if category=='FINAL_SURVIVING_UNSAFE' then st.final_surviving=st.final_surviving+1
+   elseif category=='FULLY_SUPERSEDED_UNSAFE' then st.fully_superseded=st.fully_superseded+1
+   elseif category=='NON_CONTRIBUTING_UNSAFE' then st.non_contributing=st.non_contributing+1
+   else st.unknown=st.unknown+1 end
+  end
+ end
+ local totals={total=0,final_surviving=0,fully_superseded=0,non_contributing=0,unknown=0}
+ for _,rec in ipairs(records) do
+  totals.total=totals.total+1
+  if rec.category=='FINAL_SURVIVING_UNSAFE' then totals.final_surviving=totals.final_surviving+1
+  elseif rec.category=='FULLY_SUPERSEDED_UNSAFE' then totals.fully_superseded=totals.fully_superseded+1
+  elseif rec.category=='NON_CONTRIBUTING_UNSAFE' then totals.non_contributing=totals.non_contributing+1
+  else totals.unknown=totals.unknown+1 end
+ end
+ local function rowLine(tag,rec)
+  local resolverRefs={}
+  for r in pairs(rec.resolvers) do resolverRefs[#resolverRefs+1]=text(desc(r.ref)) end
+  table.sort(resolverRefs)
+  local victimRefs={}
+  for _,v in ipairs(rec.blocked) do victimRefs[#victimRefs+1]=text(desc(v.victim.ref)) end
+  table.sort(victimRefs)
+  emit(tag..' ref=%s cue=%s part=%s recipe=%s group=%s features=%s layers=%s reasons=%s members=%d sample=%s motion=%s ref_in_final=%s surviving_lanes=%d neutralized_lanes=%d blocked_victims=%d resolvers=%s victims=%s',
+   text(desc(rec.ref)),text(desc(rec.row.cue)),text(desc(rec.row.part)),text(desc(rec.row.recipe)),text(desc(rec.row.group)),
+   text(rec.features),text(rec.layers),table.concat(rec.reasons,','),rec.members,rec.sample,rec.motion,
+   tostring(rec.inFinal),#rec.surviving,#rec.neutralized,#rec.blocked,table.concat(resolverRefs,';'),table.concat(victimRefs,';'))
+ end
+ log('UNSAFE_ATTRIBUTION_SUMMARY total_unsafe_rows=%d final_surviving=%d fully_superseded=%d non_contributing=%d unknown=%d attribution_ms=%s reverse_ms=%s total_rev7_path_ms=%s',
+  totals.total,totals.final_surviving,totals.fully_superseded,totals.non_contributing,totals.unknown,
+  text(ms(t0,now())),text(input.reverseMs),text(input.totalMs))
+ local orderedReasons={}; for reason in pairs(reasonCounts) do orderedReasons[#orderedReasons+1]=reason end; table.sort(orderedReasons)
+ for _,reason in ipairs(orderedReasons) do log('UNSAFE_REASON_SUMMARY reason=%s rows=%d',reason,reasonCounts[reason]) end
+ local orderedRefs={}; for label in pairs(refStats) do orderedRefs[#orderedRefs+1]=label end; table.sort(orderedRefs)
+ local shownRefs=0
+ for _,label in ipairs(orderedRefs) do local st=refStats[label]
+  if shownRefs<16 then shownRefs=shownRefs+1
+   log('UNSAFE_REFERENCE_SUMMARY reference=%s total_rows=%d final_surviving=%d fully_superseded=%d non_contributing=%d unknown=%d',
+    label,st.total,st.final_surviving,st.fully_superseded,st.non_contributing,st.unknown) end
+ end
+ local omittedRefs=#orderedRefs-shownRefs
+ local shownA,shownB,shownD=0,0,0
+ for _,rec in ipairs(records) do
+  if rec.category=='FINAL_SURVIVING_UNSAFE' and shownA<24 then shownA=shownA+1; rowLine('FINAL_SURVIVING_UNSAFE_ROW',rec) end
+  if rec.category=='ATTRIBUTION_UNKNOWN' and shownD<24 then shownD=shownD+1; rowLine('ATTRIBUTION_UNKNOWN_ROW',rec) end
+ end
+ for _,rec in ipairs(records) do
+  if rec.category=='FULLY_SUPERSEDED_UNSAFE' and shownB<5 then shownB=shownB+1; rowLine('FULLY_SUPERSEDED_SAMPLE_ROW',rec) end
+ end
+ local omittedA,omittedB,omittedD=totals.final_surviving-shownA,totals.fully_superseded-shownB,totals.unknown-shownD
+ if omittedA>0 or omittedB>0 or omittedD>0 or omittedRefs>0 then
+  log('UNSAFE_ATTRIBUTION_OMITTED final_surviving=%d fully_superseded_sample=%d unknown=%d references=%d',omittedA,omittedB,omittedD,omittedRefs) end
+ return {ok=true,elapsedMs=ms(t0,now()),total=totals.total,finalSurviving=totals.final_surviving,
+  fullySuperseded=totals.fully_superseded,nonContributing=totals.non_contributing,unknown=totals.unknown,rows=records}
+end
+
+ return {accept=accept,ordinary=ordinary,rawLayer=rawLayer,observe=observe,summary=summary,attributeUnsafe=attributeUnsafe}
 end
 
 -- Rev7 observation only. No value-zero inference enters the candidate.
@@ -2514,7 +2661,13 @@ log('REV7_BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count
 log('REV7_RESULT classification=%s refs=%d oracle_refs=%d moving_rows=%d static_terminators=%d unsafe_rows=%d final_refs=%d safe_integration=false',joined(rev7Classes),count(rev6Result.rev7.final),count(oracle),rev6Result.rev7.result.movingRows or 0,rev6Result.rev7.result.staticRows or 0,#rev6Result.rev7.result.unsafe,count(rev6Result.rev7.final))
 return {missing=rev7Missing,extra=rev7Extra,classes=rev7Classes}
 end)()
+-- Rev11.1 observation only: attribute Rev7 unsafe rows without touching gates,
+-- refs, lanes, motion, or classifications. Isolated so an attribution failure
+-- can never change resolver output.
+local attributionStart=now()
+local attributionOK,attribution=pcall(proof.attributeUnsafe,{rows=rev7Rows,result=rev6Result.rev7.result,final=rev6Result.rev7.final,infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,log=log,detail=detail,now=now,ms=ms,reverseMs=rev7ReverseElapsed,totalMs=ms(rev7PathStart,now())})
+if not attributionOK then log('UNSAFE_ATTRIBUTION_ERROR error=%s',text(attribution)); attribution={ok=false} end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
-return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
+return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end

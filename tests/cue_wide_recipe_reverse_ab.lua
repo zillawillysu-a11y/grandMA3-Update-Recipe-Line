@@ -339,6 +339,53 @@ env.Enums=nil
 check(has('REL_AUTHORED_PROVEN:1'),'authored relative zero classified authored')
 check(r.rev6Classes.REV6_BRIDGED_EXACT_MATCH and not r.rev6Classes.REV6_REFERENCE_UNSAFE,'authored-rel rev6 resolves')
 check(r.rev7Classes.REV7_BRIDGED_EXACT_MATCH and not r.rev7Classes.REV7_REFERENCE_UNSAFE,'authored-rel rev7 resolves')
+-- Rev11.1 A: unsafe row with surviving barrier lanes is final-surviving.
+p=setup(); metadataReads=0; oracleReads=0
+local surv=phaser(375,'Absolute','Dimmer',2); surv.db=91021
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local survLinked=obj('Preset','Preset linked surviving'); survLinked.db=91022; survLinked.PresetMode='Selective'
+references[surv.db]={}
+references[survLinked.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=0}}
+for _,step in ipairs(surv.contents[1].contents) do
+ local source=step.contents[1]; source.Preset=survLinked; source.props[#source.props+1]='Preset'
+end
+row(p,group(711,{11,12}),surv)
+data[p]={}
+r=run()
+check(r.attributionOK and r.attribution.total==1 and r.attribution.finalSurviving==1,'unsafe row with surviving lanes is final-surviving')
+check(r.attribution.unknown==0 and has('FINAL_SURVIVING_UNSAFE_ROW'),'surviving row logged')
+check(has('UNSAFE_ATTRIBUTION_SUMMARY total_unsafe_rows=1 final_surviving=1'),'attribution summary')
+check(not has('UNSAFE_ATTRIBUTION_ERROR'),'attribution never breaks the resolver')
+-- Rev11.1 B: unsafe older row neutralized by newer decisions is superseded.
+p=setup(); metadataReads=0; oracleReads=0
+local older=phaser(376,'Absolute','Dimmer',2); older.db=91024
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local olderLinked=obj('Preset','Preset linked older'); olderLinked.db=91025; olderLinked.PresetMode='Selective'
+references[older.db]={}
+references[olderLinked.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=0}}
+for _,step in ipairs(older.contents[1].contents) do
+ local source=step.contents[1]; source.Preset=olderLinked; source.props[#source.props+1]='Preset'
+end
+row(p,group(713,{11,12}),older)
+cue=add(seq,obj('Cue','Sequence 7 Cue 2')); cue.No=2000
+local newerPart=add(cue,obj('Part','Sequence 7 Cue 2 Part 0'))
+local newerStatic=obj('Preset','Preset newer static'); newerStatic.db=91023
+references[newerStatic.db]={[1]={[1]={absolute=100},mask_active_value=2,mask_active_phaser=0}}
+row(newerPart,group(712,{11,12}),newerStatic)
+data[p]={}
+data[newerPart]={[1]={abs_preset=newerStatic,[1]={absolute=100}}}
+r=run()
+check(r.attributionOK and r.attribution.total==1 and r.attribution.fullySuperseded==1,'older unsafe row neutralized by newer decisions')
+check(r.attribution.unknown==0 and has('FULLY_SUPERSEDED_SAMPLE_ROW'),'superseded sample logged')
+-- Rev11.1 C: unsafe row with no lanes contributes nothing.
+p=setup(); metadataReads=0; oracleReads=0
+local opaque=obj('Preset','Preset opaque lanes'); opaque.db=91026
+references[opaque.db]={future_container={steps={1,2}}}
+row(p,group(715,{}),opaque)
+data[p]={}
+r=run()
+check(r.attributionOK and r.attribution.total==1 and r.attribution.nonContributing==1,'laneless unsafe row is non-contributing')
+check(r.attribution.unknown==0,'fail-closed unknown stays empty here')
 env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle=oldRead,oldAttribute,oldCompare
 env.HandleToInt=nil
 check(forbidden==0,'no mutation, channel expansion, UI, programmer or marker APIs')
