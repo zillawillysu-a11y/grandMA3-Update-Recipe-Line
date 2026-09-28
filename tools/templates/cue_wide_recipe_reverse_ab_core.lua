@@ -861,6 +861,13 @@ local truthOK,truth=pcall(function()
   getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle,fromAddr=_G.FromAddr,toAddr=_G.ToAddr,objectList=_G.ObjectList})
  if nativeOK then log('NATIVE_MEMBER_ADDRESS_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(nativeStart,now())))
  else log('NATIVE_MEMBER_ADDRESS_ERROR error=%s',text(nativeResult)) end
+ local capStart=now()
+ local capOK,capResult=pcall(__nativeAttributeCapabilityProbe,{records=attribution.rows,targets=selected.entries,views=observation.views,referenceRaw=metadataCache.raw,proofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs},{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
+  getSubfixture=_G.GetSubfixture,compareHandle=_G.CompareHandle,toAddr=_G.ToAddr,
+  getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel,classHandle=class})
+ if capOK then log('NATIVE_ATTRIBUTE_CAPABILITY_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(capStart,now())))
+ else log('NATIVE_ATTRIBUTE_CAPABILITY_ERROR error=%s',text(capResult)) end
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
   observation.partReads,text(ms(truthStart,now())),text(selected.pass))
  return observation
