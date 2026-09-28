@@ -2,26 +2,27 @@
 
 ## Current Goal
 
-Fix native v0.7.1.x Group/Recipe Pool markers and selection response in grandMA3 2.5.0.3 without weakening Track A reference gates.
+Fix native Group and Recipe Pool markers plus selection response in grandMA3 2.5.0.3 without weakening Track A reference gates.
 
 ## Current Working State
 
-`C:\tmp\show-rel` is authoritative. v0.7.1.3 is a bounded native diagnostic/UX candidate. It keeps Track A fail closed, canonical Fixture/SubFixture/Cell identity, `frame0` and original theme colors, and the old Cue Phaser scanner disabled. Layout selected members may participate in a Recipe Stored Group without treating the entire Group as selected for UPDATE. A displayed single Recipe's Group may be framed independently while unsafe Values refs stay closed. The panel now shows stage-specific parser failure per blocking ref and stage timings in expanded detail. Offline tests pass.
+`C:\tmp\show-rel` is authoritative. v0.7.1.4 keeps Track A fail closed, canonical Fixture/SubFixture/Cell identity, original `frame0` theme marker appearance, and Cue Phaser scanner disabled. On selection change the panel and known displayed Recipe Group are painted first; expensive reference resolution runs on the next normal tick with old refs cleared. Ordinary header failures now identify the exact rejected native field or mask. Source/deployed hashes and backup are available from the deployment record and Git. Offline release checks passed.
 
 ## Latest Real-World User Test
 
-v0.7.1.2 loaded. One fixture displayed Group 231 but no frame until manual SELECT GROUP, with about two seconds delay. Selecting two Layout fixtures displayed no Group numbers. Panel selection response generally took one to two seconds. No Preset/EFX tiles lit. Native screenshots show `UNSAFE_LANE_ATTRIBUTION_BLOCKER`; blocked refs include ordinary Presets 1.1, 4.4, 21.5 and Phaser 25.9009/25.9010 depending on the selected fixture.
+v0.7.1.3 native screenshot: Group 231 lights, but after a noticeable delay. Panel shows 3 selected fixtures, `UNSAFE_LANE_ATTRIBUTION_BLOCKER`, ordinary Presets 1.1 and 25.9010 rejected at `ORDINARY_CHANNEL_HEADER_UNPROVEN`. Measured native timing: selection 0.0 ms, tracking about 67 ms, group 0.0 ms, resolver about 612 ms, Pool 0.0 ms. User says no further native steps needed for that screenshot.
 
 ## Verified Facts
 
-- v0.7.1.2 partial Group row admission removed `NO_APPLICABLE_RECIPE`, but metadata still failed closed. The fallback required an exact full Group, so it could not mark Group 231 for one selected fixture. v0.7.1.3 also admits the singular Group already shown by the current Recipe UI.
-- Multiple Group labels still depend on native-proven source attribution. Current `scanTracking()` is single-source and its old UI heuristic cannot safely prove two Groups for different selected members. Do not assert those Groups from name/subset overlap.
-- The common metadata failure stage for ordinary and Phaser references remains unknown until the visible v0.7.1.3 stage reasons are read. No Preset marker correctness or latency improvement has been native-verified.
-- Offline: 86 workflow assertions, 102 show candidate checks, synthetic four refs exact; Lua/XML parse, deterministic build, and diff check pass.
+- One Group tile can be framed independently of unresolved Recipe Values. Preset/EFX frames remain absent because resolver returns INCONCLUSIVE.
+- The first panel update was delayed by synchronous Track A metadata resolution inside `render()`. v0.7.1.4 defers only that resolution one tick, clears stale refs on the context-change tick, and frames the displayed Group immediately. Native response time is not yet measured after this patch.
+- All ordinary header checks still fail closed; v0.7.1.4 replaces a broad stage code with specific field-level reasons. No native rule was relaxed.
+- Two-Group source attribution remains unresolved; old `scanTracking()` is single-source and name/subset heuristics cannot safely prove both current Groups.
+- Offline: 86 workflow assertions and 105 show candidate checks pass, synthetic four refs exact; Lua/XML parse, deterministic build, and diff check pass.
 
 ## Current Problem
 
-Actual Cue 8 reference metadata is still rejected; this blocks all Recipe/EFX frames. Group 231 marker and its latency need native retest. Two-Group UI and one-to-two-second selection response remain unresolved. Avoid claiming show-ready.
+Native ordinary header rejection detail is needed to correct the production parser. The two-Group UI and actual Preset/EFX frames still require semantic proof. Do not claim show-ready.
 
 ## Important Files
 
@@ -36,4 +37,4 @@ Detached `C:\tmp\show-rel` worktree on origin/qwen; inspect Git status and log.
 
 ## Exact Next Action
 
-In grandMA3 load v0.7.1.3. Select one fixture whose panel shows Group 231 and check whether Group 231 frames without SELECT GROUP. On Cue 8 capture the visible `Blocked refs:` stage labels; press MORE for the `Timing ms:` line. Check a two-fixture selection. Use these native facts to correct the parser and latency hot stage; do not release guessed Preset refs.
+Load v0.7.1.4 in grandMA3. Select the same three fixtures in Cue 8 once; check whether Group 231 appears before the resolver settles and capture one panel screenshot showing the new detailed `Blocked refs:` reason. Use that exact native field result to correct metadata parsing; do not guess. Then address the two-Group display and remaining delay with measured evidence.

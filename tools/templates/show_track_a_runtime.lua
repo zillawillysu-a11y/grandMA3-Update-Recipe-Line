@@ -44,6 +44,10 @@ local function newTrackARuntime(api)
         local raw=api.safe(api.getPresetData,ref,false,true)
         local rawKey=api.identity(ref)
         cache.__failure=cache.__failure or {}
+        local function reject(reason)
+            if rawKey then cache.__failure[rawKey]=reason end
+            return nil
+        end
         if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
@@ -66,51 +70,51 @@ local function newTrackARuntime(api)
         for ui,p in pairs(raw) do
             if type(ui)=="number" then
                 if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_HEADER_UNPROVEN" end
-                if ui%1~=0 or type(p)~="table" then return nil end
+                if ui%1~=0 or type(p)~="table" then return reject("UI_RECORD_SHAPE") end
                 channels=channels+1
-                if channels>262144 then return nil end
+                if channels>262144 then return reject("CHANNEL_LIMIT") end
                 local pm=p.preset_store_mode or p.pm
-                if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return nil end
-                if pm~=1 and pm~=2 and pm~=3 then return nil end
-                if mode and pm~=mode then return nil end
-                if pm~=modeNumber[nativeMode] then return nil end
+                if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
+                if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
+                if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
+                if pm~=modeNumber[nativeMode] then return reject("PRESET_MODE_NATIVE_MISMATCH") end
                 mode=pm
-                if pm==1 and p.selective~=true then return nil end
-                if pm~=1 and p.selective==true then return nil end
-                if p.mask_cooked~=nil and p.mask_cooked~=0 then return nil end
+                if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
+                if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
+                if p.mask_cooked~=nil and p.mask_cooked~=0 then return reject("COOKED_MASK_ACTIVE") end
                 for _,field in ipairs({"speed","phase","measure","nshot_count","fade","delay",
                     "speed_master","abs_generator","rel_generator","generator","abs_preset","rel_preset"}) do
                     local value=p[field]
-                    if value~=nil and value~=false and value~=0 then return nil end
+                    if value~=nil and value~=false and value~=0 then return reject("ACTIVE_CHANNEL_FIELD_"..field) end
                 end
                 local known={attribute=true,abs_preset=true,rel_preset=true,abs_generator=true,rel_generator=true,generator=true,
                     mask_active_phaser=true,mask_active_value=true,mask_cooked=true,mask_individual=true,mask_integrated=true,
                     dict_flags=true,dict_index=true,gridposmatr=true,gridpos=true,grid=true,phase=true,speed=true,
                     measure=true,fade=true,delay=true,selective=true,preset_store_mode=true,pm=true,ui_channel_index=true,
                     grid_origin=true,grid_matrix=true,nshot_count=true,nshot_flags=true,speed_master=true}
-                for k,v in pairs(p) do if type(k)=="string" and not known[k] and v~=nil and v~=false and v~=0 then return nil end end
-                if p.ui_channel_index~=nil and p.ui_channel_index~=ui then return nil end
+                for k,v in pairs(p) do if type(k)=="string" and not known[k] and v~=nil and v~=false and v~=0 then return reject("UNKNOWN_CHANNEL_FIELD_"..k) end end
+                if p.ui_channel_index~=nil and p.ui_channel_index~=ui then return reject("UI_CHANNEL_INDEX_MISMATCH") end
                 if type(p.dict_flags)=="table" then for k,v in pairs(p.dict_flags) do
                     if not ({has_absolute=true,has_relative=true,selective=true,blocked=true,blocked_rel=true})[k]
-                        and v~=nil and v~=false and v~=0 then return nil end
-                    if (k=="blocked" or k=="blocked_rel") and v~=nil and v~=false and v~=0 then return nil end
-                end elseif p.dict_flags~=nil then return nil end
+                        and v~=nil and v~=false and v~=0 then return reject("UNKNOWN_DICT_FLAG_"..k) end
+                    if (k=="blocked" or k=="blocked_rel") and v~=nil and v~=false and v~=0 then return reject("BLOCKED_DICT_FLAG_"..k) end
+                end elseif p.dict_flags~=nil then return reject("DICT_FLAGS_SHAPE") end
                 if type(p.dict_flags)=="table" and p.dict_flags.selective~=nil
-                    and p.dict_flags.selective~=false and p.dict_flags.selective~=0 and pm~=1 then return nil end
+                    and p.dict_flags.selective~=false and p.dict_flags.selective~=0 and pm~=1 then return reject("DICT_SELECTIVE_MODE_CONFLICT") end
                 local phaser=p.mask_active_phaser
                 local mask=p.mask_active_value
-                if type(phaser)~="number" or math.type(phaser)~="integer" or phaser<0 or phaser & ~knownBits~=0 then return nil end
-                if type(mask)~="number" or math.type(mask)~="integer" or mask & ~(2|4)~=0 or mask==0 then return nil end
+                if type(phaser)~="number" or math.type(phaser)~="integer" or phaser<0 or phaser & ~knownBits~=0 then return reject("ACTIVE_PHASER_MASK_SHAPE") end
+                if type(mask)~="number" or math.type(mask)~="integer" or mask & ~(2|4)~=0 or mask==0 then return reject("ACTIVE_VALUE_MASK_SHAPE") end
                 if type(p.dict_flags)=="table" then
                     for _,spec in ipairs({{"has_absolute",2,"absolute"},{"has_relative",4,"relative"}}) do
                         local flag,bit,field=table.unpack(spec)
                         local value=p.dict_flags[flag]
                         if value~=nil and value~=false and value~=0
                             and not ((value==true or value==1) and mask & bit~=0
-                                and type(p[1])=="table" and type(p[1][field])=="number") then return nil end
+                                and type(p[1])=="table" and type(p[1][field])=="number") then return reject("DICT_VALUE_CONFLICT_"..flag) end
                     end
                 end
-                if phaser & (1|2)~=0 then return nil end
+                if phaser & (1|2)~=0 then return reject("PHASER_PRESET_DEPENDENCY_ACTIVE") end
                 local attr=p.attribute or api.safe(api.attributeByUI,ui)
                 if rawKey then cache.__failure[rawKey]="ORDINARY_ATTRIBUTE_FG_UNPROVEN" end
                 local fg=attrFG(attr)

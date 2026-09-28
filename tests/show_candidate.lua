@@ -290,6 +290,10 @@ check(unknownResult.unsafeRefs and unknownResult.unsafeRefs[1]=="Preset X",
 -- Unsafe history is retained as a lane barrier until reverse attribution.
 local unsafe=preset("Preset Unsafe",0,2,false)
 referenceData[unsafe][0].unrecognized_active_field=1
+local unsafeHeader=result({recipe(gOne,unsafe,1)},fOne)
+check(unsafeHeader.classification=="INCONCLUSIVE"
+ and unsafeHeader.unsafeRefDetails["Preset Unsafe"]=="UNKNOWN_CHANNEL_FIELD_unrecognized_active_field",
+ "active native channel header rejects with the exact field reason")
 local function attr(resultValue)
  return resultValue.unsafeAttribution or {finalSurviving={},fullySuperseded={},unknown={}}
 end
@@ -395,6 +399,10 @@ _G.SelectionNext=function(index)
 end
 _G.SelectedSequence=function() return finalSeq end
 _G.GetCurrentCue=function() return finalCue end
+local pendingText=functions.render(cached)
+check(pendingText:find("Resolver: PENDING | 0 refs",1,true)~=nil
+ and cached.provenSourceKey==nil and next(cached.markerReferences or {})==nil,
+ "selection change must paint panel first without stale refs or a blocking metadata read")
 local panelText=functions.render(cached)
 check(panelText:find("Groups:\n6 Key\n7 Cell",1,true)~=nil
  and panelText:find("Resolver: PROVEN | 4 refs",1,true)~=nil,
@@ -465,6 +473,12 @@ check(unrelatedResult.classification=="INCONCLUSIVE",
 local expected9009=preset("Preset 25.9009",0,2,true)
 local markerSeq,markerCue=tree({recipe(gOne,expected9009,1)})
 local markerState=state(markerSeq,markerCue,fOne)
+markerState.currentGroup=gOne; markerState.currentRecipe=markerCue:Children()[1]:Children()[1]
+markerState.deferResolverOnce=true
+local immediateGroup=functions.recipePoolReferences(markerState)
+check(immediateGroup["Group 6"]==gOne and immediateGroup["Preset 25.9009"]==nil
+ and markerState.provenSourceKey==nil,
+ "context-change tick must show Group immediately and defer expensive reference metadata")
 markerState.running=true; markerState.poolBlink=true
 markerState.markerReferences=functions.recipePoolReferences(markerState)
 check(markerState.poolMarkersDirty==true,
