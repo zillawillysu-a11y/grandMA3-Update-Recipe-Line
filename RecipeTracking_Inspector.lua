@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.0.17"
+local PLUGIN_VERSION = "0.7.1.0"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
 -- disables both its purple Pool frames and all automatic Cue/Recipe/cooked-data
@@ -784,6 +784,24 @@ local function selectionRelation(group, fixtures)
     end
     return true, selectedCount == memberCount, selectedCount, memberCount
 end
+-- Native-proven canonical member identity (Track A checkpoint:
+-- NATIVE_TOADDR_OBJECTLIST_MEMBER_KEY_PROVEN). A Fixture/SubFixture/Cell
+-- handle resolves through its command-style ToAddr address, strictly parsed
+-- as "Fixture <numeric dotted key>". Anything else fails closed to nil.
+-- Never falls back to a parent identity and never uses sf_index.
+
+
+
+-- Exact canonical member-identity relations between a Stored Group and the
+-- current selection. Parent Fixture, child SubFixture and nested Cell keys
+-- never collapse into each other. Grid position never affects identity.
+-- Returns: relation, selectionKeys, groupKeys where relation is one of
+-- EXACT_COMPLETE, SELECTION_CONTAINS_COMPLETE_GROUP, PARTIAL, DISJOINT, UNPROVEN.
+
+-- Every Stored Group completely contained in the current selection, sorted
+-- deterministically by command address so marker output never depends on
+-- Pool traversal order.
+
 
 local function directRecipes()
     if not callable("ProgrammerPart") then return {} end
@@ -864,6 +882,18 @@ local function exactSelectionGroups(fixtures)
     end
     return matches
 end
+
+-- Show-release candidate, not the native-proven Track A resolver. This
+-- newest-first member/feature walk still lacks reference-level ABS/REL,
+-- static-terminator, selective applicability, and 9008 split gates. Keep
+-- this distinction explicit until those gates are ported and tested.
+-- Returns { classification = "PROVEN", refs = { key = object } } or
+-- { classification = "INCONCLUSIVE" }.
+
+-- Recompute proven sources only when semantic input changes (Cue, Recipe
+-- Group selection, feature). Emits one bounded shadow line per recompute so
+-- the old and new source sets stay comparable without per-tick logging.
+
 
 local function canCreateRecipe(state)
     return state.currentNewPreset and state.currentSequence and state.currentCue
@@ -1035,6 +1065,13 @@ local function render(state)
             lines[#lines + 1] = "New Preset: " .. programmerValueText(info)
         end
     end
+    if state then
+        -- Canonical complete Stored Groups for marker sources. currentGroup
+        -- keeps its existing single-choice UX semantics untouched.
+        state.lastFixtures = fixtures
+        state.lastFeature = info.feature
+        state.provenEnabled = true
+    end
     if state and #state.matchingCandidates > 1 then
         local overview = {
             string.format("%s | %d fixtures | %d matching Groups", tostring(info.feature), #fixtures, #state.matchingCandidates),
@@ -1134,6 +1171,231 @@ local function recipePoolReferences(state)
         for _, name in ipairs({ "Selection", "Values", "MAtricks", "Filter", "World", "Generator" }) do
             add(recipeField(recipe, name))
         end
+    end
+    local function canonicalMemberKey(fixture)
+    local handle = fixture ~= nil and (fixture.handle or fixture) or nil
+    if handle == nil then return nil end
+    local raw = nil
+    local ok, value = pcall(function()
+        local fn = handle.ToAddr
+        return type(fn) == "function" and fn(handle) or nil
+    end)
+    if ok and type(value) == "string" then raw = value end
+    if raw == nil and callable("ToAddr") then
+        local global = safe(ToAddr, handle)
+        if type(global) == "string" then raw = global end
+    end
+    if type(raw) ~= "string" then return nil end
+    local trimmed = string.gsub(string.gsub(raw, "^%s+", ""), "%s+$", "")
+    local key = string.match(trimmed, "^Fixture%s+(%d+[%.%d]*)$")
+    if not key or string.find(key, "..", 1, true) or string.match(key, "%.$") then return nil end
+    -- A parsed display address is only a candidate identity. Native Track A
+    -- requires this address to resolve uniquely back to the same handle.
+    if not callable("ObjectList") then return nil end
+    local resolved = safe(ObjectList, trimmed)
+    if type(resolved) ~= "table" or #resolved ~= 1 then return nil end
+    if resolved[1] ~= handle then
+        local equal = callable("CompareHandle") and safe(CompareHandle, resolved[1], handle)
+        if equal ~= true then return nil end
+    end
+    return key
+end
+    local function selectionKeys(fixtures)
+    local keys, unproven = {}, 0
+    for _, fixture in ipairs(fixtures or {}) do
+        local key = canonicalMemberKey(fixture)
+        if key then keys[key] = true else unproven = unproven + 1 end
+    end
+    return keys, unproven
+end
+    local function groupKeys(group)
+    local keys, unproven = {}, 0
+    local ok, selection = pcall(function() return group.Selection end)
+    if not ok or type(selection) ~= "table" then return keys, 1 end
+    for _, item in pairs(selection) do
+        local key = nil
+        if type(item) == "table" then
+            if item.handle ~= nil then
+                key = canonicalMemberKey(item)
+            else
+                local index = tonumber(item.sf_index)
+                if index and callable("GetSubfixture") then
+                    key = canonicalMemberKey(safe(GetSubfixture, index))
+                end
+            end
+        end
+        if key then keys[key] = true else unproven = unproven + 1 end
+    end
+    return keys, unproven
+end
+    local function relation(group, fixtures)
+    if group == nil then return "DISJOINT", {}, {} end
+    local selectionKeys, selectionBad = selectionKeys(fixtures)
+    local groupKeys, groupBad = groupKeys(group)
+    if selectionBad > 0 or groupBad > 0 then return "UNPROVEN", selectionKeys, groupKeys end
+    local selectionCount, groupCount, shared = 0, 0, 0
+    for _ in pairs(selectionKeys) do selectionCount = selectionCount + 1 end
+    for _ in pairs(groupKeys) do groupCount = groupCount + 1 end
+    if selectionCount == 0 or groupCount == 0 then return "DISJOINT", selectionKeys, groupKeys end
+    for key in pairs(selectionKeys) do if groupKeys[key] then shared = shared + 1 end end
+    if shared == selectionCount and shared == groupCount then return "EXACT_COMPLETE", selectionKeys, groupKeys end
+    if shared == groupCount then return "SELECTION_CONTAINS_COMPLETE_GROUP", selectionKeys, groupKeys end
+    if shared == 0 then return "DISJOINT", selectionKeys, groupKeys end
+    return "PARTIAL", selectionKeys, groupKeys
+end
+    local function completeGroups(fixtures)
+    local pool = callable("DataPool") and safe(DataPool) or nil
+    local groups = safe(function() return pool.Groups end)
+    local matches = {}
+    for _, group in ipairs(children(groups)) do
+        local relation = relation(group, fixtures)
+        if relation == "EXACT_COMPLETE" or relation == "SELECTION_CONTAINS_COMPLETE_GROUP" then
+            matches[#matches + 1] = group
+        end
+    end
+    table.sort(matches, function(a, b)
+        return tostring(commandAddress(a)) < tostring(commandAddress(b))
+    end)
+    return matches
+end
+    local function sources(sequence, currentCue, fixtures, info)
+    if not sequence or not currentCue then
+        return { classification = "INCONCLUSIVE" }
+    end
+    local wanted = {}
+    for _, fixture in ipairs(fixtures or {}) do
+        local key = canonicalMemberKey(fixture)
+        if key then wanted[key] = true end
+    end
+    if next(wanted) == nil then return { classification = "INCONCLUSIVE" } end
+    local currentNumber = cueNumber(currentCue)
+    if currentNumber == nil then return { classification = "INCONCLUSIVE" } end
+    local rows, cueCount, recipeCount = {}, 0, 0
+    for _, cue in ipairs(children(sequence)) do
+        if cueCount >= MAX_CUES or recipeCount >= MAX_RECIPES then break end
+        local candidateNumber = cueNumber(cue)
+        if string.lower(class(cue)) == "cue"
+            and candidateNumber ~= nil and candidateNumber <= currentNumber then
+            cueCount = cueCount + 1
+            for _, part in ipairs(children(cue)) do
+                if string.lower(class(part)) == "part" then
+                    for ordinal, recipe in ipairs(children(part)) do
+                        if recipeCount >= MAX_RECIPES then break end
+                        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                            recipeCount = recipeCount + 1
+                            rows[#rows + 1] = {
+                                cue = cue, part = part, recipe = recipe,
+                                cueNumber = candidateNumber,
+                                partNumber = partNumber(part),
+                                recipeIndex = recipeNumber(recipe, ordinal) or ordinal,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(rows, function(left, right)
+        if left.cueNumber ~= right.cueNumber then return left.cueNumber > right.cueNumber end
+        if left.partNumber ~= right.partNumber then return left.partNumber > right.partNumber end
+        return left.recipeIndex > right.recipeIndex
+    end)
+    local refs, decided = {}, {}
+    for _, row in ipairs(rows) do
+        local groupKeys, groupBad = groupKeys(recipeField(row.recipe, "Selection"))
+        local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
+        if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
+        local intersects = false
+        for key in pairs(wanted) do if groupKeys[key] then intersects = true; break end end
+        if intersects then
+            if not values then return { classification = "INCONCLUSIVE" } end
+            local features = recipeReferenceFeatures(values)
+            if #features == 0 then return { classification = "INCONCLUSIVE" } end
+            for key in pairs(wanted) do if groupKeys[key] then
+                for _, feature in ipairs(features) do
+                    local lane = key .. "\0" .. feature
+                    if not decided[lane] then
+                        decided[lane] = row
+                        local refKey = commandAddress(values) or address(values)
+                        if refKey then refs[refKey] = values end
+                    end
+                end
+            end end
+        end
+    end
+    if next(decided) == nil then return { classification = "INCONCLUSIVE" } end
+    return { classification = "PROVEN", refs = refs }
+end
+    local function refresh(state, sequence, currentCue, fixtures, info)
+    if not state then return nil end
+    local groupKeys = {}
+    for _, group in ipairs(state.currentGroups or {}) do
+        groupKeys[#groupKeys + 1] = tostring(commandAddress(group))
+    end
+    table.sort(groupKeys)
+    local memberKeys = {}
+    for _, fixture in ipairs(fixtures or {}) do
+        local key = canonicalMemberKey(fixture)
+        if key then memberKeys[#memberKeys + 1] = key end
+    end
+    table.sort(memberKeys)
+    local cacheKey = tostring(commandAddress(sequence)) .. ":" .. tostring(cueNumber(currentCue))
+        .. ":" .. tostring(info and info.feature) .. ":"
+        .. table.concat(groupKeys, ",") .. ":" .. table.concat(memberKeys, ",")
+        .. ":" .. tostring(commandAddress(state.currentRecipe))
+        .. ":" .. tostring(commandAddress(state.currentOldPreset))
+        .. ":" .. tostring(#(state.matchingCandidates or {}))
+    if state.provenSourceKey == cacheKey then return state.provenSources end
+    local started = type(os) == "table" and type(os.clock) == "function" and safe(os.clock) or nil
+    local result = sources(sequence, currentCue, fixtures, info)
+    local finished = started ~= nil and safe(os.clock) or nil
+    local elapsed = finished and (finished - started) * 1000 or "UNMEASURED"
+    local oldKeys, newKeys = {}, {}
+    if state.provenSources and state.provenSources.refs then
+        for key in pairs(state.provenSources.refs) do oldKeys[#oldKeys + 1] = key end
+    end
+    if result.refs then for key in pairs(result.refs) do newKeys[#newKeys + 1] = key end end
+    table.sort(oldKeys); table.sort(newKeys)
+    local oldSet = {}; for _, key in ipairs(oldKeys) do oldSet[key] = true end
+    local missing, extra = {}, {}
+    for _, key in ipairs(oldKeys) do if not result.refs or not result.refs[key] then missing[#missing + 1] = key end end
+    for _, key in ipairs(newKeys) do if not oldSet[key] then extra[#extra + 1] = key end end
+    state.provenSourceKey = cacheKey
+    state.provenSources = result
+    if callable("ErrEcho") then
+        safe(ErrEcho, string.format("[RecipeTracking][ResolverShadow] cue=%s groups=%d old_refs=%d new_refs=%d missing=%d extra=%d resolver_ms=%s classification=%s",
+            tostring(cueNumber(currentCue)), #groupKeys, #oldKeys, #newKeys,
+            #missing, #extra, tostring(elapsed), tostring(result.classification)))
+    end
+    return result
+end
+    if state ~= nil and state.provenHooks == nil then
+        state.provenHooks = {
+            canonicalMemberKey = canonicalMemberKey,
+            selectionKeys = selectionKeys,
+            groupKeys = groupKeys,
+            relation = relation,
+            completeGroups = completeGroups,
+            sources = sources,
+            refresh = refresh,
+        }
+    end
+    state.currentGroups = completeGroups(state.lastFixtures or {})
+    local flagOn = state ~= nil and state.provenEnabled == true
+    if flagOn then
+        local provenResult = refresh(state, state.currentSequence, state.currentCue,
+            state.lastFixtures, { feature = state.lastFeature })
+        for _, group in ipairs(state.currentGroups or {}) do add(group) end
+        if provenResult and provenResult.classification == "PROVEN" then
+            for _, object in pairs(provenResult.refs) do add(object) end
+            return references
+        end
+        -- Fail closed: Group tiles plus directly resolved single-row
+        -- references only. The legacy cue-wide scan stays available
+        -- below only while the flag is off.
+        if state.currentRecipe then addRecipe(state.currentRecipe) end
+        add(state.currentGroup)
+        return references
     end
     if state.currentRecipe then
         addRecipe(state.currentRecipe)
