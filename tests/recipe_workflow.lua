@@ -241,8 +241,11 @@ GetDisplayByIndex = function(index)
     if index == 1 then return object("Display", "Display", {}, pools) end
 end
 state.running, state.poolBlinkTicks = true, 0
+state.markerTime=0
+state.markerClock=function() return state.markerTime end
 local commandCount = #commands
 functions.refreshPoolMarkers(state)
+state.markerTime=0.25
 functions.refreshPoolMarkers(state)
 check(state.poolMarkers[buttons[1]] and state.poolMarkers[buttons[2]] and state.poolMarkers[buttons[3]],
     "Group, All Preset and Generator must receive markers")
@@ -256,9 +259,11 @@ check(marker.Anchors and marker.Anchors.left == buttons[1].Anchors.left
     "Pool marker must be anchored to the PoolLayoutGrid cell so it renders above the button")
 check(#commands == commandCount, "Markers must never issue Show commands")
 local firstPulseColor = marker.BackColor
+state.markerTime=0.5
 functions.refreshPoolMarkers(state)
 check(marker.Visible == "Yes" and marker.BackColor ~= firstPulseColor,
-    "Markers must pulse color every tick without disappearing")
+    "Markers must pulse on the fixed time interval without disappearing")
+state.markerTime=0.75
 functions.refreshPoolMarkers(state)
 check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
     "Markers must remain visible through the pulse cycle")
@@ -283,6 +288,7 @@ recalledGrid.Append = function()
     return overlay
 end
 pools[3].IsActuallyVisible = function() return false end
+state.markerTime=1.3
 GetDisplayByIndex = function(index)
     displayLookupCount = displayLookupCount + 1
     if index == 1 then return object("Display", "Display", {}, {pools[1], pools[2], recalledGrid}) end
@@ -293,10 +299,12 @@ check(state.poolMarkers[recalledButton] ~= nil and state.poolMarkers[buttons[3]]
         and displayLookupCount == 14,
     "Recall View must replace hidden Pool grids and preserve Generator markers")
 state.currentRecipe, state.currentGroup, state.matchingCandidates = nil, nil, {}
+state.poolMarkersDirty=true
 functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
 check(marker.deleted and next(state.poolMarkers) == nil, "Selection change must clean up markers")
 state.currentRecipe = rows[3]
+state.poolMarkersDirty=true
 functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
 marker = state.poolMarkers[buttons[1]].overlay
@@ -530,7 +538,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.1.4"}
+local sameInstance = {running = true, version = "0.7.1.5"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
@@ -616,17 +624,23 @@ local purpleState = {
     running = true,
     activeEffects = {["Preset 21.1"] = {object = allPreset, count = 8}}
 }
+purpleState.markerTime=0
+purpleState.markerClock=function() return purpleState.markerTime end
 functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
 check(next(purpleState.poolMarkers) == nil,
     "Dormant Cue Phaser state must not create purple Pool frames")
 purpleState.currentGroup = allPreset
+purpleState.poolMarkersDirty=true
+purpleState.markerTime=0.5
 functions.refreshPoolMarkers(purpleState)
+purpleState.markerTime=0.75
 functions.refreshPoolMarkers(purpleState)
 local groupPulse = purpleState.poolMarkers[buttons[2]].overlay
 check(groupPulse ~= nil and groupPulse.BackColor ~= "GroupedProgLayerActive.Phaser",
     "The current Group must keep its non-purple pulsing Pool frame")
 local groupPulseColor = groupPulse.BackColor
+purpleState.markerTime=1.0
 functions.refreshPoolMarkers(purpleState)
 check(groupPulse.BackColor ~= groupPulseColor,
     "The current Group frame must continue pulsing while Cue Phaser markers are disabled")

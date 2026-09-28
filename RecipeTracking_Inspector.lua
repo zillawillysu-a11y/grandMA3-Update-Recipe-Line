@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.4"
+local PLUGIN_VERSION = "0.7.1.5"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1181,11 +1181,12 @@ local function render(state)
         end
         if state.expanded then
             resolverLines[#resolverLines+1]=string.format(
-                "Timing ms: select=%s tracking=%s group=%s resolver=%s pool=%s",
+                "Timing ms: select=%s tracking=%s group=%s resolver_slice=%s total=%s pool=%s",
                 tostring(state.lastSelectionReadMs or "?"),
                 tostring(state.lastTrackingScanMs or "?"),
                 tostring(state.lastGroupMatchMs or "?"),
-                tostring(state.lastResolverMs or "?"),
+                tostring(state.lastResolverSliceMs or "?"),
+                tostring(state.lastResolverTotalMs or state.lastResolverMs or "?"),
                 tostring(state.lastPoolDiscoveryMs or "?"))
         end
     end
@@ -1336,6 +1337,11 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]=reason end
             return nil
         end
+        local function short(value)
+            if value==nil then return "nil" end
+            if type(value)=="table" then return "table" end
+            return tostring(value):gsub("[%c%s]","_"):sub(1,24)
+        end
         if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
@@ -1365,7 +1371,9 @@ local function newTrackARuntime(api)
                 if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
                 if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
                 if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
-                if pm~=modeNumber[nativeMode] then return reject("PRESET_MODE_NATIVE_MISMATCH") end
+                if pm~=modeNumber[nativeMode] then
+                    return reject("PRESET_MODE_NATIVE_MISMATCH(pm="..short(pm)..",PresetMode="..short(nativeMode)..")")
+                end
                 mode=pm
                 if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
                 if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
@@ -1450,8 +1458,8 @@ local function newTrackARuntime(api)
                         scope[lane].moving=channelMoving
                     end
                 end
-            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return nil end
-            elseif ui~="count" then return nil end
+            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return reject("BY_FIXTURES_SHAPE") end
+            elseif ui~="count" then return reject("TOP_LEVEL_KEY_"..tostring(ui)) end
         end
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
         if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then return nil end
@@ -1947,7 +1955,7 @@ end
     end)
     return matches
 end
-    local function sources(sequence, currentCue, fixtures, info,completeCandidates)
+    local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
     if not sequence or not currentCue then
         return { classification = "INCONCLUSIVE" }
     end
@@ -2011,9 +2019,17 @@ end
     if #scopedRows==0 then return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"} end
     state.referenceMetadataCache=state.referenceMetadataCache or {}
     state.memberUICache=state.memberUICache or {}
+    local function resumableNativeCall(fn,...)
+        local result=safe(fn,...)
+        if taskState and taskState.asyncResolver
+            and taskState.resolverTask==coroutine.running() then coroutine.yield("NATIVE_READ") end
+        return result
+    end
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
-        identity=commandAddress,objectList=_G.ObjectList,getPresetData=_G.GetPresetData,
-        getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel})
+        identity=commandAddress,objectList=_G.ObjectList,
+        getPresetData=function(...) return resumableNativeCall(_G.GetPresetData,...) end,
+        getUIChannels=function(...) return resumableNativeCall(_G.GetUIChannels,...) end,
+        attributeByUI=_G.GetAttributeByUIChannel})
     local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
     local feature=selected and safe(function() return selected.Feature end)
     if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
@@ -2056,9 +2072,30 @@ end
         .. ":" .. tostring(commandAddress(state.currentOldPreset))
         .. ":" .. tostring(#(state.matchingCandidates or {}))
     if state.provenSourceKey == cacheKey then return state.provenSources end
-    local started = contextClock()
-    local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates)
-    local elapsed = contextElapsed(started) or "UNMEASURED"
+    if state.resolverTaskKey~=cacheKey or not state.resolverTask then
+        state.resolverTaskKey=cacheKey
+        state.resolverTaskStarted=contextClock()
+        state.lastResolverSliceMs=nil
+        state.resolverTask=coroutine.create(function()
+            return sources(sequence,currentCue,fixtures,info,state.completeGroupCandidates,state)
+        end)
+    end
+    local sliceStarted=contextClock()
+    local resumed,result=coroutine.resume(state.resolverTask)
+    if not resumed then
+        state.resolverTask=nil
+        result={classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}}
+    elseif coroutine.status(state.resolverTask)~="dead" then
+        state.lastResolverSliceMs=contextElapsed(sliceStarted)
+        state.lastResolverMs=state.lastResolverSliceMs
+        state.provenSources={classification="PENDING",reason="METADATA_READ_PENDING",refs={}}
+        return state.provenSources
+    end
+    local elapsed = contextElapsed(state.resolverTaskStarted) or "UNMEASURED"
+    state.lastResolverTotalMs=elapsed
+    state.resolverTask=nil
+    state.resolverTaskKey=nil
+    state.resolverTaskStarted=nil
     local oldKeys, newKeys = {}, {}
     if state.provenSources and state.provenSources.refs then
         for key in pairs(state.provenSources.refs) do oldKeys[#oldKeys + 1] = key end
@@ -2626,17 +2663,26 @@ local function refreshPoolMarkers(state)
         return
     end
     state.poolBlinkTicks = (state.poolBlinkTicks or 0) + 1
-    -- Pulse existing frames at 4 Hz without rescanning the UI tree. Pool lookup
-    -- remains at 2 Hz, so the faster animation does not double traversal cost.
-    state.poolBlinkOn = not state.poolBlinkOn
+    -- Use elapsed time instead of loop count: native metadata work may yield
+    -- across ticks, so animation cadence must not depend on resolver duration.
+    local now=state.markerClock and state.markerClock() or clockSeconds()
+    local pulseChanged=false
+    if now and (state.nextPoolPulseAt==nil or now>=state.nextPoolPulseAt) then
+        state.poolBlinkOn=not state.poolBlinkOn
+        state.nextPoolPulseAt=now+0.25
+        pulseChanged=true
+    end
     local pulseColor = state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
     for _, entry in pairs(state.poolMarkers or {}) do
         pcall(function()
             entry.overlay.Visible = "Yes"
-            entry.overlay.BackColor = pulseColor
+            if pulseChanged then entry.overlay.BackColor = pulseColor end
         end)
     end
-    if state.poolBlinkTicks % 2 ~= 0 and not state.poolMarkersDirty then return end
+    if not now then now=0 end
+    if not state.poolMarkersDirty and not state.poolGridRefreshNeeded
+        and state.nextPoolLookupAt and now<state.nextPoolLookupAt then return end
+    state.nextPoolLookupAt=now+0.5
     local markerStarted=clockSeconds()
     state.poolMarkersDirty = false
     local references = state.markerReferences or recipePoolReferences(state)
@@ -2969,6 +3015,7 @@ signalTable.SelectRecipeTrackingGroup = function()
             state.targetGroup = group
             state.creationGroupOverride = group
             state.forceRefresh = true
+            state.preserveResolverCaches = true
         end
     end
 end
@@ -3582,7 +3629,8 @@ local function main()
     -- is not left with the plugin silently stopped and no Pool frames.
     if stopExistingForLaunch(existing) then return end
 
-    local state = { running = true, version = PLUGIN_VERSION }
+    local state = { running = true, version = PLUGIN_VERSION,
+        asyncResolver = ENABLE_TRACK_A_SHOW_CANDIDATE == true }
     _G[STATE_KEY] = state
     local panel, err = createPanel(state)
     if not panel then
@@ -3600,10 +3648,15 @@ local function main()
         local forceRefresh = state.forceRefresh
         if forceRefresh then
             state.effectSequenceKey, state.effectCacheSequence = nil, nil
-            state.groupPoolReferenceKey = nil
             state.provenSourceKey = nil
-            state.referenceMetadataCache = nil
-            state.memberUICache = nil
+            state.resolverTask=nil
+            state.resolverTaskKey=nil
+            if not state.preserveResolverCaches then
+                state.groupPoolReferenceKey = nil
+                state.referenceMetadataCache = nil
+                state.memberUICache = nil
+            end
+            state.preserveResolverCaches=false
         end
         local renderStarted=clockSeconds()
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)

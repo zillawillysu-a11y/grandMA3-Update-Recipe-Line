@@ -487,6 +487,18 @@ check(markerState.markerReferences["Preset 25.9009"]==expected9009,
  "9009-style final ref must reach marker source")
 check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
  "final 9009-style ref must survive recipePoolReferences admission")
+local asyncSeq,asyncCue=tree({recipe(gOne,moving,1)})
+local asyncState=state(asyncSeq,asyncCue,fOne); asyncState.asyncResolver=true
+local pendingSlices,asyncRefs=0,{}
+for _=1,32 do
+ asyncRefs=functions.recipePoolReferences(asyncState)
+ if asyncState.provenSources and asyncState.provenSources.classification=="PENDING" then
+  pendingSlices=pendingSlices+1
+ elseif asyncState.provenSources and asyncState.provenSources.classification=="PROVEN" then break end
+end
+check(pendingSlices>0 and asyncState.provenSources.classification=="PROVEN"
+ and asyncRefs["Preset 1.2"]==moving,
+ "resolver metadata reads must yield across refresh ticks and still publish the proven final ref")
 local tileAlias=object("Preset","Preset 25.9009")
 local button=object("PoolButton","Preset tile",{ObjectIndex=1,W=80,H=80,
  Anchors={left=0,right=0,top=0,bottom=0}})
