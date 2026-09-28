@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.9"
+local PLUGIN_VERSION = "0.7.1.10"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1407,7 +1407,10 @@ local function newTrackARuntime(api)
         return result
     end
     local function ordinary(ref,cache)
-        local raw=api.safe(api.getPresetData,ref,false,true)
+        -- Reference metadata uses UI-channel records. Requesting the fixture
+        -- view adds a by_fixtures table that this parser intentionally does
+        -- not use for lane semantics.
+        local raw=api.safe(api.getPresetData,ref,false,false)
         local rawKey=api.identity(ref)
         cache.__failure=cache.__failure or {}
         local function reject(reason)

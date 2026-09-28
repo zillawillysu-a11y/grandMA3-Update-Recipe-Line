@@ -42,7 +42,10 @@ local function newTrackARuntime(api)
         return result
     end
     local function ordinary(ref,cache)
-        local raw=api.safe(api.getPresetData,ref,false,true)
+        -- Reference metadata uses UI-channel records. Requesting the fixture
+        -- view adds a by_fixtures table that this parser intentionally does
+        -- not use for lane semantics.
+        local raw=api.safe(api.getPresetData,ref,false,false)
         local rawKey=api.identity(ref)
         cache.__failure=cache.__failure or {}
         local function reject(reason)

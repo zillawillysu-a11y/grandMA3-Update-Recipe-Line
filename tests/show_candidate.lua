@@ -149,12 +149,12 @@ _G.GetUIChannels=function(h)
 end
 _G.GetAttributeByUIChannel=function(ui) return attrs[ui] end
 local referenceData,referenceReads={},{count=0,part=0}
-_G.GetPresetData=function(ref,selected,cooked)
+_G.GetPresetData=function(ref,selected,byFixtures)
  if ref:GetClass()=="Part" or ref:GetClass()=="Cue" then
   referenceReads.part=referenceReads.part+1
   error("production resolver must not read cooked Cue history")
  end
- check(selected==false and cooked==true,"reference metadata read shape must be false,true")
+ check(selected==false and byFixtures==false,"reference metadata must request UI-channel shape without by-fixtures view")
  referenceReads.count=referenceReads.count+1
  return referenceData[ref]
 end
