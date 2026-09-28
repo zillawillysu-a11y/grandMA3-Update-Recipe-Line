@@ -64,6 +64,18 @@ functions.recipePoolReferences(hookState)
 local provenApi = hookState.provenHooks
 assert(type(provenApi) == "table", "proven hook table must be attached")
 
+-- A native member-channel walk is the bounded unit for each resolver slice.
+local warmedHandles={}
+local warmTask={rows={},members={{handle="m1"},{handle="m2"},{handle="m3"},{handle="m4"}},
+ memberIndex=1,metadataIndex=1,runtime={memberUI=function(handle,cache)
+  warmedHandles[#warmedHandles+1]=handle; cache[handle]={}
+ end},selectedMembers={},targetFG=nil}
+local warmState={referenceMetadataCache={},memberUICache={}}
+local warmResult=provenApi.advanceStagedResolver(warmTask,warmState)
+check(warmResult.classification=="PENDING" and #warmedHandles==1
+ and warmState.resolverMembersWarmed==1 and warmState.resolverMembersTotal==4,
+ "large-selection resolver slices must warm only one member and expose progress")
+
 -- 1. canonical member keys for Fixture / SubFixture / nested Cell.
 check(provenApi.canonicalMemberKey(selectedFixture(101)) == "101", "fixture key must be 101")
 check(provenApi.canonicalMemberKey(selectedFixture(202)) == "201.1", "subfixture key must be 201.1")

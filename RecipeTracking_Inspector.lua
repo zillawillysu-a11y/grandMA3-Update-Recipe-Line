@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.7"
+local PLUGIN_VERSION = "0.7.1.8"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1230,6 +1230,12 @@ local function render(state)
         resolverLines[1]=string.format("Resolver: %s | %d refs%s",
             tostring(state.provenSources.classification),#refKeys,
             state.markerStatus and (" | "..state.markerStatus) or "")
+        if state.provenSources.classification=="PENDING"
+            and state.provenSources.reason=="MEMBER_UI_PENDING"
+            and type(state.resolverMembersTotal)=="number" then
+            resolverLines[#resolverLines+1]=string.format("Member channels: %d/%d",
+                state.resolverMembersWarmed or 0,state.resolverMembersTotal)
+        end
         if state.provenSources.classification~="PROVEN" and state.provenSources.reason then
             resolverLines[#resolverLines+1]="Reason: "..tostring(state.provenSources.reason):sub(1,90)
             local blockers=state.provenSources.unsafeRefs or {}
@@ -2046,7 +2052,9 @@ end
         task.metadataIndex=#task.rows+1
         cursor=task.memberIndex or 1
         local warmed=0
-        while cursor<=#task.members and warmed<4 do
+        -- One native GetUIChannels/member walk per refresh keeps the UI and
+        -- existing Pool overlays responsive while large selections warm.
+        while cursor<=#task.members and warmed<1 do
             local member=task.members[cursor]
             if taskState.memberUICache[member.handle]==nil then
                 task.runtime.memberUI(member.handle,taskState.memberUICache)
@@ -2056,6 +2064,8 @@ end
             warmed=warmed+1
         end
         task.memberIndex=cursor
+        taskState.resolverMembersWarmed=math.min(cursor-1,#task.members)
+        taskState.resolverMembersTotal=#task.members
         if cursor<=#task.members then
             return {classification="PENDING",reason="MEMBER_UI_PENDING",refs={}}
         end
@@ -2254,6 +2264,7 @@ end
             completeGroups = completeGroups,
             sources = sources,
             refresh = refresh,
+            advanceStagedResolver = advanceStagedResolver,
         }
     end
     local flagOn = state ~= nil and state.provenEnabled == true
@@ -2391,6 +2402,30 @@ end
 
 local function formatElapsed(value)
     return value ~= nil and string.format("%.1f", value) or "n/a"
+end
+
+local function advancePoolPulse(state)
+    if state.poolBlink == false or not state.running then return end
+    local now=clockSeconds()
+    local pulseChanged=false
+    if type(state.poolBlinkDeadline)~="number" then
+        state.poolBlinkOn=true
+        state.poolBlinkDeadline=now and now+0.125 or nil
+        pulseChanged=true
+    elseif now and now>=state.poolBlinkDeadline then
+        local steps=math.floor((now-state.poolBlinkDeadline)/0.125)+1
+        if steps%2==1 then state.poolBlinkOn=not state.poolBlinkOn; pulseChanged=true end
+        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*0.125
+    end
+    if pulseChanged then
+        local pulseColor=state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
+        for _,entry in pairs(state.poolMarkers or {}) do
+            pcall(function()
+                entry.overlay.Visible="Yes"
+                entry.overlay.BackColor=pulseColor
+            end)
+        end
+    end
 end
 
 local function newCueEffectScan(sequence, currentCue)
@@ -2789,26 +2824,10 @@ local function refreshPoolMarkers(state)
         state.markerReferences={}
         return
     end
-    -- Drive a four-cycle-per-second pulse from elapsed time, not loop count;
-    -- resolver work can make refresh intervals uneven.
+    -- Advance existing overlays before doing any new discovery or tile work.
+    advancePoolPulse(state)
     local now=clockSeconds()
-    local pulseChanged=false
-    if type(state.poolBlinkDeadline)~="number" then
-        state.poolBlinkOn=true
-        state.poolBlinkDeadline=now and now+0.125 or nil
-        pulseChanged=true
-    elseif now and now>=state.poolBlinkDeadline then
-        local steps=math.floor((now-state.poolBlinkDeadline)/0.125)+1
-        if steps%2==1 then state.poolBlinkOn=not state.poolBlinkOn; pulseChanged=true end
-        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*0.125
-    end
     local pulseColor = state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
-    if pulseChanged then for _, entry in pairs(state.poolMarkers or {}) do
-        pcall(function()
-            entry.overlay.Visible = "Yes"
-            entry.overlay.BackColor = pulseColor
-        end)
-    end end
     local cachedGridInvalid=false
     if not state.poolMarkersDirty and not state.poolGridRefreshNeeded and now and now<(state.poolLookupDeadline or 0) then
         for _,grid in ipairs(state.poolGrids or {}) do
@@ -3825,6 +3844,9 @@ local function main()
             end
             state.preserveResolverCaches=false
         end
+        -- Apply due pulse transitions before a synchronous native resolver
+        -- slice. The overlay can then repaint at this cycle's coroutine yield.
+        advancePoolPulse(state)
         local renderStarted=clockSeconds()
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
         state.lastRenderMs=elapsedMs(renderStarted)
