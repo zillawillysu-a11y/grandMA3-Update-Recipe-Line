@@ -75,4 +75,13 @@ local row2={category='FINAL_SURVIVING_UNSAFE',ref=preset,row={cue=record.row.cue
 cookedPart2={['101']={ColorRGB_R={abs_preset=other}}}
 r=run({record,row2},{part,part2,part2})
 assert(reads==2 and r.totals.matched==1 and r.totals.mismatch==1)
+local keySource=assert(io.open('tools/templates/cue_wide_recipe_member_key_probe.lua','rb'))
+assert(load(keySource:read('*a')))(); keySource:close()
+fixture.CID=1; cooked={['101']={ColorRGB_R={abs_preset=preset}}}
+r=run()
+local before=r.totals.unresolved
+assert(before==1 and #r.problematic==1)
+__cookedMemberKeyProbe(r.problematic,r.views,{log=api.log,identity=api.identity,describe=api.describe,getSubfixture=api.getSubfixture})
+assert(r.totals.unresolved==before and reads==1,'key observer leaves truth result and Part cache unchanged')
+fixture.CID='None'
 print('PASS Global Recipe cooked truth matched, unsupported, mismatch, unknown, surviving-only, Part cache')

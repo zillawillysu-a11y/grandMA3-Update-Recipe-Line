@@ -31,6 +31,7 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
  local mismatchShown,unsupportedShown=0,0
  local refinementShown={}; local refinementCount=0
  local memberKeys={}
+ local problematic={}
  for _,item in ipairs(selected) do
   local rec,label,key=item.record,item.label,item.key
   local row=rec.row
@@ -85,7 +86,9 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
    local attrs=refinedLane and attrsByLane[refinedLane]
    local attrNames=ordered(attrs)
    local matched,unsupported,unresolved,different=0,0,0,0
-   if not member then unresolved=1; stats.reasons.MEMBER_KEY_UNPROVEN=true
+   if not member then
+    unresolved=1; stats.reasons.MEMBER_KEY_UNPROVEN=true
+    problematic[#problematic+1]={sf=nil,part=row.part,expected=rec.ref,attributes=attrNames,feature=feature,layer=layer}
    elseif layer~='ABS' and layer~='REL' or not feature or feature=='*' then
     unresolved=1; stats.reasons.SURVIVING_LANE_LAYER_UNPROVEN=true
    elseif not attrs or #attrNames==0 then
@@ -100,6 +103,7 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
     local fixtureKey=fid and tostring(fid)
     if not fixtureKey or not noCid or (memberKeys[fixtureKey] and memberKeys[fixtureKey]~=member) then
      unresolved=1; stats.reasons.MEMBER_KEY_UNPROVEN=true
+     problematic[#problematic+1]={sf=member,part=row.part,expected=rec.ref,attributes=attrNames,feature=feature,layer=layer}
     else
      memberKeys[fixtureKey]=member
      for _,attribute in ipairs(attrNames) do
@@ -179,5 +183,5 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
  for _,label in ipairs(ordered(refs)) do local s=refs[label]
   emit('GLOBAL_RECIPE_APPLICABILITY_REFERENCE reference=%s rows=%d matched=%d mismatch=%d inconclusive=%d',label,s.rows,s.matched,s.mismatch,s.inconclusive)
  end
- return {totals=total,classification=summaryClass,partReads=math.min(partCount,64)}
+ return {totals=total,classification=summaryClass,partReads=math.min(partCount,64),views=views,problematic=problematic}
 end

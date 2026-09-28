@@ -2,15 +2,15 @@
 
 ## Current Goal
 
-Native validate the truth observer's wildcard-layer refinement for the 15 final-surviving Global ordinary rows. Production, Rev7, Rev13 classifier and eligibility, oracle, Selective Presets, UI marker, and Preset 25.9008 are out of scope.
+Native validate a diagnostic cooked member-key representation probe for the 1,176 lanes blocked by member identity. Production, Rev7, attribution, Rev13 eligibility, Selective Presets, UI marker, Group matching, Attribute capability, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-The truth observer now refines `FG:<id>|*` to `FG:<id>|ABS` only when cached Rev12.1 proof shows motion-static, exactly one authored/effective ABS layer and one step per channel, and the feature maps to reference Attributes. It does not mutate attribution keys. It separates lane, reference Attribute, cooked view, and member-key failures. Native rerun is pending; Rev7/Rev13 are unchanged.
+Wildcard-to-ABS truth refinement passed natively. The new side observer collects all problematic members, their parent hierarchy, candidate native cooked keys, and bounded `by_fixtures` key distributions. A shape is proven only when exactly one candidate relation covers every case with expected Attribute evidence and has no member-key collision. It reuses the truth observer's cooked Part cache and cannot alter truth, Rev7, or Rev13.
 
 ## Latest Real-World User Test
 
-Latest native Cue 8 truth probe: all 15 rows checked, all INCONCLUSIVE, 1,406 surviving lanes all unresolved, four unique cooked Part reads. All row reasons were `LANE_OR_COOKED_VIEW_UNPROVEN`. Attribution retained wildcard layers while Rev12.1 already proved unique ABS motion-static semantics for the five Global references. Rev7 and Rev13 alternate remained unchanged.
+Latest native Cue 8 truth probe: 1,406 surviving lanes, all 1,406 refined to ABS, zero refinement failures and zero different-Preset lanes. The 15 rows remain INCONCLUSIVE: five Preset 4.4 rows account for 1,176 `MEMBER_KEY_UNPROVEN` lanes (112, 210, 210, 336, 308); the other 183 unresolved lanes are `ATTRIBUTE_CAPABILITY_UNPROVEN`. Four unique source CueParts were read. Rev7 and Rev13 remain unchanged.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Latest native Cue 8 truth probe: all 15 rows checked, all INCONCLUSIVE, 1,406 su
 
 ## Current Problem
 
-Native rerun must show which lanes pass refinement and whether remaining blockers are reference Attribute mapping, cooked view, member identity, or fixture capability. No production gate change is authorized.
+Native rerun must reveal whether the 1,176 member-key lanes have a unique cooked bucket relation. The 183 Attribute-capability lanes remain separately unresolved. No production or Group matcher change is authorized.
 
 ## Known Failed Attempts
 
@@ -29,17 +29,17 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Important Files
 
-- `tools/templates/global_grid_ab.lua`
-- `diagnostics/global_grid_applicability_ab_2_5_0_3.xml`
-- `tools/run_global_grid_ab.py`
-- `tools/deploy_global_grid_ab.py`
-- `tests/global_grid_ab.lua`
-- `docs/global-grid-ab-probe.md`
+- `tools/templates/cue_wide_recipe_member_key_probe.lua`
+- `tools/templates/cue_wide_recipe_global_truth.lua`
+- `tools/templates/cue_wide_recipe_reverse_ab_core.lua`
+- `tests/cue_wide_recipe_member_key_probe.lua`
+- `tools/run_cue_wide_recipe_reverse_ab.py`
+- `tools/deploy_cue_wide_recipe_reverse_ab.py`
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `11dedc6`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `78f3d4e`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review `GLOBAL_RECIPE_LAYER_REFINEMENT` samples, `layer_refined_lanes`, `layer_refinement_failed_lanes`, split unresolved reasons, and unchanged Rev7/Rev13 results.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Review `COOKED_PART_KEY_SHAPE`, `COOKED_MEMBER_KEY_SHAPE/SAMPLE/SUMMARY`, optional alternate, and unchanged original truth/Rev7/Rev13 summaries.

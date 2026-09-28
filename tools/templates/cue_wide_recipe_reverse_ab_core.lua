@@ -844,6 +844,11 @@ local truthOK,truth=pcall(function()
   proofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,
   -- No established native fixture-capability source: absence remains unknown.
   capability=function() return 'UNKNOWN' end})
+ local keyStart=now()
+ local keyOK,keyResult=pcall(__cookedMemberKeyProbe,observation.problematic,observation.views,{
+  log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,getSubfixture=_G.GetSubfixture})
+ if keyOK then log('COOKED_MEMBER_KEY_TIMING observer_ms=%s extra_GetPresetData_calls=0',text(ms(keyStart,now())))
+ else log('COOKED_MEMBER_KEY_PROBE_ERROR error=%s',text(keyResult)) end
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
   observation.partReads,text(ms(truthStart,now())),text(selected.pass))
  return observation
