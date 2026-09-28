@@ -1,3 +1,5 @@
+Current revision: `5_REFERENCE_METADATA_BRIDGE`; see [Rev5 bridge architecture](cue-wide-recipe-metadata-bridge-rev5.md). Rev4 remains the independent baseline. Native Rev5 validation pending; production unchanged.
+
 Current revision: `4_REFERENCE_METADATA_CACHE`; see [Rev4 cache/reverse architecture](cue-wide-recipe-reference-metadata-rev4.md). Native validation pending; production unchanged. Earlier design below is historical.
 
 # Cue-wide Recipe Reverse Resolver A/B 2.5.0.3

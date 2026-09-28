@@ -1,6 +1,6 @@
 -- Rev4 reference-only, run-local cache. No Cue/Part readers and no oracle input.
 local function newReferenceMetadataCache(api)
- local cache,allowed,unidentified={},{},{}
+ local cache,rawCache,timings,allowed,unidentified={},{},{},{},{}
  local stats={distinct_references=0,calls=0,cache_hits=0,COMPLETE=0,PARTIAL=0,UNKNOWN=0,native_ms=0,max_ms=0,normalization_ms=0,timing_valid=true}
  local function elapsed(a) local b=api.now(); if type(a)~='number' or type(b)~='number' or b<a then stats.timing_valid=false; return 0 end; return (b-a)*1000 end
  local function identity(h)
@@ -149,9 +149,12 @@ local function newReferenceMetadataCache(api)
   local ns=api.now(); local normOK,m=pcall(normalize,ok and raw or nil,ref)
   if not normOK then m=unknown('NORMALIZATION_ERROR_'..tostring(m)) end
   if not ok then m=unknown('REFERENCE_READ_ERROR_'..tostring(raw)) end
-  stats.normalization_ms=stats.normalization_ms+elapsed(ns)
+  local normalized=elapsed(ns)
+  stats.normalization_ms=stats.normalization_ms+normalized
+  timings[key]={read_ms=native,normalization_ms=normalized}
+  if ok and type(raw)=='table' then rawCache[key]=raw end
   cache[key]=m; stats[m.completeness]=stats[m.completeness]+1
   return m
  end
- return {get=get,register=register,identity=identity,stats=stats,cache=cache,normalize=normalize}
+ return {get=get,register=register,registerDependency=register,identity=identity,stats=stats,cache=cache,raw=rawCache,timings=timings,normalize=normalize}
 end

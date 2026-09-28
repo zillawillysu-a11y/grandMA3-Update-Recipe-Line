@@ -164,7 +164,7 @@ r=run(); check(next(r.final)==nil and has('SHAPE_VALUESOURCE_LINK_UNVERIFIED'),'
 p=setup(); local members={}; for i=1,8000 do members[i]=i end
 row(p,group(90,members),phaser(117,nil)); r=run()
 local n=0; for _,line in ipairs(logs) do if line:find('UNRESOLVED Recipe=',1,true) then n=n+1 end end
-check(n==1 and #logs<60 and has('member_count=8000'),'bounded aggregate native output')
+check(n==1 and #logs<85 and has('member_count=8000'),'bounded aggregate native output')
 check(logs[1]:find('START',1,true) and logs[#logs]:find('END',1,true) and has('RESULT classification='),'summary survives large member count')
 -- Detail floods are capped independently from mandatory summaries.
 p=setup(); g=group(1,{1})
@@ -183,11 +183,11 @@ env.CompareHandle=function(x,y) return x==y or (x.db~=nil and x.db==y.db) end
 env.GetAttributeByUIChannel=function() return metaA end
 env.GetPresetData=function(target,phasersOnly,byFixtures)
  if target.kind=='Preset' and not has('ORACLE_START') then
-  check(has('NATIVE_ONLY_FINALIZED') and not has('METADATA_REVERSE_FINALIZED'),'metadata only after native finalize and before oracle')
+  check(has('NATIVE_ONLY_FINALIZED') and not has('BRIDGED_REVERSE_FINALIZED'),'reference reads only between native and bridge finalization')
   check(phasersOnly==false and byFixtures==false,'reference call flags')
   metadataReads=metadataReads+1; return references[target.db]
  end
- check(has('METADATA_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until metadata finalized')
+ check(has('METADATA_REVERSE_FINALIZED') and has('BRIDGED_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until bridge finalized')
  oracleReads=oracleReads+1; calls=calls+1; return data[target] or {}
 end
 p=setup(); g=group(701,{11,12}); a=obj('Preset','Preset arbitrary'); a.db=91001
@@ -222,7 +222,7 @@ references[stop.db]={[1]={[1]={absolute=100}}}
 row(secondPart,group(704,{12}),stop,2)
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run(); entry=select(2,next(r.metadata.refs))
 check(entry and entry.members[11] and not entry.members[12] and r.metadata.staticRows==1,'ordinary static metadata terminates partial overlap')
-check(r.fastCalls==0 and has('revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
+check(r.fastCalls==0 and logs[1]:find('revision=5_REFERENCE_METADATA_BRIDGE',1,true) and has('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
 -- A second run must issue a new metadata read for each distinct reference.
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run()
 check(metadataReads==2 and r.metadataStats.calls==2,'run-local cache lifetime')
@@ -240,6 +240,27 @@ check(r.metadataClassifications.METADATA_REVERSE_EXACT_MATCH and r.metadataClass
 references[unreadable.db]={[1]={[1]={absolute=0},[2]={absolute=100}}}
 logs={}; calls=0; metadataReads=0; oracleReads=0; r=run()
 check(r.metadataClassifications.METADATA_REVERSE_EXTRA_REFERENCE and next(r.metadataExtra)~=nil,'extra metadata refs compared after oracle independently')
+-- Rev5: direct Phaser reference is empty, yet native ValueSources bridge
+-- through one shared linked-Preset read before the unchanged oracle starts.
+p=setup(); metadataReads=0; oracleReads=0
+local moving=phaser(370,'Absolute','Dimmer',2); moving.db=91005
+registry['FeatureGroup Dimmer'].db=metaFG.db
+local linked=obj('Preset','Preset linked'); linked.db=91006
+references[moving.db]={}
+references[linked.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=0}}
+for _,step in ipairs(moving.contents[1].contents) do
+ local source=step.contents[1]; source.Preset=linked; source.props[#source.props+1]='Preset'
+end
+row(p,group(706,{11,12}),moving)
+data[p]={[1]={abs_preset=moving,[1]={absolute=100},[2]={absolute=0}}}
+r=run()
+check(r.metadataStats.calls==1 and r.metadataStats.UNKNOWN==1 and not next(r.metadataFinal),'Rev4 baseline remains empty for direct-empty Phaser')
+check(metadataReads==2 and r.bridgeStats.dependencies==1 and r.bridgeStats.phasers==1,'one direct and one linked read shared by two sources')
+check(r.bridgeOK and r.bridgeStats.moving==1 and next(r.bridgeFinal)~=nil,'native linked bridge contributes moving reference')
+check(r.bridgedClassifications.BRIDGED_REVERSE_EXACT_MATCH,'bridged reverse matches oracle identity set in mock')
+check(has('ORDINARY_REFERENCE_SEMANTICS_SUMMARY') and has('PHASER_BRIDGE_SUMMARY') and has('BRIDGED_DIFF'),'required compact bridge summaries')
+joinedLogs=table.concat(logs,'\n')
+check(assert(joinedLogs:find('BASELINE_METADATA_FINALIZED',1,true))<assert(joinedLogs:find('BRIDGED_REVERSE_FINALIZED',1,true)) and assert(joinedLogs:find('BRIDGED_REVERSE_FINALIZED',1,true))<assert(joinedLogs:find('ORACLE_START',1,true)),'baseline then bridge finalized before oracle')
 env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle=oldRead,oldAttribute,oldCompare
 env.HandleToInt=nil
 check(forbidden==0,'no mutation, channel expansion, UI, programmer or marker APIs')

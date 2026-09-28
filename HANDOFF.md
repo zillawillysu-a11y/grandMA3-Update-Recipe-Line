@@ -1,40 +1,40 @@
 # Project Handoff
 
 ## Current Goal
-Rev4 = `4_REFERENCE_METADATA_CACHE`, independent Recipe Reverse A/B on grandMA3 2.5.0.3. Formal Stored Group + Recipe authoring contract. Production untouched, marker flag false, no main merge.
+Rev5 = `5_REFERENCE_METADATA_BRIDGE`, independent Recipe Reverse diagnostic for grandMA3 2.5.0.3. Production untouched; ENABLE_CUE_PHASER_MARKERS=false; no marker drawing/waits; no main merge.
 
 ## Current Working State
-Three isolated paths: native-only Rev3 proof gates (zero GetPresetData) finalize first; fresh reference-only metadata cache plus second existing reverse engine finalize next; unchanged oracle last. Stable native HandleToInt / H# HandleToStr identities share cache across aliases. One read maximum per registered Recipe reference per run, failed reads cached. No Cue/Part metadata GetPresetData, no cooked-history fallback, no markers/waits. COMPLETE/PARTIAL/UNKNOWN and unsafe classifications retained even on exact comparison.
+Native-only result finalizes first, unchanged Rev4 BASELINE_METADATA second. New ordinary GetPresetData + native PhaserRecipe/ValueSource + cached linked-Preset candidate finalizes third, using the existing member/lane reverse engine. Cooked oracle runs last for identity comparison only. No Cue/Part/Sequence metadata reads and no cooked-history fallback. Same run-local stable DB cache holds direct and linked references; one native read per identity. Partial/unknown references are barriers, not guesses. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
-Rev3: 10 Cues / 31 Parts / 96 rows / 17 Groups, 25 distinct refs (15 ordinary, 10 ValueSource), native Feature proof 10, Layer/MOTION/STATIC proof zero. Native-only refs zero, oracle four, missing four, safe integration false. Native Attribute -> Feature -> FeatureGroup works. Strict zero GetPresetData is no longer mandatory for the new reference-only cache.
+Rev4 on Sequence 3841/Cue 8: 25 direct references/read calls, 71 hits, native GetPresetData 4.871 ms total (0.195 average, 0.393 max); normalization 205.458 ms, cache 225.638 ms, reverse 95.910 ms, total metadata path 321.553 ms. COMPLETE 0, PARTIAL 15, UNKNOWN 10. Recipe metadata refs 0, oracle refs 4, missing 4. Ordinary Presets have 58-channel/other useful ABS records but unknown masks/dictionary fields; direct Phaser reference data is empty despite native PhaserRecipe children. IDs are evidence only, never hardcoded.
 
 ## Verified Facts
-Local Lua 5.4 suite passes: 17 engine checks, 176 integration checks, 42 metadata checks, 6 Rev3 audit assertions. Deterministic generation, copied oracle fidelity, XML component validation and disabled production marker flag pass. Metadata parser uses actual UI-index record Attribute chains and effective numeric ABS/REL steps, conservatively rejects incomplete/unknown shapes. Unit/integration evidence is not native correctness. Independent deploy script verifies source/deployed hashes and unchanged production folder/source.
+Installed grandMA3 2.5 system tests document active Phaser/value/cooked masks and blocked dictionary flags. New Rev5 audit checks values/types and logs compact per-record patterns. It distinguishes Phaser structure from motion proof, checks enumerated raw vs getter defaults, actual Attribute/Feature/FeatureGroup links, linked Preset feature/layer agreement and effective step differences. Mocks pass 17 engine, 187 integration, 42 Rev4 metadata, 16 Rev5 bridge and 6 Rev3 audit assertions; Lua 5.4/deterministic XML checks pass. Local mocks are not native correctness.
 
 ## Current Problem
-Native Rev4 return schema, reference coverage, layer/motion classification, equality and elapsed times require user validation. COMPLETE means supported parsed schema only. Unreadable Generators, opaque dependencies, unknown fields, mixed feature-layer motion, remove and mixed release semantics stay unsafe. Metadata total excludes reused native history/group preparation and Rev3 audit overhead.
+Native Rev5 metadata patterns and bridge completeness need validation. Unknown masks/flags, nonempty grid matrix, raw zero without linked-layer proof, unreadable ValueSources or dependencies remain unsafe. A match still requires multi-Cue native proof before production. Performance counts reuse the direct-reference cache and exclude Rev3 audit and comparison-only Rev4 reverse.
 
 ## Known Failed Attempts
-Rev1 stringified handles and spammed member logs. Rev2/3 structural Feature proof succeeded but native layer/ordinary Preset metadata remained unreadable. No name/pool-number inference; no return to cooked history optimization.
+Rev1 stringified native Attribute handles and spammed logs. Rev2/3 native-only feature proof worked but layer/ordinary static termination did not. Rev4 reference-only GetPresetData is cheap, but direct Phaser references are empty and ordinary records need semantic interpretation. Do not rerun unchanged Rev4 or return to cooked-history scanning.
 
 ## Important Files
-- tools/templates/cue_wide_recipe_reference_metadata.lua
+- tools/templates/cue_wide_recipe_metadata_bridge.lua
+- tools/templates/cue_wide_recipe_reference_metadata.lua (Rev4 normalization unchanged; raw cache/dependency extension)
 - tools/templates/cue_wide_recipe_reverse_ab_core.lua
 - tools/templates/cue_wide_recipe_reverse_engine.lua (unchanged)
-- tools/templates/cue_wide_recipe_value_source.lua (unchanged)
 - tools/build_cue_wide_recipe_reverse_ab.py
 - tools/run_cue_wide_recipe_reverse_ab.py
 - tools/deploy_cue_wide_recipe_reverse_ab.py
-- tests/cue_wide_recipe_reference_metadata.lua
+- tests/cue_wide_recipe_metadata_bridge.lua
 - tests/cue_wide_recipe_reverse_ab.lua
 - diagnostics/cue_wide_recipe_reverse_resolver_ab_2_5_0_3.xml
-- docs/cue-wide-recipe-reference-metadata-rev4.md
+- docs/cue-wide-recipe-metadata-bridge-rev5.md
 
 ## Current Branch / Commit
-qwen; checkpoint subject `test: add Rev4 reference metadata cache reverse path`. Preserve unrelated staged .gitmodules/shared-reference and uncommitted AGENTS.md, structural A/B template, README.md. main unmerged.
+qwen; checkpoint subject `test: add Rev5 reference metadata bridge candidate`. Preserve staged .gitmodules/shared-reference and uncommitted AGENTS.md, structural A/B template, README.md. main unmerged.
 
 ## Exact Next Action
-Re-import the same independent XML from ProgramData plugins / Cue-wide Recipe Reverse Resolver AB 2.5.0.3. Select Sequence 3841 / Cue 8 as native validation target only. START must say revision=4_REFERENCE_METADATA_CACHE. Capture native-only final, cache call/hit/completeness/timing metrics, normalized evidence, metadata reverse final and surviving counts, oracle last, comparisons and RESULT/END. Confirm at most one read per DB identity and no Cue/Part metadata targets. Validate more Cues before considering production.
+Re-import the independent XML. On Sequence 3841/Cue 8 confirm START revision=5_REFERENCE_METADATA_BRIDGE, capture compact ordinary record patterns, Phaser source/linked-Preset evidence, direct versus dependency read counts, bridge proof/safety summaries, BRIDGED_REVERSE_FINAL, rejected-overlap trace, oracle last, DIFF and RESULT. If ambiguity remains, use exact native fields to refine only the affected source/record. Test multiple Cues before production.
 
 REAL-WORLD VALIDATION PENDING

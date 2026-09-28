@@ -1208,7 +1208,7 @@ end
 
 -- Rev4 reference-only, run-local cache. No Cue/Part readers and no oracle input.
 local function newReferenceMetadataCache(api)
- local cache,allowed,unidentified={},{},{}
+ local cache,rawCache,timings,allowed,unidentified={},{},{},{},{}
  local stats={distinct_references=0,calls=0,cache_hits=0,COMPLETE=0,PARTIAL=0,UNKNOWN=0,native_ms=0,max_ms=0,normalization_ms=0,timing_valid=true}
  local function elapsed(a) local b=api.now(); if type(a)~='number' or type(b)~='number' or b<a then stats.timing_valid=false; return 0 end; return (b-a)*1000 end
  local function identity(h)
@@ -1357,11 +1357,235 @@ local function newReferenceMetadataCache(api)
   local ns=api.now(); local normOK,m=pcall(normalize,ok and raw or nil,ref)
   if not normOK then m=unknown('NORMALIZATION_ERROR_'..tostring(m)) end
   if not ok then m=unknown('REFERENCE_READ_ERROR_'..tostring(raw)) end
-  stats.normalization_ms=stats.normalization_ms+elapsed(ns)
+  local normalized=elapsed(ns)
+  stats.normalization_ms=stats.normalization_ms+normalized
+  timings[key]={read_ms=native,normalization_ms=normalized}
+  if ok and type(raw)=='table' then rawCache[key]=raw end
   cache[key]=m; stats[m.completeness]=stats[m.completeness]+1
   return m
  end
- return {get=get,register=register,identity=identity,stats=stats,cache=cache,normalize=normalize}
+ return {get=get,register=register,registerDependency=register,identity=identity,stats=stats,cache=cache,raw=rawCache,timings=timings,normalize=normalize}
+end
+
+-- Rev5 candidate. Rev4 normalize/cache result is immutable before this module runs.
+local function newReferenceMetadataBridge(api)
+ local function fields(t,sample)
+  local a={}
+  for k,v in pairs(t or {}) do
+   local value
+   if type(v)=='table' then
+    local nested={}; local n=0
+    for sk,sv in pairs(v) do
+     n=n+1
+     if n<=6 then nested[#nested+1]=tostring(sk)..':'..type(sv)..(sample and '='..tostring(sv) or '') end
+    end
+    table.sort(nested); value='{count='..n..';'..table.concat(nested,',')..'}'
+   elseif sample or type(v)=='boolean' or (type(k)=='string' and k:find('mask',1,true)) then value=tostring(v)
+   else value=type(v) end
+   a[#a+1]=tostring(k)..':'..type(v)..'='..value
+  end
+  table.sort(a); return table.concat(a,',')
+ end
+ local function result(source)
+  return {source=source,features={},layers={},lanes={},featureScopeKnown=true,layerScopeKnown=true,motion='UNSAFE',completeness='UNKNOWN',evidence={},observations={},patterns={},examples={},channels=0,
+   structuralSteps=0,valueSources=0,shapes=0,dependencies=0,samples={},phaserStructure=false,motionProof='MOTION_UNPROVEN'}
+ end
+ local function reason(m,r)
+  m.evidence[r]=true
+  if r:find('UNSUPPORTED_TOP_LEVEL',1,true) or r:find('UNKNOWN_PHASER_FIELD',1,true)
+     or r:find('ATTRIBUTE_FEATURE_UNPROVEN',1,true) or r:find('VALUESOURCE_ATTRIBUTE_FEATURE_UNPROVEN',1,true)
+     or r:find('DICT_INDEX_SHAPE',1,true) then m.featureScopeKnown=false end
+  if r:find('UNSUPPORTED_TOP_LEVEL',1,true) or r:find('UNKNOWN_',1,true)
+     or r:find('LAYER',1,true) or r:find('MASK',1,true) or r:find('GRID_MATRIX',1,true)
+     or r:find('DICT_',1,true) or r:find('DICTIONARY_',1,true)
+     or r:find('LINKED_PRESET',1,true) or r:find('POSSIBLE_MOTION',1,true) then m.layerScopeKnown=false end
+ end
+ local function feature(attr)
+  if not api.isObject(attr) or api.class(attr):lower()~='attribute' then return nil end
+  local f=api.safe(function() return attr.Feature end)
+  if not api.isObject(f) or api.class(f):lower()~='feature' then return nil end
+  local fg=api.safe(function() return f:Parent() end)
+  if not api.isObject(fg) or api.class(fg):lower()~='featuregroup' then return nil end
+  local id=api.identity(fg); if not id then return nil end
+  return 'FG:'..id
+ end
+ local function finite(v)
+  if type(v)~='number' and type(v)~='string' then return false end
+  local n=tonumber(v); return n~=nil and n==n and math.abs(n)<math.huge
+ end
+ local function finish(m)
+  local has=false; for _ in pairs(m.lanes) do has=true end
+  if has and not next(m.evidence) then
+   m.completeness='COMPLETE'; m.motion='STATIC'
+   if m.source=='ORDINARY_GETPRESETDATA' then m.motionProof='STATIC_PROVEN_ALL_EFFECTIVE_CHANNELS' end
+   for _,lane in pairs(m.lanes) do if lane.moving then m.motion='MOVING' end end
+  elseif has then m.completeness='PARTIAL' end
+  return m
+ end
+ local function ordinary(raw)
+  local m=result('ORDINARY_GETPRESETDATA')
+  if type(raw)~='table' then reason(m,'REFERENCE_DATA_UNAVAILABLE'); return m end
+  for ui,p in pairs(raw) do
+   if ui=='count' then if type(p)~='number' then reason(m,'INVALID_COUNT') end
+   elseif ui=='by_fixtures' then if p~=false then reason(m,'NOT_UI_CHANNEL_INDEXED') end
+   elseif type(ui)~='number' or type(p)~='table' then reason(m,'UNSUPPORTED_TOP_LEVEL_'..tostring(ui))
+   else
+    m.channels=m.channels+1
+    if m.channels>262144 then reason(m,'CHANNEL_LIMIT'); break end
+    local attr=p.attribute or api.safe(api.attributeByUIChannel,ui)
+    local fg=feature(attr)
+    if not fg then reason(m,'ATTRIBUTE_FEATURE_UNPROVEN') else m.features[fg]=true end
+    local pattern=fields(p); m.patterns[pattern]=(m.patterns[pattern] or 0)+1
+    if not m.examples[pattern] then m.examples[pattern]=fields(p,true) end
+    local known={attribute=true,abs_preset=true,rel_preset=true,abs_generator=true,rel_generator=true,generator=true,
+      mask_active_phaser=true,mask_active_value=true,mask_cooked=true,mask_individual=true,mask_integrated=true,
+      dict_flags=true,dict_index=true,gridposmatr=true,gridpos=true,grid=true,phase=true,speed=true,
+      measure=true,fade=true,delay=true,selective=true,preset_store_mode=true,grid_origin=true,grid_matrix=true,
+      nshot_count=true,nshot_flags=true,speed_master=true}
+    for k,v in pairs(p) do
+     if type(k)~='number' and not known[k] then reason(m,'UNKNOWN_PHASER_FIELD_'..tostring(k)) end
+     if type(k)=='string' and ({speed=true,phase=true,measure=true,nshot_count=true,abs_generator=true,rel_generator=true,generator=true})[k]
+        and v~=nil and v~=0 and v~=false then reason(m,'POSSIBLE_MOTION_FIELD_'..k) end
+    end
+    -- Vendor 2.5 tests define these masks as active phaser/value flags; they
+    -- are checked, never discarded merely because another numeric step exists.
+    if p.mask_active_phaser~=nil and (type(p.mask_active_phaser)~='number' or p.mask_active_phaser~=0 and p.mask_active_phaser~=64) then reason(m,'ACTIVE_PHASER_MASK_UNPROVEN') end
+    if p.mask_cooked~=nil and (type(p.mask_cooked)~='number' or p.mask_cooked~=0) then reason(m,'COOKED_MASK_SEMANTICS_UNPROVEN') end
+    if p.dict_flags~=nil then
+     if type(p.dict_flags)~='table' then reason(m,'DICTIONARY_FLAGS_UNPROVEN')
+     else for k,v in pairs(p.dict_flags) do if ({blocked=true,blocked_rel=true})[k] then
+       if v~=false and v~=0 then reason(m,'BLOCKED_DICTIONARY_LAYER_'..k) end
+      elseif v~=false and v~=0 and v~=nil then reason(m,'UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end end end
+    end
+    if type(p.mask_active_value)=='number' and p.mask_active_value & (1|8|16|32|64)~=0 then reason(m,'ACTIVE_VALUE_SHAPE_MASK_UNPROVEN') end
+    if p.dict_index~=nil and not (type(p.dict_index)=='number' and p.dict_index>=0 and p.dict_index%1==0) then reason(m,'DICT_INDEX_SHAPE_UNPROVEN') end
+    if p.gridposmatr~=nil and (type(p.gridposmatr)~='table' or next(p.gridposmatr)~=nil) then reason(m,'GRID_MATRIX_EFFECT_UNPROVEN') end
+    local steps,seen={},{}; local touchedMask=0
+    for k,v in pairs(p) do
+     if type(k)=='number' then
+      if k<1 or k%1~=0 or type(v)~='table' then reason(m,'INVALID_STEP_SHAPE') else steps[#steps+1]=v; seen[k]=true end
+     end
+    end
+    if #steps==0 then reason(m,'NO_STEP') end
+    if #steps>1 then reason(m,'MULTISTEP_NOT_STATIC') end
+    for k=1,#steps do if not seen[k] then reason(m,'SPARSE_STEPS') end end
+    for _,step in ipairs(steps) do
+     local stepKnown={absolute=true,relative=true,abs_release=true,rel_release=true,abs_remove=true,rel_remove=true,
+      abs_preset=true,rel_preset=true,integrated=true,accel=true,decel=true,trans=true,transition=true,width=true,
+      channel_function=true,mask_active=true,mask_individual=true,mask_integrated=true,dict_flags=true}
+     for k,v in pairs(step) do if not stepKnown[k] and v~=nil then reason(m,'UNKNOWN_STEP_FIELD_'..tostring(k)) end end
+     for _,spec in ipairs({{'ABS','absolute','abs',2},{'REL','relative','rel',4}}) do
+      local layer,value,prefix,bit=table.unpack(spec); local v=step[value]; local release=step[prefix..'_release']
+      if v~=nil or release==true then
+       touchedMask=touchedMask | bit
+       if v~=nil and not finite(v) then reason(m,'NON_NUMERIC_'..layer) end
+       if release==true and v~=nil then reason(m,'RELEASE_WITH_VALUE_'..layer) end
+       if step[prefix..'_remove']==true then reason(m,'REMOVE_SEMANTICS_'..layer) end
+       if p.mask_active_value~=nil and (type(p.mask_active_value)~='number' or p.mask_active_value & bit==0) then reason(m,'INACTIVE_VALUE_MASK_'..layer) end
+       if fg then
+        local lane=fg..'|'..layer; m.layers[layer]=true
+        if m.lanes[lane] and m.lanes[lane].release~=(release==true) then reason(m,'MIXED_RELEASE_SAME_FEATURE_LAYER') end
+        m.lanes[lane]={feature=fg,layer=layer,moving=false,release=release==true}
+       end
+      end
+     end
+     if step.abs_preset or step.rel_preset or step.integrated then reason(m,'OPAQUE_STEP_DEPENDENCY') end
+    end
+    if type(p.mask_active_value)=='number' and p.mask_active_value & (2|4) & (~touchedMask)~=0 then reason(m,'ACTIVE_LAYER_WITHOUT_EFFECTIVE_STEP') end
+    if p.abs_preset or p.rel_preset then reason(m,'OPAQUE_PHASER_DEPENDENCY') end
+   end
+  end
+  if m.channels==0 then reason(m,'EMPTY_REFERENCE_DATA') end
+  if raw.count~=nil and raw.count~=m.channels then reason(m,'COUNT_MISMATCH') end
+  return finish(m)
+ end
+ local function phaser(ref,structural,dependency)
+  local m=result('PHASER_NATIVE_BRIDGE'); local seen={}; local stepValues={}; local recipeCount=0
+  local sourceAudits={}
+  for _,a in ipairs(structural.audits or {}) do if a.node then sourceAudits[api.identity(a.node) or a.node]=a end end
+  local function visit(h,recipe,step,depth)
+   if depth>8 or m.valueSources>512 or seen[h] then reason(m,'TREE_LIMIT_OR_CYCLE'); return end
+   seen[h]=true; local c=api.class(h):lower()
+   if c=='phaserrecipe' then recipe=h; step=nil; recipeCount=recipeCount+1; m.phaserStructure=true end
+   if c=='phaserrecipestep' then step=h; m.structuralSteps=m.structuralSteps+1 end
+   if c=='phaserrecipevaluesource' then
+    m.valueSources=m.valueSources+1
+    local props=api.metadata(h); local a=sourceAudits[api.identity(h) or h]
+    local deps=api.safe(function() return h:GetDependencies() end)
+    local dependencyEvidence={}
+    if type(deps)=='table' then for _,d in pairs(deps) do if #dependencyEvidence<8 and api.isObject(d) then dependencyEvidence[#dependencyEvidence+1]=api.class(d)..':'..tostring(api.identity(d)) end end end
+    local av=props.attributes or props.attribute
+    local attr=av and av.raw
+    if not api.isObject(attr) then attr=a and a.attributeHandle end
+    local fg=feature(attr)
+    if fg then m.features[fg]=true else reason(m,'VALUESOURCE_ATTRIBUTE_FEATURE_UNPROVEN') end
+    if not recipe or not step then reason(m,'VALUESOURCE_PARENT_CHAIN_UNPROVEN') end
+    local linked=a and a.presetHandle or (props.preset and props.preset.raw)
+    local linkedMeta
+    if props.preset and props.preset.raw~=nil and tostring(props.preset.raw)~='' then
+     if api.isObject(linked) and api.class(linked):lower()=='preset' then
+      m.dependencies=m.dependencies+1; m.source='MIXED'; linkedMeta=dependency(linked)
+      if linkedMeta.completeness~='COMPLETE' then reason(m,'LINKED_PRESET_METADATA_UNSAFE') end
+      if fg and not linkedMeta.features[fg] then reason(m,'LINKED_PRESET_FEATURE_MISMATCH') end
+     else reason(m,'LINKED_PRESET_HANDLE_UNRESOLVED') end
+    end
+    if props.shape and props.shape.raw~=nil and tostring(props.shape.raw)~='' then m.shapes=m.shapes+1 end
+    local admitted=0
+    local function evidenceIdentity(h) return h and api.identity(h) or nil end
+    if #m.samples<8 then
+     local si=step and api.safe(function() return step:Index() end)
+     m.samples[#m.samples+1]='ValueSource='..tostring(api.desc and api.desc(h) or api.identity(h))..' parent_recipe='..tostring(evidenceIdentity(recipe))..' Step_index='..tostring(si)..' Attribute='..tostring(evidenceIdentity(attr))..' FeatureGroup='..tostring(fg)..' linked_preset='..tostring(evidenceIdentity(linked))..' Shape='..tostring(props.shape and props.shape.raw)..' RawValueAbs_enumerated='..tostring(props.rawvalueabs~=nil)..' RawValueAbs='..tostring(props.rawvalueabs and props.rawvalueabs.raw)..' RawValueAbs_type='..type(props.rawvalueabs and props.rawvalueabs.raw)..' RawValueRel_enumerated='..tostring(props.rawvaluerel~=nil)..' RawValueRel='..tostring(props.rawvaluerel and props.rawvaluerel.raw)..' RawValueRel_type='..type(props.rawvaluerel and props.rawvaluerel.raw)..' ValueAbsolute='..tostring(props.valueabsolute and props.valueabsolute.raw)..' ValueRelative='..tostring(props.valuerelative and props.valuerelative.raw)..' dependencies='..table.concat(dependencyEvidence,',')
+    end
+    for _,spec in ipairs({{'ABS','rawvalueabs','valueabsolute'},{'REL','rawvaluerel','valuerelative'}}) do
+     local layer,rawKey,effectiveKey=table.unpack(spec)
+     local p=props[rawKey]; local v=p and p.raw; local effective=props[effectiveKey] and props[effectiveKey].raw
+     local depLane=linkedMeta and linkedMeta.layers[layer]
+     if a and (v==nil or tostring(v)=='') and a.shapeHandle and api.class(a.shapeHandle):lower()=='phaserrecipevaluesource' then
+      local inherited=api.metadata(a.shapeHandle)[rawKey]
+      if inherited and finite(inherited.raw) then p=inherited; v=inherited.raw; m.observations['SHAPE_VALUESOURCE_INHERITANCE_'..layer]=true end
+     end
+     if p and finite(v) then
+      if tonumber(v)==0 and not depLane then reason(m,'ZERO_RAW_LAYER_AMBIGUOUS_'..layer)
+      elseif linkedMeta and not depLane then reason(m,'LINKED_PRESET_LAYER_MISMATCH_'..layer)
+      elseif not finite(effective) and not depLane then reason(m,'EFFECTIVE_LAYER_UNPROVEN_'..layer)
+      elseif fg then
+       admitted=admitted+1; m.layers[layer]=true; local key=fg..'|'..layer
+       stepValues[key]=stepValues[key] or {}; stepValues[key][step]=stepValues[key][step] or {}
+       stepValues[key][step][#stepValues[key][step]+1]=finite(effective) and effective or v
+      end
+     elseif p and v~=nil and tostring(v)~='' then reason(m,'RAW_LAYER_ENCODING_UNPROVEN_'..layer)
+     end
+    end
+    if admitted==0 then reason(m,'NO_PROVEN_VALUESOURCE_LAYER') end
+    local scope=props.layer and props.layer.raw
+    if scope~=nil and scope~='' then
+     if scope=='Absolute' or scope=='ABS' or scope=='Relative' or scope=='REL' then m.observations['EXPLICIT_LAYER='..tostring(scope)]=true
+     else reason(m,'EXPLICIT_LAYER_SEMANTICS_UNVERIFIED') end
+    end
+    for _,k in ipairs({'phase','speed','transition','width','measure'}) do
+     if props[k] and props[k].raw~=nil and props[k].raw~='' then m.observations['DYNAMIC_PROPERTY_'..k..'='..type(props[k].raw)]=true end
+    end
+   end
+   local children=api.safe(function() return h:Children() end)
+   if type(children)~='table' then reason(m,'UNREADABLE_CHILDREN'); return end
+   for _,child in ipairs(children) do visit(child,recipe,step,depth+1) end
+  end
+  visit(ref,nil,nil,0)
+  if recipeCount~=1 then reason(m,'RECIPE_COUNT_UNPROVEN') end
+  if m.valueSources==0 then reason(m,'NO_VALUESOURCES') end
+  for key,steps in pairs(stepValues) do
+   local count,values=0,{}
+   for _,step in pairs(steps) do count=count+1; for _,v in ipairs(step) do values[tostring(v)]=true end end
+   local different=0; for _ in pairs(values) do different=different+1 end
+   local fg,layer=key:match('^(.-)|([^|]+)$')
+   if count>1 and different>1 then m.motionProof='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE'; m.lanes[key]={feature=fg,layer=layer,moving=true}
+   elseif count==1 and m.structuralSteps==1 and m.dependencies==0 then m.motionProof='STATIC_PROVEN_SINGLE_STEP'; m.lanes[key]={feature=fg,layer=layer,moving=false}
+   else reason(m,'MOTION_UNPROVEN_STEP_OR_EFFECTIVE_VALUES') end
+  end
+  if m.phaserStructure then m.observations.PHASER_STRUCTURE_PROVEN=true end
+  return finish(m)
+ end
+ return {ordinary=ordinary,phaser=phaser,fields=fields}
 end
 
 local rawData=_G.GetPresetData
@@ -1421,7 +1645,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=4_REFERENCE_METADATA_CACHE target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_REFERENCE_METADATA_REVERSE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=5_REFERENCE_METADATA_BRIDGE target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_BASELINE_METADATA_THEN_BRIDGED_REVERSE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -1539,12 +1763,13 @@ local function trace(row,tag)
  local survivors=tag=='SOURCE' and row.movingSurvivors or row.survivors
  detail('%s ref=%s Cue=%s Part=%s Recipe=%s Group=%s features=%s layers=%s surviving_member_count=%d surviving_sample=%s group_member_count=%d member_sample=%s unsafe=%s motion_reason=%s evidence=%s',tag,desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(survivors),sample(survivors),count(row.members),sample(row.members),table.concat(row.unsafe or {},','),text(row.motionReason),text(row.evidence))
 end
-local function identityOutput(tag,set)
+local function identityOutput(tag,set,limit)
+ limit=limit or 128
  log('%s count=%d',tag,count(set))
  local refs={}; for _,ref in pairs(set) do refs[#refs+1]=ref end
  table.sort(refs,function(a,b) return desc(a)<desc(b) end)
- for i=1,math.min(128,#refs) do log('%s_REF reference=%s',tag,desc(refs[i])) end
- if #refs>128 then log('%s_DETAIL_LIMIT suppressed=%d exact_set_preserved_in_comparison=true',tag,#refs-128) end
+ for i=1,math.min(limit,#refs) do log('%s_REF reference=%s',tag,desc(refs[i])) end
+ if #refs>limit then log('%s_DETAIL_LIMIT suppressed=%d exact_set_preserved_in_comparison=true',tag,#refs-limit) end
 end
 identityOutput('NATIVE_ONLY_FINAL',final)
 log('RECIPE_ONLY_FINAL count=%d alias=NATIVE_ONLY_FINAL',count(final))
@@ -1577,17 +1802,17 @@ end
 -- New run-local path starts after audit logging; audit overhead is excluded.
 phase='METADATA'
 local metadataStart=now()
-local recipeTargets={}
+local recipeTargets,dependencyTargets={},{}
 local metadataCache
 metadataCache=newReferenceMetadataCache({safe=safe,class=class,isObject=isObjectReference,
  handleToInt=_G.HandleToInt,handleToStr=_G.HandleToStr,attributeByUIChannel=_G.GetAttributeByUIChannel,
  now=now,log=log,desc=path,validateTarget=function(target,key)
-  assert(phase=='METADATA','METADATA_READ_PHASE_VIOLATION')
+  assert(phase=='METADATA' or phase=='BRIDGE','METADATA_READ_PHASE_VIOLATION')
   local c=class(target):lower()
   assert(c~='cue' and c~='part' and c~='cuepart' and c~='sequence','METADATA_FORBIDDEN_TARGET_'..c)
-  assert(key==metadataCache.identity(target) and recipeTargets[key],'METADATA_TARGET_NOT_RECIPE_REFERENCE')
+  assert(key==metadataCache.identity(target) and (recipeTargets[key] or (phase=='BRIDGE' and dependencyTargets[key])),'METADATA_TARGET_NOT_REGISTERED_REFERENCE')
  end,read=function(target,phasersOnly,byFixtures)
-  assert(phase=='METADATA','METADATA_READ_PHASE_VIOLATION')
+  assert(phase=='METADATA' or phase=='BRIDGE','METADATA_READ_PHASE_VIOLATION')
   return rawData(target,phasersOnly,byFixtures)
  end})
 local metadataRows,metadataResult,metadataFinal={},{},{}
@@ -1619,7 +1844,8 @@ metadataResult=metadataResult or {refs={},unsafe={}}
 for rid,entry in pairs(metadataResult.refs) do metadataFinal[rid]=entry.ref end
 local totalMetadataElapsed=ms(metadataStart,now())
 log('METADATA_REVERSE_FINALIZED valid=%s refs=%d error=%s',text(metadataOK),count(metadataFinal),text(metadataError))
-local cs=metadataCache.stats
+local cs={}; for k,v in pairs(metadataCache.stats) do cs[k]=v end
+log('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE refs=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d',count(metadataFinal),cs.COMPLETE,cs.PARTIAL,cs.UNKNOWN)
 local function metadataMetrics()
  log('REFERENCE_METADATA_CACHE distinct_references=%d metadata_GetPresetData_calls=%d cache_hits=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d total_GetPresetData_native_ms=%s average_GetPresetData_ms=%s max_GetPresetData_ms=%s metadata_normalization_ms=%s cache_build_elapsed_ms=%s lifetime=SINGLE_RUN',cs.distinct_references,cs.calls,cs.cache_hits,cs.COMPLETE,cs.PARTIAL,cs.UNKNOWN,text(cs.timing_valid and cs.native_ms or 'UNVERIFIED'),text(cs.timing_valid and (cs.calls>0 and cs.native_ms/cs.calls or 0) or 'UNVERIFIED'),text(cs.timing_valid and cs.max_ms or 'UNVERIFIED'),text(cs.timing_valid and cs.normalization_ms or 'UNVERIFIED'),text(cacheElapsed))
  log('METADATA_REVERSE Recipe_rows_inspected=%d Stored_Groups=%d group_member_expansion=%d member_feature_lanes_resolved=%d rows_skipped_empty=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d final_refs=%d reverse_elapsed_ms=%s',#metadataRows,stats.groups,stats.expansions,metadataResult.lanesResolved or 0,metadataResult.rowsSkipped or 0,metadataResult.staticRows or 0,metadataResult.movingRows or 0,#metadataResult.unsafe,count(metadataFinal),text(reverseElapsed))
@@ -1644,8 +1870,112 @@ for _,entry in pairs(metadataResult.refs) do
  metadataDetail('METADATA_ACTIVE reference=%s surviving_member_count=%d member_sample=%s',desc(entry.ref),count(entry.members),sample(entry.members))
  for row in pairs(entry.sources) do metadataDetail('METADATA_SOURCE reference=%s Cue=%s Part=%s Recipe=%s Group=%s features=%s layers=%s surviving_member_count=%d member_sample=%s',desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(row.movingSurvivors),sample(row.movingSurvivors)) end
 end
+phase='BRIDGE'
+local bridgeStart=now()
+local bridge=newReferenceMetadataBridge({safe=safe,class=class,isObject=isObjectReference,identity=metadataCache.identity,
+ metadata=auditor.metadata,desc=path,attributeByUIChannel=_G.GetAttributeByUIChannel})
+local bridgeStats={direct=0,dependencies=0,dependencyHits=0,ordinary=0,phasers=0,complete=0,partial=0,unknown=0,static=0,moving=0,
+ ordinaryMs=0,dependencyMs=0,phaserMs=0,normalizationMs=0}
+local bridgedByIdentity,bridgeRows,bridgeResult,bridgeFinal={},{},{},{}
+local bridgeOK,bridgeError=pcall(function()
+ local refs={}
+ for _,row in ipairs(rows) do if row.ref then local key=metadataCache.identity(row.ref); if key and not refs[key] then refs[key]=row end end end
+ bridgeStats.direct=count(refs)
+ local dependencies={}
+ local function ordinaryFor(ref,isDependency)
+  local key=metadataCache.identity(ref); if not key then return {features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={STABLE_IDENTITY_UNAVAILABLE=true},source='ORDINARY_GETPRESETDATA'} end
+  if isDependency then
+   local valid=metadataCache.registerDependency(ref); if valid then dependencyTargets[valid]=true; dependencies[valid]=true end
+  end
+  local existed=metadataCache.timings[key]~=nil
+  metadataCache.get(ref)
+  local timing=metadataCache.timings[key]
+  if timing and not existed then
+   local elapsed=timing.read_ms+timing.normalization_ms
+   if isDependency then bridgeStats.dependencyMs=bridgeStats.dependencyMs+elapsed else bridgeStats.ordinaryMs=bridgeStats.ordinaryMs+elapsed end
+  elseif timing and not isDependency then bridgeStats.ordinaryMs=bridgeStats.ordinaryMs+timing.read_ms+timing.normalization_ms end
+  local n=now(); local info=bridge.ordinary(metadataCache.raw[key]); local nm=ms(n,now())
+  if type(nm)=='number' then bridgeStats.normalizationMs=bridgeStats.normalizationMs+nm end
+  if isDependency then log('LINKED_PRESET_EVIDENCE reference=%s completeness=%s features=%s layers=%s reasons=%s',desc(ref),info.completeness,joined(info.features),joined(info.layers),joined(info.evidence)) end
+  return info
+ end
+ local dependencyCache={}
+ local function dependency(ref)
+  local key=metadataCache.identity(ref)
+  if not key then return ordinaryFor(ref,true) end
+  if not dependencyCache[key] then dependencyCache[key]=ordinaryFor(ref,true) else bridgeStats.dependencyHits=bridgeStats.dependencyHits+1 end
+  return dependencyCache[key]
+ end
+ for key,row in pairs(refs) do
+  local direct=metadataCache.raw[key]
+  local start=now(); local dependencyBefore=bridgeStats.dependencyMs; local normalizationBefore=bridgeStats.normalizationMs; local info
+  if type(direct)=='table' and next(direct)~=nil and (row.structural or {}).sourceCount==0 then
+   info=ordinaryFor(row.ref,false); bridgeStats.ordinary=bridgeStats.ordinary+1
+  elseif row.structural and row.structural.recipeCount>0 then
+   info=bridge.phaser(row.ref,row.structural,dependency); bridgeStats.phasers=bridgeStats.phasers+1
+   local elapsed=ms(start,now()); if type(elapsed)=='number' then bridgeStats.phaserMs=bridgeStats.phaserMs+math.max(0,elapsed-(bridgeStats.dependencyMs-dependencyBefore)-(bridgeStats.normalizationMs-normalizationBefore)) end
+  else
+   info=ordinaryFor(row.ref,false); bridgeStats.ordinary=bridgeStats.ordinary+1
+  end
+  bridgedByIdentity[key]=info
+  bridgeStats[info.completeness:lower()]=bridgeStats[info.completeness:lower()]+1
+  if info.motion=='STATIC' then bridgeStats.static=bridgeStats.static+1 end
+  if info.motion=='MOVING' then bridgeStats.moving=bridgeStats.moving+1 end
+  local reasons=joined(info.evidence)
+  log('BRIDGED_METADATA_REFERENCE reference=%s source=%s completeness=%s motion=%s motion_proof=%s phaser_structure=%s features=%s layers=%s channels=%d structural_steps=%d value_sources=%d shapes=%d dependencies=%d reasons=%s observations=%s',desc(row.ref),text(info.source),info.completeness,info.motion,text(info.motionProof),text(info.phaserStructure),joined(info.features),joined(info.layers),info.channels or 0,info.structuralSteps or 0,info.valueSources or 0,info.shapes or 0,info.dependencies or 0,text(reasons),text(joined(info.observations)))
+  for i=1,math.min(8,#info.samples) do log('PHASER_BRIDGE_SOURCE_AUDIT reference=%s source_index=%d evidence=%s',desc(row.ref),i,auditText(info.samples[i])) end
+  local patternList={}; for pattern,n in pairs(info.patterns) do patternList[#patternList+1]={pattern=pattern,n=n} end
+  table.sort(patternList,function(a,b) return a.n>b.n end)
+  for i=1,math.min(3,#patternList) do log('ORDINARY_REFERENCE_PATTERN reference=%s rank=%d occurrences=%d fields=%s example=%s',desc(row.ref),i,patternList[i].n,auditText(patternList[i].pattern),auditText(info.examples[patternList[i].pattern])) end
+ end
+ bridgeStats.dependencies=count(dependencies)
+ for _,row in ipairs(rows) do
+  local key=row.ref and metadataCache.identity(row.ref); local info=key and bridgedByIdentity[key]
+  if not info then info={features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={REFERENCE_UNAVAILABLE=true}} end
+  local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,members=row.members,
+   features=info.features,layers=info.layers,lanes=info.lanes,moving=info.motion=='MOVING' or info.motion=='GENERATOR',unsafe={},evidence=joined(info.evidence)}
+  if not copy.members then copy.unsafe[#copy.unsafe+1]='FAST_PATH_UNSAFE_SELECTION' end
+  if info.completeness~='COMPLETE' then copy.unsafe[#copy.unsafe+1]='BRIDGED_REFERENCE_UNSAFE'
+   if not info.featureScopeKnown or not next(info.features or {}) then copy.features=nil end
+   if not info.layerScopeKnown or not next(info.layers or {}) then copy.layers=nil end
+  end
+  bridgeRows[#bridgeRows+1]=copy
+ end
+end)
+local bridgeCacheElapsed=ms(bridgeStart,now())
+local bridgedReverseStart=now()
+if bridgeOK then bridgeOK,bridgeError=pcall(function() bridgeResult=recipeReverseResolve(bridgeRows) end) end
+local bridgedReverseElapsed=ms(bridgedReverseStart,now())
+bridgeResult=bridgeResult or {refs={},unsafe={}}
+for rid,entry in pairs(bridgeResult.refs) do bridgeFinal[rid]=entry.ref end
+local totalBridgedElapsed=(type(cacheElapsed)=='number' and type(bridgeCacheElapsed)=='number' and type(bridgedReverseElapsed)=='number') and (cacheElapsed+bridgeCacheElapsed+bridgedReverseElapsed) or 'UNVERIFIED'
+log('BRIDGED_REVERSE_FINALIZED valid=%s refs=%d error=%s',text(bridgeOK),count(bridgeFinal),text(bridgeError))
+log('ORDINARY_REFERENCE_SEMANTICS_SUMMARY references=%d static_proven=%d ordinary_metadata_cache_ms=%s',bridgeStats.ordinary,bridgeStats.static,text(bridgeStats.ordinaryMs))
+log('PHASER_BRIDGE_SUMMARY references=%d moving_proven=%d native_bridge_ms=%s',bridgeStats.phasers,bridgeStats.moving,text(bridgeStats.phaserMs))
+log('LINKED_PRESET_CACHE_SUMMARY recipe_reference_reads=%d dependency_reference_reads=%d linked_dependency_references=%d unique_reference_reads=%d cache_hits=%d dependency_normalized_cache_hits=%d native_GetPresetData_ms=%s dependency_cache_ms=%s',cs.calls,metadataCache.stats.calls-cs.calls,bridgeStats.dependencies,metadataCache.stats.calls,metadataCache.stats.cache_hits+bridgeStats.dependencyHits,bridgeStats.dependencyHits,text(metadataCache.stats.native_ms),text(bridgeStats.dependencyMs))
+log('BRIDGED_METADATA_SUMMARY direct_Recipe_references=%d linked_dependency_references=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d normalization_ms=%s cache_build_elapsed_ms=%s',bridgeStats.direct,bridgeStats.dependencies,bridgeStats.complete,bridgeStats.partial,bridgeStats.unknown,text(bridgeStats.normalizationMs),text(bridgeCacheElapsed))
+log('BRIDGED_REVERSE Recipe_rows_inspected=%d member_feature_lanes_resolved=%d rows_skipped_empty=%d static_terminators=%d moving_contributing_rows=%d unsafe_rows=%d reverse_elapsed_ms=%s',#bridgeRows,bridgeResult.lanesResolved or 0,bridgeResult.rowsSkipped or 0,bridgeResult.staticRows or 0,bridgeResult.movingRows or 0,#bridgeResult.unsafe,text(bridgedReverseElapsed))
+log('TOTAL_BRIDGED_PATH_MS value=%s',text(totalBridgedElapsed))
+identityOutput('BRIDGED_REVERSE_FINAL',bridgeFinal)
+for _,entry in pairs(bridgeResult.refs) do log('BRIDGED_ACTIVE reference=%s surviving_member_count=%d',desc(entry.ref),count(entry.members)) end
+local bridgeRejectedShown=0
+for _,older in ipairs(bridgeResult.rejected or {}) do
+ local buckets={}
+ for _,loss in ipairs(older.superseded or {}) do
+  local newer=loss.newer; buckets[newer]=buckets[newer] or {}
+  local lane=buckets[newer][loss.lane] or {members={}}; buckets[newer][loss.lane]=lane
+  lane.members[loss.member]=true
+ end
+ for newer,lanes in pairs(buckets) do for lane,bucket in pairs(lanes) do
+  if bridgeRejectedShown<48 then
+   bridgeRejectedShown=bridgeRejectedShown+1
+   log('BRIDGED_REJECTED_OVERLAP older_ref=%s older_Recipe=%s older_Group=%s first_newer_Recipe=%s newer_Group=%s feature_layer=%s overlapping_member_count=%d sample=%s unsafe=%s',desc(older.ref),desc(older.recipe),desc(older.group),desc(newer.recipe),desc(newer.group),lane,count(bucket.members),sample(bucket.members),table.concat(newer.unsafe or {},','))
+  end
+ end end
+end
+log('BRIDGED_REJECTED_SUMMARY moving_rows_with_supersession=%d shown_overlap_groups=%d',#(bridgeResult.rejected or {}),bridgeRejectedShown)
 phase='ORACLE'
-log('ORACLE_START native_finalized=true metadata_finalized=true')
+log('ORACLE_START native_finalized=true metadata_finalized=true bridge_finalized=true')
 local oracleLogs=0
 oracleLogSink=function(line)
  oracleLogs=oracleLogs+1
@@ -1727,7 +2057,25 @@ end
 metadataMetrics()
 log('METADATA_DIFF missing=%s extra=%s classification=%s',oracleOK and count(metadataMissing) or 'UNVERIFIED',oracleOK and count(metadataExtra) or 'UNVERIFIED',joined(metadataClassifications))
 log('METADATA_RESULT classification=%s native_refs=%d metadata_refs=%d oracle_refs=%d unsafe_rows=%d completeness_COMPLETE=%d completeness_PARTIAL=%d completeness_UNKNOWN=%d safe_integration=false',joined(metadataClassifications),count(final),count(metadataFinal),count(oracle),#metadataResult.unsafe,cs.COMPLETE,cs.PARTIAL,cs.UNKNOWN)
-log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError))
-log('END production_untouched=true markers=false waits=false fallback_during_fast_path=false')
-return {metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
+local bridgedMissing,bridgedExtra,bridgedClassifications={},{},{}
+if not bridgeOK or not oracleOK or not stable then bridgedClassifications.UNVERIFIED=true
+else
+ for rid,ref in pairs(oracle) do if not bridgeFinal[rid] then bridgedMissing[rid]=ref end end
+ for rid,ref in pairs(bridgeFinal) do if not oracle[rid] then bridgedExtra[rid]=ref end end
+ if not next(bridgedMissing) and not next(bridgedExtra) then bridgedClassifications.BRIDGED_REVERSE_EXACT_MATCH=true end
+ if next(bridgedMissing) then bridgedClassifications.BRIDGED_REVERSE_MISSING_REFERENCE=true end
+ if next(bridgedExtra) then bridgedClassifications.BRIDGED_REVERSE_EXTRA_REFERENCE=true end
+end
+if #bridgeResult.unsafe>0 or bridgeStats.partial>0 or bridgeStats.unknown>0 then bridgedClassifications.BRIDGED_REFERENCE_UNSAFE=true end
+identityOutput('BRIDGED_DIFF_MISSING',bridgedMissing,16); identityOutput('BRIDGED_DIFF_EXTRA',bridgedExtra,16)
+local bridgedDiffShown=0
+for _,row in ipairs(bridgeRows) do if (bridgedMissing[row.refId] or bridgedExtra[row.refId]) and bridgedDiffShown<25 then
+ bridgedDiffShown=bridgedDiffShown+1
+ detail('BRIDGED_DIFF_SOURCE reference=%s Cue=%s Part=%s Recipe=%s Group=%s feature=%s layer=%s members=%d sample=%s reasons=%s',desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(row.members),sample(row.members),text(row.evidence))
+end end
+log('BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count(bridgedMissing) or 'UNVERIFIED',oracleOK and count(bridgedExtra) or 'UNVERIFIED',joined(bridgedClassifications))
+log('BRIDGED_RESULT classification=%s refs=%d oracle_refs=%d unsafe_rows=%d safe_integration=false',joined(bridgedClassifications),count(bridgeFinal),count(oracle),#bridgeResult.unsafe)
+log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
+log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
+return {bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end
