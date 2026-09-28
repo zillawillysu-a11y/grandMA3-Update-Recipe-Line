@@ -21,8 +21,11 @@ end
 local mA,mB=member('Fixture 201.1.1'),member('Fixture 201.1.2')
 local bySf={[11]=mA,[12]=mB}
 local key9008='DBI:'..r9008.id
-local bridgeBase={source='MIXED',completeness='PARTIAL',motion='MOVING',motionProof='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE',
- phaserStructure=true,features={[FG]=true},layers={ABS=true},lanes={[FG..'|ABS']={}},evidence={}}
+-- Native bridge shape: aggregate motion stays UNSAFE while the structural
+-- ABS motion proof is explicit and the ABS lane moves.
+local bridgeBase={source='MIXED',completeness='PARTIAL',motion='UNSAFE',motionProof='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE',
+ phaserStructure=true,features={[FG]=true},layers={ABS=true},lanes={[FG..'|ABS']={feature=FG,layer='ABS',moving=true}},
+ evidence={LINKED_PRESET_METADATA_UNSAFE=true,RAW_LAYER_ENCODING_UNPROVEN_REL=true}}
 -- Native shape: older generic normalizer left PARTIAL/UNSAFE; Rev12 ordinary
 -- proof is the semantic authority for linked presets.
 local bridgeInfo={[key9008]=bridgeBase,
@@ -126,6 +129,28 @@ local att9008={category='FINAL_SURVIVING_UNSAFE',ref=r9008,row=r9008row,survivin
 local r=run({r9008row},{att9008},cooked(r9008,false))
 assert(has('classification=ABS_STRUCTURE_PROVEN'))
 assert(has('PHASER_9008_REL_BARRIER_SUMMARY'))
+-- 7. aggregate motion=UNSAFE must NOT block structural ABS (native shape above)
+assert(bridgeBase.motion=='UNSAFE')
+-- 2. motionProof missing/wrong => reject
+bridgeBase.motionProof='MOTION_UNPROVEN'
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN') and has('PHASER_9008_ABS_GATE'))
+bridgeBase.motionProof='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE'
+-- 3. ABS lane moving=false => reject
+bridgeBase.lanes[FG..'|ABS'].moving=false
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+bridgeBase.lanes[FG..'|ABS'].moving=true
+-- 4. phaserStructure=false => reject
+bridgeBase.phaserStructure=false
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+bridgeBase.phaserStructure=true
+-- 5. MISMATCH evidence => reject
+bridgeBase.evidence={SOME_MISMATCH_REASON=true}
+r=run({r9008row},{att9008},cooked(r9008,false))
+assert(not has('classification=ABS_STRUCTURE_PROVEN'))
+bridgeBase.evidence={LINKED_PRESET_METADATA_UNSAFE=true,RAW_LAYER_ENCODING_UNPROVEN_REL=true}
 -- 1-4. split shapes: original gone, safe ABS moving, REL unsafe REL-only
 local foundOrig,absClone,relBarrier=false,nil,nil
 for _,row in ipairs(captured) do

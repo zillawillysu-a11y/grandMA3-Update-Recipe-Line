@@ -3634,13 +3634,18 @@ function __phaser9008SplitProbe(ctx,api)
  if type(info)=='table' and type(info.features)=='table' then for f in pairs(info.features) do fgList[#fgList+1]=f end end
  table.sort(fgList)
  local fg=#fgList==1 and fgList[1] or nil
- local absOK=type(info)=='table' and info.phaserStructure==true and info.motion=='MOVING'
-  and type(info.motionProof)=='string' and info.motionProof:find('EFFECTIVE_STEP_DIFFERENCE',1,true)~=nil
+ -- Aggregate info.motion stays UNSAFE on native data because unresolved REL /
+ -- linked-metadata reasons remain; it must not override the explicit
+ -- structural motion proof. Motion authority is the moving ABS lane itself.
+ local absLane=type(info)=='table' and type(info.lanes)=='table' and fg~=nil and info.lanes[fg..'|ABS'] or nil
+ local absOK=type(info)=='table' and info.phaserStructure==true
+  and info.motionProof=='MOTION_PROVEN_EFFECTIVE_STEP_DIFFERENCE'
   and fg~=nil and type(info.layers)=='table' and info.layers.ABS==true
-  and type(info.lanes)=='table' and info.lanes[fg..'|ABS']~=nil
+  and type(absLane)=='table' and absLane.moving==true
   and info.completeness~='UNKNOWN'
- if absOK and type(info.evidence)=='table' then
-  for reason in pairs(info.evidence) do if type(reason)=='string' and reason:find('MISMATCH',1,true) then absOK=false end end
+ local mismatchFound=false
+ if absOK and type(info)=='table' and type(info.evidence)=='table' then
+  for reason in pairs(info.evidence) do if type(reason)=='string' and reason:find('MISMATCH',1,true) then absOK=false; mismatchFound=true end end
  end
  -- Linked presets from original structural audits; every one must be cached,
  -- static, ABS-exposing, and member-proven. No new reads.
@@ -3688,7 +3693,15 @@ function __phaser9008SplitProbe(ctx,api)
  emit('PHASER_9008_SPLIT_PROOF reference=%s members=%d feature=%s known_layers=%s unresolved_layers=REL motion=%s linked_presets=%s classification=%s diagnostic_only=true',
   target.label,proofLine.members,proofLine.feature,absProven and 'ABS' or '-',absProven and 'MOTION_PROVEN' or '-',
   proofLine.linked,absProven and 'ABS_STRUCTURE_PROVEN' or 'INCONCLUSIVE')
- if not absProven then return {classification='INCONCLUSIVE',target=target} end
+ if not absProven then
+  emit('PHASER_9008_ABS_GATE phaser_structure=%s motion_proof=%s abs_lane_present=%s abs_lane_moving=%s feature_count=%d abs_layer_present=%s completeness=%s mismatch_evidence=%s linked_gate=%s classification=%s diagnostic_only=true',
+   tostring(type(info)=='table' and info.phaserStructure),tostring(type(info)=='table' and info.motionProof),
+   tostring(absLane~=nil),tostring(absLane and absLane.moving),#fgList,
+   tostring(type(info)=='table' and type(info.layers)=='table' and info.layers.ABS),
+   tostring(type(info)=='table' and info.completeness),tostring(mismatchFound),
+   absOK and (linkedOK and 'PASS' or 'FAIL') or 'NOT_EVALUATED','STRUCTURAL_ABS_UNPROVEN')
+  return {classification='INCONCLUSIVE',target=target}
+ end
  -- Build cloned alternate: replace target rows by safe ABS + REL barrier.
  local absLaneKey=fg..'|ABS'; local relLaneKey=fg..'|REL'
  local altRows,relBarriers={},{}
