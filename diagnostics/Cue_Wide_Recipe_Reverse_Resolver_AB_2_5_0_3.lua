@@ -3116,48 +3116,53 @@ function __nativeAttributeCapabilityProbe(ctx,api)
   return name(h)~=nil
  end
  -- Capability cache: once per canonical member handle identity.
+ -- Official contract: UIChannel.INDEX is 1-based; GetAttributeByUIChannel
+ -- takes the 0-based UI Channel Index, i.e. INDEX-1. No competing candidate.
  local capCache,capReads={},{reads=0}
+ local enum={members=0,channels=0,resolved=0,invalid=0,failed=0,empty=0,complete=0,unproven=0,channelSamples=0}
  local function memberCapability(h)
   local id=safe(api.identity,h) or h
   if capCache[id] then return capCache[id],true end
   capReads.reads=capReads.reads+1
+  enum.members=enum.members+1
   local result={complete=false,attrs={},names={}}
+  local function fail(reason)
+   if reason=='empty' then enum.empty=enum.empty+1 end
+   enum.unproven=enum.unproven+1
+   capCache[id]=result; return result,false
+  end
   local channels=api.getUIChannels and safe(api.getUIChannels,h,true)
-  if type(channels)~='table' then capCache[id]=result; return result,false end
+  if type(channels)~='table' then return fail() end
   local list={}; for _,u in pairs(channels) do
    if type(u)=='table' or type(u)=='userdata' then list[#list+1]=u end end
-  if #list==0 then capCache[id]=result; return result,false end
-  local idx,direct={},{}
+  if #list==0 then return fail('empty') end
+  local attrByUI=api.attributeByUI
+  if type(attrByUI)~='function' then return fail() end
+  local set={} local shown=0
   for _,u in ipairs(list) do
    local i=safe(function() return u.INDEX end)
    if type(i)~='number' then i=safe(function() return u:Get('INDEX') end) end
-   if type(i)~='number' or i%1~=0 then capCache[id]=result; return result,false end
-   idx[#idx+1]=i
-   local d=safe(function() return u.Attribute end) or safe(function() return u:Get('Attribute') end)
-   direct[#direct+1]=(d==nil or isAttr(d)) and d or false
-   if direct[#direct]==false then capCache[id]=result; return result,false end
-  end
-  -- Prove the INDEX convention against direct Attribute evidence when present.
-  local attrByUI=api.attributeByUI
-  if type(attrByUI)~='function' then capCache[id]=result; return result,false end
-  local hasDirect=false; for _,d in ipairs(direct) do if d~=nil then hasDirect=true end end
-  local chosen=nil
-  for _,c in ipairs({0,-1}) do
-   local set,ok={},true
-   for n,i in ipairs(idx) do
-    local a=safe(attrByUI,i+c)
-    if not isAttr(a) then ok=false; break end
-    if hasDirect and direct[n]~=nil and not same(a,direct[n]) then ok=false; break end
-    set[safe(api.identity,a) or a]={handle=a,name=name(a)}
+   if type(i)~='number' or i%1~=0 or i<1 then enum.invalid=enum.invalid+1; return fail() end
+   local derived=i-1
+   local sub=safe(function() return u.SUBATTRIBUTE end) or safe(function() return u:Get('SUBATTRIBUTE') end)
+   local a=safe(attrByUI,derived)
+   local aId=a and (safe(api.identity,a) or a)
+   local ok=isAttr(a)
+   if not ok then enum.failed=enum.failed+1 end
+   enum.channels=enum.channels+1
+   if ok then enum.resolved=enum.resolved+1 end
+   if enum.channelSamples<16 and shown<2 then
+    enum.channelSamples=enum.channelSamples+1; shown=shown+1
+    emit('NATIVE_ATTRIBUTE_CHANNEL_SAMPLE member=%s fixture_key=%s uichannel_index_property=%s derived_ui_index=%s subattribute=%s attribute=%s attribute_identity=%s classification=%s',
+     txt(safe(api.describe,h)),txt(h and toaddrKey(safe(function() return h:ToAddr() end))),tostring(i),tostring(derived),
+     txt(sub),txt(name(a)),txt(aId),ok and 'CHANNEL_RESOLVED' or 'CHANNEL_LOOKUP_FAILED')
    end
-   if ok then
-    if chosen then chosen=false; break end
-    chosen={offset=c,set=set}
-   end
+   if not ok then return fail() end
+   set[aId]={handle=a,name=name(a)}
   end
-  if type(chosen)~='table' then capCache[id]=result; return result,false end
-  result.complete=true; result.convention=chosen.offset; result.attrs=chosen.set
-  for k,v in pairs(chosen.set) do result.names[k]=v.name end
+  result.complete=true; result.convention=-1; result.attrs=set
+  for k,v in pairs(set) do result.names[k]=v.name end
+  enum.complete=enum.complete+1
   capCache[id]=result; return result,false
  end
  -- Reference Attribute handle sets per exact FeatureGroup+lane (read-only mirror).
@@ -3295,6 +3300,8 @@ function __nativeAttributeCapabilityProbe(ctx,api)
   and 'GLOBAL_ORDINARY_APPLICABILITY_PROVEN' or 'INCONCLUSIVE'
  emit('NATIVE_ATTRIBUTE_CAPABILITY_SUMMARY surviving_global_lanes=%d capability_applicable=%d capability_not_applicable=%d capability_unproven=%d expected_preset_link_lanes=%d different_preset_lanes=%d supported_but_bucket_missing=%d bucket_absence_explained=%d classification=%s diagnostic_only=true',
   summary.lanes,summary.applicable,summary.notApplicable,summary.unproven,summary.expected,summary.different,summary.supportedMissing,summary.explained,classification)
+ emit('NATIVE_ATTRIBUTE_ENUMERATION_SUMMARY unique_members=%d capability_cache_reads=%d channels_total=%d attributes_resolved=%d invalid_index=%d attribute_lookup_failed=%d empty_channel_members=%d complete_members=%d unproven_members=%d diagnostic_only=true',
+  enum.members,capReads.reads,enum.channels,enum.resolved,enum.invalid,enum.failed,enum.empty,enum.complete,enum.unproven)
  emit('GLOBAL_OBJECTLIST_MEMBER_KEY_ALTERNATE total_lanes=%d mapped_bucket_lanes=%d bucket_missing_lanes=%d expected_preset_evidence_lanes=%d different_preset_lanes=%d attribute_unresolved_lanes=%d classification=%s diagnostic_only=true',
   alternate.total,alternate.mapped,alternate.missing,alternate.expected,alternate.different,alternate.unresolved,
   alternate.different>0 and 'OBSERVED_APPLICABILITY_MISMATCH' or alternate.unresolved>0 and 'INCONCLUSIVE' or 'SUPPORTED_LANES_MATCHED')
