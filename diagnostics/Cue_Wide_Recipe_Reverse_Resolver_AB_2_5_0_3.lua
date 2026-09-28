@@ -2369,7 +2369,7 @@ function __rev132SemanticNormalize(raw,control,identity)
 end
 
 -- Diagnostic truth probe only. It consumes Rev11.1 surviving lane keys and
--- current-Cue cooked Part views; it never changes resolver inputs or gates.
+-- source-CuePart cooked views; it never changes resolver inputs or gates.
 function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api)
  local function safe(f,...) local ok,v=pcall(f,...); if ok then return v end end
  local function emit(fmt,...) api.log(string.format(fmt,...)) end
@@ -2397,14 +2397,15 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
    end
   end
  end
- local total={rows=0,matched=0,mismatch=0,inconclusive=0,surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0}
+ local total={rows=0,matched=0,mismatch=0,inconclusive=0,surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0,layerRefined=0,layerFailed=0}
  local mismatchShown,unsupportedShown=0,0
+ local refinementShown={}; local refinementCount=0
  local memberKeys={}
  for _,item in ipairs(selected) do
   local rec,label,key=item.record,item.label,item.key
   local row=rec.row
   local view=views[safe(api.identity,row.part) or row.part]
-  local stats={surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0,members={},reasons={}}
+  local stats={surviving=0,supported=0,linked=0,unsupported=0,different=0,unresolved=0,layerRefined=0,layerFailed=0,members={},reasons={}}
   local attrsByLane={}
   local raw=referenceRaw[key]
   if type(raw)=='table' then for ui,p in pairs(raw) do if type(ui)=='number' and type(p)=='table' then
@@ -2429,12 +2430,38 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
    local member=split and tonumber(survivingKey:sub(1,split-1))
    local lane=split and survivingKey:sub(split+1)
    if member then stats.members[member]=true end
-   local attrs=lane and attrsByLane[lane]
-   local layer=lane and lane:match('|([^|]+)$')
+   local feature,layer
+   if lane then feature,layer=lane:match('^(.-)|([^|]+)$') end
+   local refinedLane=lane
+   if layer=='*' then
+    local proof=api.proofs and api.proofs[key]
+    local uniqueAbs=proof and proof.motionStaticProven==true and type(proof.layers)=='table'
+     and proof.layers.ABS==true and count(proof.layers)==1 and proof.channels>0
+     and proof.activeValue==proof.channels and type(proof.steps)=='table'
+     and proof.steps['1']==proof.channels and count(proof.steps)==1
+    local concreteFeature=type(feature)=='string' and feature:match('^FG:')
+     and type(row.features)=='table' and row.features[feature]==true
+    if uniqueAbs and concreteFeature and attrsByLane[feature..'|ABS'] then
+     refinedLane=feature..'|ABS'; layer='ABS'; stats.layerRefined=stats.layerRefined+1
+    else stats.layerFailed=stats.layerFailed+1; stats.reasons.SURVIVING_LANE_LAYER_UNPROVEN=true end
+    local marker=label..'|'..tostring(feature)..'|'..tostring(layer)
+    if not refinementShown[marker] and refinementCount<40 then
+     refinementShown[marker]=true; refinementCount=refinementCount+1
+     emit('GLOBAL_RECIPE_LAYER_REFINEMENT reference=%s original_layer=* refined_layer=%s feature=%s proof=%s classification=OBSERVATION_ONLY',
+      label,refinedLane~=lane and 'ABS' or 'UNPROVEN',text(feature),
+      refinedLane~=lane and 'REV12_1_MOTION_STATIC_UNIQUE_SINGLE_STEP_ABS' or 'UNIQUE_ABS_OR_FEATURE_MAPPING_UNPROVEN')
+    end
+   end
+   local attrs=refinedLane and attrsByLane[refinedLane]
    local attrNames=ordered(attrs)
    local matched,unsupported,unresolved,different=0,0,0,0
-   if not member or not attrs or #attrNames==0 or (layer~='ABS' and layer~='REL') or not view or partCount>64 then
-    unresolved=1; stats.reasons.LANE_OR_COOKED_VIEW_UNPROVEN=true
+   if not member then unresolved=1; stats.reasons.MEMBER_KEY_UNPROVEN=true
+   elseif layer~='ABS' and layer~='REL' or not feature or feature=='*' then
+    unresolved=1; stats.reasons.SURVIVING_LANE_LAYER_UNPROVEN=true
+   elseif not attrs or #attrNames==0 then
+    unresolved=1; stats.reasons.REFERENCE_ATTRIBUTE_LANE_UNAVAILABLE=true
+   elseif not view or type(view.buckets)~='table' or partCount>64 then
+    unresolved=1; stats.reasons.COOKED_VIEW_UNAVAILABLE=true
    else
     local fixture=api.getSubfixture and safe(api.getSubfixture,member)
     local fid=fixture and safe(function() return fixture.FID end)
@@ -2505,19 +2532,20 @@ function __globalRecipeApplicabilityTruth(records,targets,parts,referenceRaw,api
   total.surviving=total.surviving+stats.surviving; total.supported=total.supported+stats.supported
   total.linked=total.linked+stats.linked; total.unsupported=total.unsupported+stats.unsupported
   total.different=total.different+stats.different; total.unresolved=total.unresolved+stats.unresolved
+  total.layerRefined=total.layerRefined+stats.layerRefined; total.layerFailed=total.layerFailed+stats.layerFailed
   local ref=refs[label]; ref.rows=ref.rows+1
   if class=='OBSERVED_APPLICABILITY_MISMATCH' then total.mismatch=total.mismatch+1; ref.mismatch=ref.mismatch+1
   elseif class=='INCONCLUSIVE' then total.inconclusive=total.inconclusive+1; ref.inconclusive=ref.inconclusive+1
   else total.matched=total.matched+1; ref.matched=ref.matched+1 end
-  emit('GLOBAL_RECIPE_APPLICABILITY_ROW reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s surviving_members=%d surviving_lanes=%d supported_lanes=%d expected_preset_link_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d unresolved_reasons=%s classification=%s',
+  emit('GLOBAL_RECIPE_APPLICABILITY_ROW reference=%s source_cue=%s source_part=%s source_recipe=%s group=%s surviving_members=%d surviving_lanes=%d layer_refined_lanes=%d layer_refinement_failed_lanes=%d supported_lanes=%d expected_preset_link_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d unresolved_reasons=%s classification=%s',
    label,text(api.describe(row.cue)),text(api.describe(row.part)),text(api.describe(row.recipe)),text(api.describe(row.group)),
-   count(stats.members),stats.surviving,stats.supported,stats.linked,stats.unsupported,stats.different,stats.unresolved,table.concat(ordered(stats.reasons),','),class)
+   count(stats.members),stats.surviving,stats.layerRefined,stats.layerFailed,stats.supported,stats.linked,stats.unsupported,stats.different,stats.unresolved,table.concat(ordered(stats.reasons),','),class)
  end
  local summaryClass=total.rows~=15 and 'INCONCLUSIVE' or
   (total.mismatch>0 and 'OBSERVED_APPLICABILITY_MISMATCH' or
    (total.inconclusive>0 and 'INCONCLUSIVE' or 'RECIPE_SCOPE_MATCHED_AFTER_COMPATIBILITY'))
- emit('GLOBAL_RECIPE_APPLICABILITY_SUMMARY rows_expected=15 rows_checked=%d rows_matched=%d rows_mismatch=%d rows_inconclusive=%d surviving_lanes=%d supported_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d classification=%s diagnostic_only=true cooked_part_reads=%d',
-  total.rows,total.matched,total.mismatch,total.inconclusive,total.surviving,total.supported,total.unsupported,total.different,total.unresolved,summaryClass,math.min(partCount,64))
+ emit('GLOBAL_RECIPE_APPLICABILITY_SUMMARY rows_expected=15 rows_checked=%d rows_matched=%d rows_mismatch=%d rows_inconclusive=%d surviving_lanes=%d layer_refined_lanes=%d layer_refinement_failed_lanes=%d supported_lanes=%d unsupported_attribute_lanes=%d different_preset_lanes=%d unresolved_lanes=%d classification=%s diagnostic_only=true cooked_part_reads=%d',
+  total.rows,total.matched,total.mismatch,total.inconclusive,total.surviving,total.layerRefined,total.layerFailed,total.supported,total.unsupported,total.different,total.unresolved,summaryClass,math.min(partCount,64))
  for _,label in ipairs(ordered(refs)) do local s=refs[label]
   emit('GLOBAL_RECIPE_APPLICABILITY_REFERENCE reference=%s rows=%d matched=%d mismatch=%d inconclusive=%d',label,s.rows,s.matched,s.mismatch,s.inconclusive)
  end
@@ -3438,6 +3466,7 @@ local truthOK,truth=pcall(function()
  local observation=__globalRecipeApplicabilityTruth(attribution.rows,selected.entries,sourceParts,metadataCache.raw,{
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
   getPresetData=rawData,getSubfixture=_G.GetSubfixture,attributeByUI=_G.GetAttributeByUIChannel,
+  proofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,
   -- No established native fixture-capability source: absence remains unknown.
   capability=function() return 'UNKNOWN' end})
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',

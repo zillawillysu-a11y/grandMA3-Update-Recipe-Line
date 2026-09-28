@@ -11,7 +11,7 @@ local attr=obj('Attribute',302,'ColorRGB_R'); attr.Feature=feature
 local preset=obj('Preset',400); local other=obj('Preset',401)
 local part=obj('Part',500); local fixture=obj('Subfixture',600); fixture.FID=101; fixture.CID='None'
 local key='11\0FG:DBI:300|ABS'
-local record={category='FINAL_SURVIVING_UNSAFE',ref=preset,row={cue=obj('Cue',700),part=part,recipe=obj('Recipe',701),group=obj('Group',702)},
+local record={category='FINAL_SURVIVING_UNSAFE',ref=preset,row={cue=obj('Cue',700),part=part,recipe=obj('Recipe',701),group=obj('Group',702),features={['FG:DBI:300']=true}},
  surviving={key},neutralized={'12\0FG:DBI:300|ABS'}}
 local raw={['DBI:400']={[1]={attribute=attr,[1]={absolute=50}}}}
 local cooked,cookedPart2,reads,logs,capability
@@ -26,6 +26,7 @@ local api={
  end,
  getSubfixture=function(sf) return sf==11 and fixture or nil end,
  capability=function() return capability end,
+ proofs={['DBI:400']={motionStaticProven=true,layers={ABS=true},channels=1,activeValue=1,steps={['1']=1}}},
 }
 local targets={{path='Preset 4.4',key='DBI:400'}}
 local function run(rows,parts)
@@ -36,12 +37,35 @@ cooked={['101']={ColorRGB_R={abs_preset=preset}}}; capability='UNKNOWN'
 local r=run()
 assert(r.totals.matched==1 and r.totals.surviving==1 and r.totals.linked==1 and reads==1)
 assert(table.concat(logs,'\n'):find('GLOBAL_RECIPE_APPLICABILITY_ROW reference=Preset 4.4',1,true))
+assert(r.totals.layerRefined==0 and r.totals.layerFailed==0)
+record.surviving={'11\0FG:DBI:300|*'}
+r=run()
+assert(r.totals.matched==1 and r.totals.layerRefined==1 and r.totals.linked==1 and reads==1)
+assert(record.surviving[1]=='11\0FG:DBI:300|*')
+assert(table.concat(logs,'\n'):find('GLOBAL_RECIPE_LAYER_REFINEMENT reference=Preset 4.4',1,true))
+api.proofs['DBI:400'].layers.REL=true
+r=run()
+assert(r.totals.inconclusive==1 and r.totals.layerFailed==1 and r.totals.unresolved==1)
+assert(table.concat(logs,'\n'):find('SURVIVING_LANE_LAYER_UNPROVEN',1,true))
+api.proofs['DBI:400'].layers.REL=nil
+record.surviving={key}
 cooked={['101']={}}; capability='UNSUPPORTED'
 r=run(); assert(r.totals.matched==1 and r.totals.unsupported==1 and r.totals.different==0)
 cooked={['101']={ColorRGB_R={abs_preset=other}}}; capability='UNKNOWN'
 r=run(); assert(r.totals.mismatch==1 and r.totals.different==1)
 cooked={['101']={}}
 r=run(); assert(r.totals.inconclusive==1 and r.totals.unresolved==1)
+local originalRaw=raw['DBI:400']
+raw['DBI:400']={}
+r=run(); assert(table.concat(logs,'\n'):find('REFERENCE_ATTRIBUTE_LANE_UNAVAILABLE',1,true))
+raw['DBI:400']=originalRaw
+local originalRead=api.getPresetData
+api.getPresetData=function() reads=reads+1; return {} end
+r=run(); assert(table.concat(logs,'\n'):find('COOKED_VIEW_UNAVAILABLE',1,true) and reads==1)
+api.getPresetData=originalRead
+fixture.FID=nil
+r=run(); assert(table.concat(logs,'\n'):find('MEMBER_KEY_UNPROVEN',1,true))
+fixture.FID=101
 -- The neutralized member is absent from surviving keys and never probed.
 assert(r.totals.surviving==1)
 cooked={['101']={ColorRGB_R={abs_preset=preset}}}

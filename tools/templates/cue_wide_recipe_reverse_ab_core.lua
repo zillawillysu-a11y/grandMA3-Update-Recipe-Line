@@ -841,6 +841,7 @@ local truthOK,truth=pcall(function()
  local observation=__globalRecipeApplicabilityTruth(attribution.rows,selected.entries,sourceParts,metadataCache.raw,{
   log=function(s) log('%s',s) end,identity=metadataCache.identity,describe=desc,
   getPresetData=rawData,getSubfixture=_G.GetSubfixture,attributeByUI=_G.GetAttributeByUIChannel,
+  proofs=attribution.ordinaryProof and attribution.ordinaryProof.proofs,
   -- No established native fixture-capability source: absence remains unknown.
   capability=function() return 'UNKNOWN' end})
  log('GLOBAL_RECIPE_APPLICABILITY_TIMING cooked_part_reads=%d observer_ms=%s target_pass=%s',
