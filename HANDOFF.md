@@ -2,27 +2,27 @@
 
 ## Current Goal
 
-Validate candidate v0.7.1.6 in grandMA3 2.5.0.3 after v0.7.1.5 crashed.
+Validate v0.7.1.7 in grandMA3 2.5.0.3 for Group response, regular pulse, and Recipe Pool references.
 
 ## Current Working State
 
-v0.7.1.6 is deployed in the confirmed Update Plugin directory. It removes coroutine-based resolver yielding and stages native metadata preparation across normal refresh calls. Prepared Cue rows/runtime are cached during the staged operation to avoid rescanning Cue history every 100 ms. At most one uncached reference metadata read and four member UI reads occur in each resolver slice. Track A remains fail closed; no semantic gate was weakened.
+v0.7.1.7 is deployed in the confirmed Update Plugin directory. `SELECT GROUP` now uses the last rendered target and returns without invoking a full synchronous render; it checks the current selection/Cue snapshot before issuing commands. Tracking candidates are cached against Cue/Part/Recipe structure and relevant reference identities. Pool pulse is driven by elapsed-time deadlines. Ordinary mode uses vendor-proven `GetPresetData.pm` instead of comparing it to an unproven handle `PresetMode` string. Unknown lane/step shapes still fail closed and now report specific bounded blocker details. Marker style is unchanged; Cue Phaser scanner remains disabled.
 
 ## Latest Real-World User Test
 
-User rolled back to v0.7.1.4 and confirmed fixture selection no longer crashes. Prior observation: Group frame appears, while SELECT GROUP / pulse can pause around 600 ms; Recipe refs remain inconclusive with native metadata blockers. v0.7.1.6 native validation is pending.
+v0.7.1.6 did not meet the interaction goal. Screenshots showed `MEMBER_UI_PENDING`, later `INCONCLUSIVE | 0 refs`; blockers included `PRESET_MODE_NATIVE_MISMATCH`, `ORDINARY_LANE_VALUE_UNPROVEN`, and `ORDINARY_CHANNEL_SHAPE_UNPROVEN`. Displayed tracking work was about 82??46 ms and resolver total about 600 ms. v0.7.1.7 has not yet had native validation.
 
 ## Verified Facts
 
-- Offline: 86 workflow assertions and 109 show-candidate checks pass; synthetic four-ref result is final_refs=4, missing=0, extra=0.
+- Offline: 87 workflow assertions and 124 candidate checks pass; synthetic four-ref result is final_refs=4, missing=0, extra=0.
 - Lua parse, XML parse, deterministic build check, and git diff check pass.
-- v0.7.1.6 source/deployed SHA256 match: Inspector `6D0A704E2DC068AAC1BE207E5B94D29A524174A2757FD89914103E27B6415894`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `AF8AD866BF673BBF071DFDB897452EE58720524C974E05A5E756B7262E283C1D`.
-- v0.7.1.4 deployment backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.6-20260929`.
-- No coroutine resolver yielding and no full cooked Cue-history reads in the Track A runtime.
+- v0.7.1.7 source/deployed SHA256 match: Inspector `098CF1770E09861A17D5E1A870416F7780793F950EEAEF4691CDC715FE1325F9`, Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`, XML `5BF1223D9DFCA209BD3CAA2D8C2029432295533847F6D7DB29D1EB83546F9886`.
+- v0.7.1.6 deployment backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.7-20260929`.
+- No resolver coroutine yielding and no cooked Cue-history GetPresetData path.
 
 ## Current Problem
 
-Native crash freedom, selection response, pulse cadence, and resolver outcome for v0.7.1.6 are unverified. Native API duration cannot be validated offline.
+Native behavior is unverified. Remaining ordinary metadata blocker details need the next native readout; no safety gate was relaxed for them.
 
 ## Important Files
 
@@ -37,4 +37,4 @@ Worktree `C:\tmp\show-rel`, detached from `origin/qwen`; checkpoint pending.
 
 ## Exact Next Action
 
-Load v0.7.1.6 and run one focused Cue 8 check: select the same fixture/Group, observe immediate panel and Group frame, use SELECT GROUP, and report whether it crashes, whether flashing stays regular, and the displayed Resolver reason/ref count. If it crashes, restore the v0.7.1.4 backup immediately.
+Load v0.7.1.7 and repeat the same Cue 8 selection once. Confirm SELECT GROUP response and pulse cadence. Read the new `resolver_slice`/`resolver_total` timing and exact blocker details. If it crashes, restore the v0.7.1.6 backup immediately.

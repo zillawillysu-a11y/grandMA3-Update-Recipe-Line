@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.6"
+local PLUGIN_VERSION = "0.7.1.7"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -912,6 +912,48 @@ local function scanTracking(sequence, currentCue, fixtures, info)
     return latest and { latest } or {}
 end
 
+-- Cheap structural signature for scanTracking's inputs. It notices Recipe row
+-- insertion/removal, enable changes, and Selection/Values/Generator relinks,
+-- while avoiding the per-row fixture intersection and Feature inspection on
+-- every marker pulse.
+local function trackingStructureKey(sequence,currentCue)
+    local currentNumber=cueNumber(currentCue)
+    if not sequence or not currentNumber then return nil end
+    local entries={tostring(commandAddress(sequence)),tostring(currentNumber)}
+    local cueCount,recipeCount=0,0
+    for _,cue in ipairs(children(sequence)) do
+        if string.lower(class(cue))=="cue" then
+            local number=cueNumber(cue)
+            if number and number<=currentNumber then
+                cueCount=cueCount+1
+                if cueCount>MAX_CUES then return nil end
+                entries[#entries+1]=tostring(commandAddress(cue))
+                for _,part in ipairs(children(cue)) do
+                    if string.lower(class(part))=="part" then
+                        entries[#entries+1]=tostring(commandAddress(part))
+                        for _,recipe in ipairs(children(part)) do
+                            if isStandardRecipe(recipe) then
+                                recipeCount=recipeCount+1
+                                if recipeCount>MAX_RECIPES then return nil end
+                                local group=recipeField(recipe,"Selection")
+                                local generator=recipeField(recipe,"Generator")
+                                local values=generator or recipeField(recipe,"Values")
+                                entries[#entries+1]=table.concat({
+                                    tostring(commandAddress(recipe)),tostring(recipeEnabled(recipe)),
+                                    tostring(commandAddress(group)),tostring(commandAddress(values)),
+                                },"/")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    entries[#entries+1]=tostring(cueCount)
+    entries[#entries+1]=tostring(recipeCount)
+    return table.concat(entries,"\0")
+end
+
 local function exactSelectionGroups(fixtures)
     local pool = callable("DataPool") and safe(DataPool) or nil
     local groups = safe(function() return pool.Groups end)
@@ -1078,14 +1120,40 @@ local function render(state)
             lines[#lines + 1] = string.format("Status: AMBIGUOUS (%d direct Recipes)", #direct)
         end
     else
-        -- Rescan every refresh: Recipe rows can be added or removed in the
-        -- Cue editor while the inspector is open. Caching candidates by
-        -- (sequence, Cue, feature, selection) kept deleted rows visible as
-        -- the source and blocked NEW CONTENT.
-        local trackingStarted=contextClock()
-        local candidates = scanTracking(sequence, currentCue, fixtures, info)
-        if state then state.lastTrackingScanMs=contextElapsed(trackingStarted) end
-        if state then state.matchingCandidates = candidates end
+        -- Reuse candidate matches while the bounded Cue/Part/Recipe structure
+        -- and selection stay unchanged; changed rows or references invalidate
+        -- the signature before a stale candidate can be reused.
+        local candidates
+        if state then
+            local parts={tostring(commandAddress(sequence)),tostring(cueNumber(currentCue)),
+                tostring(normalizeFeature(info.feature))}
+            local memberKeys={}
+            for _,fixture in ipairs(fixtures) do memberKeys[#memberKeys+1]=tostring(fixture.index or "?") end
+            table.sort(memberKeys)
+            for _,key in ipairs(memberKeys) do parts[#parts+1]=key end
+            local structureStarted=contextClock()
+            local structure=trackingStructureKey(sequence,currentCue)
+            state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
+            local trackingKey=structure and table.concat(parts,"|").."|"..structure or nil
+            if trackingKey and state.trackingScanKey==trackingKey and type(state.trackingScanCandidates)=="table" then
+                candidates=state.trackingScanCandidates
+                state.lastTrackingScanMs=0
+            else
+                local trackingStarted=contextClock()
+                candidates=scanTracking(sequence,currentCue,fixtures,info)
+                state.lastTrackingScanMs=contextElapsed(trackingStarted)
+                if trackingKey then
+                    state.trackingScanKey=trackingKey
+                    state.trackingScanCandidates=candidates
+                else
+                    state.trackingScanKey=nil
+                    state.trackingScanCandidates=nil
+                end
+            end
+            state.matchingCandidates=candidates
+        else
+            candidates=scanTracking(sequence,currentCue,fixtures,info)
+        end
         local chosen = #candidates == 1 and candidates[1] or nil
         if state and #candidates > 1 then
             for _, candidate in ipairs(candidates) do
@@ -1181,11 +1249,13 @@ local function render(state)
         end
         if state.expanded then
             resolverLines[#resolverLines+1]=string.format(
-                "Timing ms: select=%s tracking=%s group=%s resolver=%s pool=%s",
+                "Timing ms: select=%s tracking_scan=%s tracking_sig=%s group=%s resolver_slice=%s resolver_total=%s pool=%s",
                 tostring(state.lastSelectionReadMs or "?"),
                 tostring(state.lastTrackingScanMs or "?"),
+                tostring(state.lastTrackingFingerprintMs or "?"),
                 tostring(state.lastGroupMatchMs or "?"),
-                tostring(state.lastResolverMs or "?"),
+                tostring(state.lastResolverSliceMs or "?"),
+                tostring(state.lastResolverTotalMs or "?"),
                 tostring(state.lastPoolDiscoveryMs or "?"))
         end
     end
@@ -1346,13 +1416,6 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_DATA_UNAVAILABLE" end
             return nil
         end
-        local nativeMode=api.safe(function() return ref.PresetMode end)
-        if nativeMode==nil then nativeMode=api.safe(function() return ref:Get("PresetMode") end) end
-        local modeNumber={Selective=1,Global=2,Universal=3}
-        if type(nativeMode)~="string" or not modeNumber[nativeMode] then
-            if rawKey then cache.__failure[rawKey]="ORDINARY_PRESET_MODE_UNPROVEN" end
-            return nil
-        end
         local mode,scope,channels=nil,{},0
         local moving=false
         local knownBits=1|2|4|8|16|32|64|128|256
@@ -1366,7 +1429,6 @@ local function newTrackARuntime(api)
                 if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
                 if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
                 if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
-                if pm~=modeNumber[nativeMode] then return reject("PRESET_MODE_NATIVE_MISMATCH") end
                 mode=pm
                 if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
                 if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
@@ -1407,27 +1469,34 @@ local function newTrackARuntime(api)
                 local attr=p.attribute or api.safe(api.attributeByUI,ui)
                 if rawKey then cache.__failure[rawKey]="ORDINARY_ATTRIBUTE_FG_UNPROVEN" end
                 local fg=attrFG(attr)
-                if not fg then return nil end
+                if not fg then return reject("ORDINARY_ATTRIBUTE_FG_UNPROVEN(ui="..tostring(ui)..")") end
                 if rawKey then cache.__failure[rawKey]="ORDINARY_STEP_SHAPE_UNPROVEN" end
                 local steps,n={},0
                 for k,v in pairs(p) do if type(k)=="number" then
-                    if k%1~=0 or k<1 or type(v)~="table" then return nil end
+                    if k%1~=0 or k<1 or type(v)~="table" then
+                        return reject("ORDINARY_STEP_RECORD_SHAPE_UNPROVEN(ui="..tostring(ui)
+                            ..",index="..tostring(k)..",type="..type(v)..")")
+                    end
                     n=n+1; steps[k]=v
                 end end
-                if n==0 or n>256 then return nil end
+                if n==0 or n>256 then return reject("ORDINARY_STEP_COUNT_UNPROVEN(ui="..tostring(ui)..",count="..tostring(n)..")") end
                 local stepKnown={absolute=true,relative=true,absolute_value=true,abs_release=true,rel_release=true,
                     abs_remove=true,rel_remove=true,abs_preset=true,rel_preset=true,integrated=true,accel=true,
                     decel=true,trans=true,transition=true,width=true,channel_function=true,mask_active=true,
                     mask_individual=true,mask_integrated=true,dict_flags=true}
                 for i=1,n do
-                    if not steps[i] then return nil end
+                    if not steps[i] then return reject("ORDINARY_STEP_INDEX_GAP(ui="..tostring(ui)..",index="..tostring(i)..")") end
                     if steps[i].absolute_value~=nil
                         and (type(steps[i].absolute_value)~="number" or type(steps[i].absolute)~="number"
-                            or mask & 2==0) then return nil end
+                            or mask & 2==0) then return reject("ORDINARY_ABSOLUTE_VALUE_SHAPE_UNPROVEN(ui="..tostring(ui)..")") end
                     for k,v in pairs(steps[i]) do
-                        if type(k)=="string" and not stepKnown[k] and v~=nil then return nil end
+                        if type(k)=="string" and not stepKnown[k] and v~=nil then
+                            return reject("ORDINARY_UNKNOWN_STEP_FIELD(ui="..tostring(ui)..",field="..tostring(k)..")")
+                        end
                         if (k=="abs_release" or k=="rel_release" or k=="abs_remove" or k=="rel_remove"
-                            or k=="abs_preset" or k=="rel_preset" or k=="integrated") and v~=nil and v~=false and v~=0 then return nil end
+                            or k=="abs_preset" or k=="rel_preset" or k=="integrated") and v~=nil and v~=false and v~=0 then
+                            return reject("ORDINARY_ACTIVE_STEP_DEPENDENCY(ui="..tostring(ui)..",field="..tostring(k)..")")
+                        end
                     end
                 end
                 local motionBits=4|8|16|32|128|256
@@ -1439,34 +1508,48 @@ local function newTrackARuntime(api)
                         for i=1,n do
                             local step=steps[i]
                             local value=step and step[field]
-                            if type(value)~="number" or value~=value or math.abs(value)==math.huge then return nil end
+                            if type(value)~="number" then
+                                return reject("ORDINARY_LANE_VALUE_UNPROVEN(ui="..tostring(ui)
+                                    ..",layer="..layer..",type="..type(value)..",mask="..tostring(mask)..")")
+                            end
+                            if value~=value or math.abs(value)==math.huge then
+                                return reject("ORDINARY_LANE_VALUE_NONFINITE(ui="..tostring(ui)
+                                    ..",layer="..layer..",mask="..tostring(mask)..")")
+                            end
                             values[tostring(value)]=true
                         end
                         local channelMoving=phaser & motionBits~=0 or count(values)>1
                         moving=moving or channelMoving
                         local lane=fg.."|"..layer
                         scope[lane]=scope[lane] or {fg=fg,layer=layer,storedUI={},moving=false}
-                        if next(scope[lane].storedUI) and scope[lane].moving~=channelMoving then return nil end
+                        if next(scope[lane].storedUI) and scope[lane].moving~=channelMoving then
+                            return reject("ORDINARY_LANE_CONFLICT(ui="..tostring(ui)..",lane="..lane..")")
+                        end
                         scope[lane].storedUI[ui]=true
                         scope[lane].moving=channelMoving
                     end
                 end
-            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return nil end
-            elseif ui~="count" then return nil end
+            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return reject("BY_FIXTURES_SHAPE_UNPROVEN") end
+            elseif ui~="count" then return reject("ORDINARY_TOP_LEVEL_FIELD_UNPROVEN("..tostring(ui)..")") end
         end
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
-        if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then return nil end
+        if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then
+            return reject("ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels="..tostring(channels)
+                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))..")")
+        end
         -- Static ordinary references require the proven single-step, no-motion
         -- shape. Moving references require explicit motion bits or step change.
         if not moving then
             for _,p in pairs(raw) do if type(p)=="table" and type(p[1])=="table" then
                 local n=0
                 for k in pairs(p) do if type(k)=="number" then n=n+1 end end
-                if n~=1 then return nil end
+                if n~=1 then return reject("ORDINARY_STATIC_STEP_COUNT_UNPROVEN(count="..tostring(n)..")") end
             end end
             for _,lane in pairs(scope) do lane.moving=false end
         else
-            for _,lane in pairs(scope) do if not lane.moving then return nil end end
+            for laneName,lane in pairs(scope) do if not lane.moving then
+                return reject("ORDINARY_MOVING_LANE_CONFLICT(lane="..tostring(laneName)..")")
+            end end
         end
         if rawKey then cache.__failure[rawKey]=nil end
         return {kind="ORDINARY",mode=mode,lanes=scope,raw=raw}
@@ -1565,9 +1648,7 @@ local function newTrackARuntime(api)
             local meta=referenceCache[key]
             if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
             if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then return nil end
-            local presetMode=api.safe(function() return handle.PresetMode end)
-            if presetMode==nil then presetMode=api.safe(function() return handle:Get("PresetMode") end) end
-            if presetMode~="Global" and presetMode~="Universal" then return nil end
+            if meta.mode~=2 and meta.mode~=3 then return nil end
             for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
             for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
         end
@@ -2120,10 +2201,10 @@ end
     local started = contextClock()
     local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates,state)
     local sliceElapsed = contextElapsed(started) or "UNMEASURED"
+    state.lastResolverSliceMs=type(sliceElapsed)=="number" and sliceElapsed or nil
     if result.classification=="PENDING" then
         state.provenSourceKey=nil
         state.provenSources=result
-        state.lastResolverSliceMs=type(sliceElapsed)=="number" and sliceElapsed or nil
         state.lastResolverMs=state.lastResolverSliceMs
         return result
     end
@@ -2145,8 +2226,8 @@ end
     for _, key in ipairs(newKeys) do if not oldSet[key] then extra[#extra + 1] = key end end
     state.provenSourceKey = cacheKey
     state.provenSources = result
-    state.lastResolverMs=type(elapsed)=="number" and elapsed or nil
-    state.lastResolverTotalMs=state.lastResolverMs
+    state.lastResolverMs=state.lastResolverSliceMs
+    state.lastResolverTotalMs=type(elapsed)=="number" and elapsed or nil
     state.markerProbeSerial=(state.markerProbeSerial or 0)+1
     state.markerProbe={}
     state.markerStatus=nil
@@ -2693,6 +2774,14 @@ end
 
 local function refreshPoolMarkers(state)
     if state.poolBlink == false or not state.running then clearPoolMarkers(state); return end
+    if (state.provenEnabled==true and #(state.lastFixtures or {})==0)
+        or (state.currentRecipe==nil and state.currentGroup==nil
+            and #(state.currentGroups or {})==0 and #(state.matchingCandidates or {})==0) then
+        clearPoolMarkers(state)
+        state.markerReferences=nil
+        state.poolMarkersDirty=false
+        return
+    end
     if state.provenEnabled==true and (#(state.lastFixtures or {})==0
         or not state.currentSequence or not state.currentCue) then
         clearPoolMarkers(state)
@@ -2700,18 +2789,44 @@ local function refreshPoolMarkers(state)
         state.markerReferences={}
         return
     end
-    state.poolBlinkTicks = (state.poolBlinkTicks or 0) + 1
-    -- Pulse existing frames at 4 Hz without rescanning the UI tree. Pool lookup
-    -- remains at 2 Hz, so the faster animation does not double traversal cost.
-    state.poolBlinkOn = not state.poolBlinkOn
+    -- Drive a four-cycle-per-second pulse from elapsed time, not loop count;
+    -- resolver work can make refresh intervals uneven.
+    local now=clockSeconds()
+    local pulseChanged=false
+    if type(state.poolBlinkDeadline)~="number" then
+        state.poolBlinkOn=true
+        state.poolBlinkDeadline=now and now+0.125 or nil
+        pulseChanged=true
+    elseif now and now>=state.poolBlinkDeadline then
+        local steps=math.floor((now-state.poolBlinkDeadline)/0.125)+1
+        if steps%2==1 then state.poolBlinkOn=not state.poolBlinkOn; pulseChanged=true end
+        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*0.125
+    end
     local pulseColor = state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
-    for _, entry in pairs(state.poolMarkers or {}) do
+    if pulseChanged then for _, entry in pairs(state.poolMarkers or {}) do
         pcall(function()
             entry.overlay.Visible = "Yes"
             entry.overlay.BackColor = pulseColor
         end)
+    end end
+    local cachedGridInvalid=false
+    if not state.poolMarkersDirty and not state.poolGridRefreshNeeded and now and now<(state.poolLookupDeadline or 0) then
+        for _,grid in ipairs(state.poolGrids or {}) do
+            if callable("IsObjectValid") and safe(IsObjectValid,grid)==false then
+                cachedGridInvalid=true; break
+            end
+            local visible=safe(function() return grid:IsActuallyVisible() end)
+            if visible~=nil then
+                local normalized=string.lower(tostring(visible))
+                if visible~=true and normalized~="yes" and normalized~="true" and normalized~="1" then
+                    cachedGridInvalid=true; break
+                end
+            end
+        end
+        if not cachedGridInvalid then return end
+        state.poolGridRefreshNeeded=true
     end
-    if state.poolBlinkTicks % 2 ~= 0 and not state.poolMarkersDirty then return end
+    if now then state.poolLookupDeadline=now+0.5 end
     local markerStarted=clockSeconds()
     state.poolMarkersDirty = false
     local references = state.markerReferences or recipePoolReferences(state)
@@ -2893,10 +3008,12 @@ local function refreshPoolMarkers(state)
                 tostring(probe.matchMethod or "-"))) end
         end
         if callable("ErrEcho") then safe(ErrEcho,string.format(
-            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_ms=%s render_ms=%s group_ms=%s resolver_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
+            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
             formatElapsed(state.lastSelectionReadMs),formatElapsed(state.lastProgrammerMs),
-            formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastRenderMs),
-            formatElapsed(state.lastGroupMatchMs),formatElapsed(state.lastResolverMs),
+            formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastTrackingFingerprintMs),
+            formatElapsed(state.lastRenderMs),
+            formatElapsed(state.lastGroupMatchMs),formatElapsed(state.lastResolverSliceMs),
+            formatElapsed(state.lastResolverTotalMs),
             formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs),
             formatElapsed(elapsedMs(markerStarted)),#grids,#keys)) end
     end
@@ -3017,7 +3134,26 @@ end
 signalTable.SelectRecipeTrackingGroup = function()
     local state = _G[STATE_KEY]
     if not state or state.updating then return end
-    render(state)
+    -- The panel loop has already resolved the latest target. Rendering again
+    -- here re-runs the full Recipe scan inside the button callback and can
+    -- advance native resolver work synchronously while the user waits.
+    local function selectionSnapshot(fixtures)
+        local indices={}
+        for _,fixture in ipairs(fixtures or {}) do
+            if type(fixture.index)~="number" then return nil end
+            indices[#indices+1]=tostring(fixture.index)
+        end
+        table.sort(indices)
+        return table.concat(indices,",")
+    end
+    -- Selection indices are used here only to detect a stale button snapshot;
+    -- all Group/member matching continues to use canonical dotted identities.
+    if selectionSnapshot(readSelection())~=selectionSnapshot(state.lastFixtures)
+        or not sameReference(callable("SelectedSequence") and safe(SelectedSequence) or nil,state.currentSequence)
+        or not sameReference(callable("GetCurrentCue") and safe(GetCurrentCue) or nil,state.currentCue) then
+        state.forceRefresh=true
+        return
+    end
     local candidates = state.matchingCandidates or {}
     local group = state.currentGroup
     if #candidates > 1 then

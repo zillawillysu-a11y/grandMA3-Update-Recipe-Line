@@ -20,6 +20,14 @@ local function check(value, message)
     assert(value, message)
     count = count + 1
 end
+local function swapUpvalue(fn,wanted,replacement)
+ for index=1,200 do
+  local name,value=debug.getupvalue(fn,index)
+  if not name then break end
+  if name==wanted then debug.setupvalue(fn,index,replacement); return value end
+ end
+ error("Missing upvalue: "..wanted)
+end
 local function object(kind, addr, fields, contents)
     local result = fields or {}
     result.GetClass = function() return kind end
@@ -212,6 +220,19 @@ check(staticResult.classification=="PROVEN" and next(staticResult.refs)==nil,
 local movingResult=result({recipe(gOne,moving,1)},fOne)
 check(movingResult.classification=="PROVEN" and movingResult.refs["Preset 1.2"]==moving,
  "ordinary structural moving reference must survive")
+local metadataModeOnly=preset("Preset metadata mode only",0,2,true)
+metadataModeOnly.PresetMode="Selective"
+local metadataModeResult=result({recipe(gOne,metadataModeOnly,1)},fOne)
+check(metadataModeResult.classification=="PROVEN"
+ and metadataModeResult.refs["Preset metadata mode only"]==metadataModeOnly,
+ "vendor-proven GetPresetData pm must determine ordinary mode without an unproven handle-property cross-check")
+local malformedLane=preset("Preset malformed lane",0,2,true)
+referenceData[malformedLane][0][1].absolute="10"
+local malformedResult=result({recipe(gOne,malformedLane,1)},fOne)
+check(malformedResult.classification=="INCONCLUSIVE"
+ and string.find(malformedResult.unsafeRefDetails["Preset malformed lane"] or "",
+  "ORDINARY_LANE_VALUE_UNPROVEN(ui=0,layer=ABS,type=string",1,true)~=nil,
+ "unknown ABS value encoding must remain fail-closed with a bounded field-level reason")
 local stopResult=result({recipe(gOne,moving,1),recipe(gOne,static,2)},fOne)
 check(stopResult.classification=="PROVEN" and next(stopResult.refs)==nil,
  "newer static ABS must terminate older moving ABS")
@@ -450,6 +471,30 @@ local groupLines=functions.groupPanelLines(cached.currentGroups)
 check(groupLines[1]=="Groups:" and groupLines[2]=="6 Key" and groupLines[3]=="7 Cell"
  and functions.groupPanelLines({gOne})[1]=="Group: 6 Key",
  "single and multiple current Groups must render number plus name")
+local scanTrackingCalls,scanTrackingOriginal=0,nil
+scanTrackingOriginal=swapUpvalue(functions.render,"scanTracking",function(...)
+ scanTrackingCalls=scanTrackingCalls+1
+ return scanTrackingOriginal(...)
+end)
+local originalReadSelection=swapUpvalue(functions.render,"readSelection",function() return fBoth end)
+local originalReadProgrammer=swapUpvalue(functions.render,"readProgrammer",function()
+ return {feature="Dimmer",preset=moving,attributes={"Dimmer"}}
+end)
+local scanCacheState=state(finalSeq,finalCue,fBoth)
+local cacheRecipe=finalCue:Children()[1]:Children()[1]
+local cacheRecipeValues=cacheRecipe.Values
+functions.render(scanCacheState)
+functions.render(scanCacheState)
+check(scanTrackingCalls==1 and scanCacheState.lastTrackingScanMs==0,
+ "unchanged Recipe structure must reuse the tracking candidate scan between pulse refreshes")
+cacheRecipe.Values=position
+functions.render(scanCacheState)
+check(scanTrackingCalls==2,
+ "Recipe reference relink must invalidate the structural tracking cache")
+cacheRecipe.Values=cacheRecipeValues
+swapUpvalue(functions.render,"scanTracking",scanTrackingOriginal)
+swapUpvalue(functions.render,"readSelection",originalReadSelection)
+swapUpvalue(functions.render,"readProgrammer",originalReadProgrammer)
 local editRecipe=recipe(gOne,moving,1)
 local editSeq,editCue=tree({editRecipe})
 local editState=state(editSeq,editCue,fOne)
@@ -506,6 +551,31 @@ local stagedReads=referenceReads.count
 functions.recipePoolReferences(stagedState)
 check(referenceReads.count==stagedReads,
  "incremental resolver steady state must reuse cached reference metadata")
+local savedFirst,savedNext=_G.SelectionFirst,_G.SelectionNext
+local savedSequence,savedCue,savedCmd=_G.SelectedSequence,_G.GetCurrentCue,_G.Cmd
+local savedPluginState=_G.RecipeTrackingInspectorState
+local groupCommands={}
+_G.SelectionFirst=function() return 101,0,0,0 end
+_G.SelectionNext=function() return nil end
+_G.SelectedSequence=function() return stagedSeq end
+_G.GetCurrentCue=function() return stagedCue end
+_G.Cmd=function(command) groupCommands[#groupCommands+1]=command; return "OK" end
+stagedState.currentGroup=gOne
+stagedState.currentSequence=stagedSeq
+stagedState.currentCue=stagedCue
+stagedState.lastFixtures=fOne
+stagedState.matchingCandidates={}
+_G.RecipeTrackingInspectorState=stagedState
+local readsBeforeGroupClick=referenceReads.count
+assert(type(signals.SelectRecipeTrackingGroup)=="function")
+signals.SelectRecipeTrackingGroup()
+check(#groupCommands==2 and groupCommands[2]=="SelectFixtures Group 6"
+ and stagedState.forceRefresh==true and stagedState.preserveResolverCaches==true
+ and referenceReads.count==readsBeforeGroupClick,
+ "SELECT GROUP must use the already-rendered target without synchronously rerunning Track A")
+_G.SelectionFirst,_G.SelectionNext=savedFirst,savedNext
+_G.SelectedSequence,_G.GetCurrentCue,_G.Cmd=savedSequence,savedCue,savedCmd
+_G.RecipeTrackingInspectorState=savedPluginState
 local tileAlias=object("Preset","Preset 25.9009")
 local button=object("PoolButton","Preset tile",{ObjectIndex=1,W=80,H=80,
  Anchors={left=0,right=0,top=0,bottom=0}})
@@ -525,6 +595,15 @@ functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No",
  "nested Preset Pool tile must receive the existing visible frame0 marker")
+local blinkPhase=markerState.poolBlinkOn
+functions.refreshPoolMarkers(markerState)
+check(markerState.poolBlinkOn==blinkPhase,
+ "pool pulse phase must not advance just because another fast refresh loop ran")
+markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
+functions.refreshPoolMarkers(markerState)
+check(markerState.poolBlinkOn~=blinkPhase
+ and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ "pool pulse must advance on its elapsed-time deadline using the existing theme colors")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
 check(markerState.markerStatus=="1/1 frames",
@@ -538,6 +617,6 @@ functions.render(markerState)
 functions.refreshPoolMarkers(markerState)
 check(overlay.deleted and next(markerState.poolMarkers)==nil
  and #markerState.currentGroups==0 and markerState.currentGroup==nil
- and markerState.currentRecipe==nil and next(markerState.markerReferences)==nil,
+ and markerState.currentRecipe==nil and (not markerState.markerReferences or next(markerState.markerReferences)==nil),
  "Clear must remove Group, Recipe context and frames on the next refresh")
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

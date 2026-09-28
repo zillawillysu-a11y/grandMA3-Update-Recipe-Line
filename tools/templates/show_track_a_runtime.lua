@@ -58,13 +58,6 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_DATA_UNAVAILABLE" end
             return nil
         end
-        local nativeMode=api.safe(function() return ref.PresetMode end)
-        if nativeMode==nil then nativeMode=api.safe(function() return ref:Get("PresetMode") end) end
-        local modeNumber={Selective=1,Global=2,Universal=3}
-        if type(nativeMode)~="string" or not modeNumber[nativeMode] then
-            if rawKey then cache.__failure[rawKey]="ORDINARY_PRESET_MODE_UNPROVEN" end
-            return nil
-        end
         local mode,scope,channels=nil,{},0
         local moving=false
         local knownBits=1|2|4|8|16|32|64|128|256
@@ -78,7 +71,6 @@ local function newTrackARuntime(api)
                 if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
                 if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
                 if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
-                if pm~=modeNumber[nativeMode] then return reject("PRESET_MODE_NATIVE_MISMATCH") end
                 mode=pm
                 if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
                 if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
@@ -119,27 +111,34 @@ local function newTrackARuntime(api)
                 local attr=p.attribute or api.safe(api.attributeByUI,ui)
                 if rawKey then cache.__failure[rawKey]="ORDINARY_ATTRIBUTE_FG_UNPROVEN" end
                 local fg=attrFG(attr)
-                if not fg then return nil end
+                if not fg then return reject("ORDINARY_ATTRIBUTE_FG_UNPROVEN(ui="..tostring(ui)..")") end
                 if rawKey then cache.__failure[rawKey]="ORDINARY_STEP_SHAPE_UNPROVEN" end
                 local steps,n={},0
                 for k,v in pairs(p) do if type(k)=="number" then
-                    if k%1~=0 or k<1 or type(v)~="table" then return nil end
+                    if k%1~=0 or k<1 or type(v)~="table" then
+                        return reject("ORDINARY_STEP_RECORD_SHAPE_UNPROVEN(ui="..tostring(ui)
+                            ..",index="..tostring(k)..",type="..type(v)..")")
+                    end
                     n=n+1; steps[k]=v
                 end end
-                if n==0 or n>256 then return nil end
+                if n==0 or n>256 then return reject("ORDINARY_STEP_COUNT_UNPROVEN(ui="..tostring(ui)..",count="..tostring(n)..")") end
                 local stepKnown={absolute=true,relative=true,absolute_value=true,abs_release=true,rel_release=true,
                     abs_remove=true,rel_remove=true,abs_preset=true,rel_preset=true,integrated=true,accel=true,
                     decel=true,trans=true,transition=true,width=true,channel_function=true,mask_active=true,
                     mask_individual=true,mask_integrated=true,dict_flags=true}
                 for i=1,n do
-                    if not steps[i] then return nil end
+                    if not steps[i] then return reject("ORDINARY_STEP_INDEX_GAP(ui="..tostring(ui)..",index="..tostring(i)..")") end
                     if steps[i].absolute_value~=nil
                         and (type(steps[i].absolute_value)~="number" or type(steps[i].absolute)~="number"
-                            or mask & 2==0) then return nil end
+                            or mask & 2==0) then return reject("ORDINARY_ABSOLUTE_VALUE_SHAPE_UNPROVEN(ui="..tostring(ui)..")") end
                     for k,v in pairs(steps[i]) do
-                        if type(k)=="string" and not stepKnown[k] and v~=nil then return nil end
+                        if type(k)=="string" and not stepKnown[k] and v~=nil then
+                            return reject("ORDINARY_UNKNOWN_STEP_FIELD(ui="..tostring(ui)..",field="..tostring(k)..")")
+                        end
                         if (k=="abs_release" or k=="rel_release" or k=="abs_remove" or k=="rel_remove"
-                            or k=="abs_preset" or k=="rel_preset" or k=="integrated") and v~=nil and v~=false and v~=0 then return nil end
+                            or k=="abs_preset" or k=="rel_preset" or k=="integrated") and v~=nil and v~=false and v~=0 then
+                            return reject("ORDINARY_ACTIVE_STEP_DEPENDENCY(ui="..tostring(ui)..",field="..tostring(k)..")")
+                        end
                     end
                 end
                 local motionBits=4|8|16|32|128|256
@@ -151,34 +150,48 @@ local function newTrackARuntime(api)
                         for i=1,n do
                             local step=steps[i]
                             local value=step and step[field]
-                            if type(value)~="number" or value~=value or math.abs(value)==math.huge then return nil end
+                            if type(value)~="number" then
+                                return reject("ORDINARY_LANE_VALUE_UNPROVEN(ui="..tostring(ui)
+                                    ..",layer="..layer..",type="..type(value)..",mask="..tostring(mask)..")")
+                            end
+                            if value~=value or math.abs(value)==math.huge then
+                                return reject("ORDINARY_LANE_VALUE_NONFINITE(ui="..tostring(ui)
+                                    ..",layer="..layer..",mask="..tostring(mask)..")")
+                            end
                             values[tostring(value)]=true
                         end
                         local channelMoving=phaser & motionBits~=0 or count(values)>1
                         moving=moving or channelMoving
                         local lane=fg.."|"..layer
                         scope[lane]=scope[lane] or {fg=fg,layer=layer,storedUI={},moving=false}
-                        if next(scope[lane].storedUI) and scope[lane].moving~=channelMoving then return nil end
+                        if next(scope[lane].storedUI) and scope[lane].moving~=channelMoving then
+                            return reject("ORDINARY_LANE_CONFLICT(ui="..tostring(ui)..",lane="..lane..")")
+                        end
                         scope[lane].storedUI[ui]=true
                         scope[lane].moving=channelMoving
                     end
                 end
-            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return nil end
-            elseif ui~="count" then return nil end
+            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return reject("BY_FIXTURES_SHAPE_UNPROVEN") end
+            elseif ui~="count" then return reject("ORDINARY_TOP_LEVEL_FIELD_UNPROVEN("..tostring(ui)..")") end
         end
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
-        if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then return nil end
+        if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then
+            return reject("ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels="..tostring(channels)
+                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))..")")
+        end
         -- Static ordinary references require the proven single-step, no-motion
         -- shape. Moving references require explicit motion bits or step change.
         if not moving then
             for _,p in pairs(raw) do if type(p)=="table" and type(p[1])=="table" then
                 local n=0
                 for k in pairs(p) do if type(k)=="number" then n=n+1 end end
-                if n~=1 then return nil end
+                if n~=1 then return reject("ORDINARY_STATIC_STEP_COUNT_UNPROVEN(count="..tostring(n)..")") end
             end end
             for _,lane in pairs(scope) do lane.moving=false end
         else
-            for _,lane in pairs(scope) do if not lane.moving then return nil end end
+            for laneName,lane in pairs(scope) do if not lane.moving then
+                return reject("ORDINARY_MOVING_LANE_CONFLICT(lane="..tostring(laneName)..")")
+            end end
         end
         if rawKey then cache.__failure[rawKey]=nil end
         return {kind="ORDINARY",mode=mode,lanes=scope,raw=raw}
@@ -277,9 +290,7 @@ local function newTrackARuntime(api)
             local meta=referenceCache[key]
             if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
             if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then return nil end
-            local presetMode=api.safe(function() return handle.PresetMode end)
-            if presetMode==nil then presetMode=api.safe(function() return handle:Get("PresetMode") end) end
-            if presetMode~="Global" and presetMode~="Universal" then return nil end
+            if meta.mode~=2 and meta.mode~=3 then return nil end
             for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
             for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
         end

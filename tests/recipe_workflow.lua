@@ -257,11 +257,17 @@ check(marker.Anchors and marker.Anchors.left == buttons[1].Anchors.left
 check(#commands == commandCount, "Markers must never issue Show commands")
 local firstPulseColor = marker.BackColor
 functions.refreshPoolMarkers(state)
-check(marker.Visible == "Yes" and marker.BackColor ~= firstPulseColor,
-    "Markers must pulse color every tick without disappearing")
+check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
+    "Markers must not advance pulse phase before the elapsed-time deadline")
+state.poolBlinkDeadline = functions.clockSeconds() - 0.01
+functions.refreshPoolMarkers(state)
+local secondPulseColor = marker.BackColor
+check(marker.Visible == "Yes" and secondPulseColor ~= firstPulseColor,
+    "Markers must advance phase when the elapsed-time deadline is reached")
+state.poolBlinkDeadline = functions.clockSeconds() - 0.01
 functions.refreshPoolMarkers(state)
 check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
-    "Markers must remain visible through the pulse cycle")
+    "Markers must remain visible and alternate the existing theme colors")
 check(displayLookupCount == 7,
     "Cached Pool grids must avoid repeating the full display-tree traversal")
 -- Recall View can keep old Pool grid handles valid while hiding them. Hidden
@@ -297,6 +303,7 @@ functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
 check(marker.deleted and next(state.poolMarkers) == nil, "Selection change must clean up markers")
 state.currentRecipe = rows[3]
+state.poolMarkersDirty = true
 functions.refreshPoolMarkers(state)
 functions.refreshPoolMarkers(state)
 marker = state.poolMarkers[buttons[1]].overlay
@@ -530,7 +537,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.1.6"}
+local sameInstance = {running = true, version = "0.7.1.7"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
@@ -627,6 +634,7 @@ local groupPulse = purpleState.poolMarkers[buttons[2]].overlay
 check(groupPulse ~= nil and groupPulse.BackColor ~= "GroupedProgLayerActive.Phaser",
     "The current Group must keep its non-purple pulsing Pool frame")
 local groupPulseColor = groupPulse.BackColor
+purpleState.poolBlinkDeadline = functions.clockSeconds() - 0.01
 functions.refreshPoolMarkers(purpleState)
 check(groupPulse.BackColor ~= groupPulseColor,
     "The current Group frame must continue pulsing while Cue Phaser markers are disabled")
