@@ -1,5 +1,6 @@
 -- Rev5 candidate. Rev4 normalize/cache result is immutable before this module runs.
 local function newReferenceMetadataBridge(api)
+ local proof=api.fieldSemantics -- nil for the immutable Rev5 baseline
  local function fields(t,sample)
   local a={}
   for k,v in pairs(t or {}) do
@@ -74,7 +75,7 @@ local function newReferenceMetadataBridge(api)
       measure=true,fade=true,delay=true,selective=true,preset_store_mode=true,grid_origin=true,grid_matrix=true,
       nshot_count=true,nshot_flags=true,speed_master=true}
     for k,v in pairs(p) do
-     if type(k)~='number' and not known[k] then reason(m,'UNKNOWN_PHASER_FIELD_'..tostring(k)) end
+     if type(k)~='number' and not known[k] and not (proof and proof.accept('channel',k,v,p,ui)) then reason(m,'UNKNOWN_PHASER_FIELD_'..tostring(k)) end
      if type(k)=='string' and ({speed=true,phase=true,measure=true,nshot_count=true,abs_generator=true,rel_generator=true,generator=true})[k]
         and v~=nil and v~=0 and v~=false then reason(m,'POSSIBLE_MOTION_FIELD_'..k) end
     end
@@ -86,7 +87,7 @@ local function newReferenceMetadataBridge(api)
      if type(p.dict_flags)~='table' then reason(m,'DICTIONARY_FLAGS_UNPROVEN')
      else for k,v in pairs(p.dict_flags) do if ({blocked=true,blocked_rel=true})[k] then
        if v~=false and v~=0 then reason(m,'BLOCKED_DICTIONARY_LAYER_'..k) end
-      elseif v~=false and v~=0 and v~=nil then reason(m,'UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end end end
+      elseif v~=false and v~=0 and v~=nil and not (proof and proof.accept('dict_flags',k,v,p,ui)) then reason(m,'UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end end end
     end
     if type(p.mask_active_value)=='number' and p.mask_active_value & (1|8|16|32|64)~=0 then reason(m,'ACTIVE_VALUE_SHAPE_MASK_UNPROVEN') end
     if p.dict_index~=nil and not (type(p.dict_index)=='number' and p.dict_index>=0 and p.dict_index%1==0) then reason(m,'DICT_INDEX_SHAPE_UNPROVEN') end
@@ -104,7 +105,7 @@ local function newReferenceMetadataBridge(api)
      local stepKnown={absolute=true,relative=true,abs_release=true,rel_release=true,abs_remove=true,rel_remove=true,
       abs_preset=true,rel_preset=true,integrated=true,accel=true,decel=true,trans=true,transition=true,width=true,
       channel_function=true,mask_active=true,mask_individual=true,mask_integrated=true,dict_flags=true}
-     for k,v in pairs(step) do if not stepKnown[k] and v~=nil then reason(m,'UNKNOWN_STEP_FIELD_'..tostring(k)) end end
+     for k,v in pairs(step) do if not stepKnown[k] and v~=nil and not (proof and proof.accept('step',k,v,p,ui,step)) then reason(m,'UNKNOWN_STEP_FIELD_'..tostring(k)) end end
      for _,spec in ipairs({{'ABS','absolute','abs',2},{'REL','relative','rel',4}}) do
       local layer,value,prefix,bit=table.unpack(spec); local v=step[value]; local release=step[prefix..'_release']
       if v~=nil or release==true then
@@ -128,7 +129,9 @@ local function newReferenceMetadataBridge(api)
   end
   if m.channels==0 then reason(m,'EMPTY_REFERENCE_DATA') end
   if raw.count~=nil and raw.count~=m.channels then reason(m,'COUNT_MISMATCH') end
-  return finish(m)
+  m=finish(m)
+  if proof then proof.ordinary(raw,m) end
+  return m
  end
  local function phaser(ref,structural,dependency)
   local m=result('PHASER_NATIVE_BRIDGE'); local seen={}; local stepValues={}; local recipeCount=0
@@ -176,7 +179,9 @@ local function newReferenceMetadataBridge(api)
       if inherited and finite(inherited.raw) then p=inherited; v=inherited.raw; m.observations['SHAPE_VALUESOURCE_INHERITANCE_'..layer]=true end
      end
      if p and finite(v) then
-      if tonumber(v)==0 and not depLane then reason(m,'ZERO_RAW_LAYER_AMBIGUOUS_'..layer)
+      if tonumber(v)==0 and not depLane and proof and proof.rawLayer(layer,v,linkedMeta,fg,effective,props)=='ABSENT' then
+       m.observations['RAW_'..layer..'_ZERO_NOT_AUTHORED_PROVEN']=true
+      elseif tonumber(v)==0 and not depLane then reason(m,'ZERO_RAW_LAYER_AMBIGUOUS_'..layer)
       elseif linkedMeta and not depLane then reason(m,'LINKED_PRESET_LAYER_MISMATCH_'..layer)
       elseif not finite(effective) and not depLane then reason(m,'EFFECTIVE_LAYER_UNPROVEN_'..layer)
       elseif fg then

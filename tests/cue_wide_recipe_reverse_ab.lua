@@ -164,12 +164,12 @@ r=run(); check(next(r.final)==nil and has('SHAPE_VALUESOURCE_LINK_UNVERIFIED'),'
 p=setup(); local members={}; for i=1,8000 do members[i]=i end
 row(p,group(90,members),phaser(117,nil)); r=run()
 local n=0; for _,line in ipairs(logs) do if line:find('UNRESOLVED Recipe=',1,true) then n=n+1 end end
-check(n==1 and #logs<85 and has('member_count=8000'),'bounded aggregate native output')
+check(n==1 and #logs<120 and has('member_count=8000'),'bounded aggregate native output')
 check(logs[1]:find('START',1,true) and logs[#logs]:find('END',1,true) and has('RESULT classification='),'summary survives large member count')
 -- Detail floods are capped independently from mandatory summaries.
 p=setup(); g=group(1,{1})
 for i=1,600 do local v=phaser(2000+i,nil); row(p,g,v,i) end
-r=run(); check(r.detailsSuppressed>0 and #logs<1200 and has('FAST_PATH_METRICS') and logs[#logs]:find('END',1,true),'detail cap reserves summary')
+r=run(); check(r.detailsSuppressed>0 and #logs<1800 and has('FAST_PATH_METRICS') and logs[#logs]:find('END',1,true),'detail cap reserves summary: '..#logs)
 -- Rev4 end-to-end: opaque native Presets become readable only in metadata phase.
 local oldRead,oldAttribute,oldCompare=env.GetPresetData,env.GetAttributeByUIChannel,env.CompareHandle
 local metadataReads,oracleReads=0,0
@@ -187,7 +187,7 @@ env.GetPresetData=function(target,phasersOnly,byFixtures)
   check(phasersOnly==false and byFixtures==false,'reference call flags')
   metadataReads=metadataReads+1; return references[target.db]
  end
- check(has('METADATA_REVERSE_FINALIZED') and has('BRIDGED_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until bridge finalized')
+ check(has('METADATA_REVERSE_FINALIZED') and has('BRIDGED_REVERSE_FINALIZED') and has('REV6_BRIDGED_REVERSE_FINALIZED') and has('ORACLE_START'),'oracle unavailable until Rev6 finalized')
  oracleReads=oracleReads+1; calls=calls+1; return data[target] or {}
 end
 p=setup(); g=group(701,{11,12}); a=obj('Preset','Preset arbitrary'); a.db=91001
@@ -206,6 +206,10 @@ local cachePos=assert(joinedLogs:find('REFERENCE_METADATA_GETPRESETDATA',1,true)
 local finalizedPos=assert(joinedLogs:find('METADATA_REVERSE_FINALIZED',1,true))
 local oraclePos=assert(joinedLogs:find('ORACLE_START',1,true))
 check(nativePos<cachePos and cachePos<finalizedPos and finalizedPos<oraclePos,'strict three-path finalization order')
+local rev5Pos=assert(joinedLogs:find('REV5_BRIDGE_BASELINE',1,true))
+local rev6Pos=assert(joinedLogs:find('REV6_BRIDGED_REVERSE_FINALIZED',1,true))
+check(finalizedPos<rev5Pos and rev5Pos<rev6Pos and rev6Pos<oraclePos,'Rev6 finalizes after Rev5 and before oracle')
+check(r.rev6OK and r.rev6Final~=nil and r.fastCalls==0,'Rev6 candidate never sees oracle or cooked history')
 -- Aliases across Cues read once, resolve memberships before ref identity collapse.
 p=setup(); metadataReads=0; oracleReads=0
 row(p,group(702,{11,12}),a)
@@ -222,7 +226,7 @@ references[stop.db]={[1]={[1]={absolute=100}}}
 row(secondPart,group(704,{12}),stop,2)
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run(); entry=select(2,next(r.metadata.refs))
 check(entry and entry.members[11] and not entry.members[12] and r.metadata.staticRows==1,'ordinary static metadata terminates partial overlap')
-check(r.fastCalls==0 and logs[1]:find('revision=5_REFERENCE_METADATA_BRIDGE',1,true) and has('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
+check(r.fastCalls==0 and logs[1]:find('revision=6_REFERENCE_FIELD_SEMANTICS_PROOF',1,true) and has('BASELINE_METADATA_FINALIZED revision=4_REFERENCE_METADATA_CACHE'),'native remains zero GetPresetData')
 -- A second run must issue a new metadata read for each distinct reference.
 metadataReads=0; oracleReads=0; logs={}; calls=0; r=run()
 check(metadataReads==2 and r.metadataStats.calls==2,'run-local cache lifetime')

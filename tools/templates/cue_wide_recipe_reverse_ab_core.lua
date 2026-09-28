@@ -55,7 +55,7 @@ local function retainAudit(row,data)
   p.count=p.count+1; p.recipes[row.recipe]=true
  end
 end
-log('START revision=5_REFERENCE_METADATA_BRIDGE target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_BASELINE_METADATA_THEN_BRIDGED_REVERSE_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
+log('START revision=6_REFERENCE_FIELD_SEMANTICS_PROOF target=2.5.0.3 sequence=%s cue=%s order=NATIVE_ONLY_THEN_BASELINE_METADATA_THEN_REV5_BRIDGE_THEN_REV6_SEMANTICS_THEN_ORACLE production_flag=false no_waits=true no_markers=true',desc(sequence),desc(cue))
 local start=now()
 local rows,groups,cues={},{},{}
 local stats={parts=0,rows=0,expansions=0,groups=0}
@@ -384,8 +384,92 @@ for _,older in ipairs(bridgeResult.rejected or {}) do
  end end
 end
 log('BRIDGED_REJECTED_SUMMARY moving_rows_with_supersession=%d shown_overlap_groups=%d',#(bridgeResult.rejected or {}),bridgeRejectedShown)
+log('REV5_BRIDGE_BASELINE finalized=true refs=%d COMPLETE=%d PARTIAL=%d UNKNOWN=%d',count(bridgeFinal),bridgeStats.complete,bridgeStats.partial,bridgeStats.unknown)
+phase='SEMANTICS'
+local semanticsStart=now()
+local proof=newReferenceFieldSemantics({identity=metadataCache.identity})
+local rev6Bridge=newReferenceMetadataBridge({safe=safe,class=class,isObject=isObjectReference,identity=metadataCache.identity,
+ metadata=auditor.metadata,desc=path,attributeByUIChannel=_G.GetAttributeByUIChannel,fieldSemantics=proof})
+local rev6ByIdentity,rev6Rows,rev6Result,rev6Final={},{},{},{}
+local rev6Stats={ordinary=0,linked=0,phaser=0,complete=0,partial=0,unknown=0,static=0,ordinaryStatic=0,linkedStatic=0,moving=0}
+local rev6OK,rev6Error=pcall(function()
+ local refs={}
+ for _,row in ipairs(rows) do if row.ref then local key=metadataCache.identity(row.ref); if key and not refs[key] then refs[key]=row end end end
+ local dependencyCache={}
+ local function ordinary(ref,linked)
+  local key=metadataCache.identity(ref)
+  if not key then return {features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={STABLE_IDENTITY_UNAVAILABLE=true}} end
+  local raw=metadataCache.raw[key]
+  if raw==nil then return {features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={REFERENCE_CACHE_MISS=true}} end
+  proof.observe(ref,raw)
+  local m=rev6Bridge.ordinary(raw)
+  if linked then
+   rev6Stats.linked=rev6Stats.linked+1
+   if m.completeness=='COMPLETE' and m.motion=='STATIC' then rev6Stats.linkedStatic=rev6Stats.linkedStatic+1 end
+  else
+   rev6Stats.ordinary=rev6Stats.ordinary+1
+   if m.completeness=='COMPLETE' and m.motion=='STATIC' then rev6Stats.ordinaryStatic=rev6Stats.ordinaryStatic+1 end
+  end
+  return m
+ end
+ local function dependency(ref)
+  local key=metadataCache.identity(ref)
+  if not key then return ordinary(ref,true) end
+  if not dependencyCache[key] then dependencyCache[key]=ordinary(ref,true) end
+  return dependencyCache[key]
+ end
+ for key,row in pairs(refs) do
+  local raw=metadataCache.raw[key]; local info
+  if type(raw)=='table' and next(raw)~=nil and (row.structural or {}).sourceCount==0 then info=ordinary(row.ref,false)
+  elseif row.structural and row.structural.recipeCount>0 then
+   info=rev6Bridge.phaser(row.ref,row.structural,dependency); rev6Stats.phaser=rev6Stats.phaser+1
+  else info=ordinary(row.ref,false) end
+  rev6ByIdentity[key]=info
+  rev6Stats[info.completeness:lower()]=rev6Stats[info.completeness:lower()]+1
+  if info.motion=='STATIC' then rev6Stats.static=rev6Stats.static+1 end
+  if info.motion=='MOVING' then rev6Stats.moving=rev6Stats.moving+1 end
+ end
+ for _,row in ipairs(rows) do
+  local key=row.ref and metadataCache.identity(row.ref)
+  local info=key and rev6ByIdentity[key] or {features={},layers={},lanes={},motion='UNSAFE',completeness='UNKNOWN',evidence={REFERENCE_UNAVAILABLE=true}}
+  local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,members=row.members,
+   features=info.features,layers=info.layers,lanes=info.lanes,moving=info.motion=='MOVING' or info.motion=='GENERATOR',unsafe={},evidence=joined(info.evidence)}
+  if not copy.members then copy.unsafe[#copy.unsafe+1]='FAST_PATH_UNSAFE_SELECTION' end
+  if info.completeness~='COMPLETE' then
+   copy.unsafe[#copy.unsafe+1]='REV6_REFERENCE_UNSAFE'
+   if not info.featureScopeKnown or not next(info.features or {}) then copy.features=nil end
+   if not info.layerScopeKnown or not next(info.layers or {}) then copy.layers=nil end
+  end
+  rev6Rows[#rev6Rows+1]=copy
+ end
+end)
+local semanticsElapsed=ms(semanticsStart,now())
+local rev6ReverseStart=now()
+if rev6OK then rev6OK,rev6Error=pcall(function() rev6Result=recipeReverseResolve(rev6Rows) end) end
+local rev6ReverseElapsed=ms(rev6ReverseStart,now())
+rev6Result=rev6Result or {refs={},unsafe={}}
+for rid,entry in pairs(rev6Result.refs) do rev6Final[rid]=entry.ref end
+local rev6Audit=proof.summary()
+local fieldCount,patternCount=0,0
+for _ in pairs(rev6Audit.fields) do fieldCount=fieldCount+1 end
+for _ in pairs(rev6Audit.patterns) do patternCount=patternCount+1 end
+log('REFERENCE_FIELD_SEMANTICS_SUMMARY fields=%d record_patterns=%d ordinary_references=%d linked_references=%d',fieldCount,patternCount,rev6Stats.ordinary,rev6Stats.linked)
+for field,d in pairs(rev6Audit.fields) do
+ local c=rev6Audit.classifications[field]
+ local samples={}; for value,n in pairs(d.samples) do samples[#samples+1]=value..':'..n end; table.sort(samples)
+ log('FIELD_SEMANTICS field=%s classification=%s channels=%d presets=%d varies_channels=%s varies_presets=%s types=%s values=%s evidence=%s',field,c[1],d.channels,count(d.refs),text(d.variesWithinPreset),text(d.variesAcrossPresets),joined(d.types),text(table.concat(samples,',')),text(c[2]))
+end
+local rawStateList={}; for state,n in pairs(rev6Audit.rawStates) do rawStateList[#rawStateList+1]=state..':'..n end; table.sort(rawStateList)
+log('RAW_LAYER_SEMANTICS_SUMMARY states=%s raw_zero_encoding_unproven=true',table.concat(rawStateList,','))
+log('ORDINARY_STATIC_PROOF_SUMMARY ordinary=%d static_proven=%d',rev6Stats.ordinary,rev6Stats.ordinaryStatic)
+log('LINKED_PRESET_COMPLETENESS_SUMMARY linked_normalized=%d linked_static_complete=%d unique_native_reference_reads=%d extra_GetPresetData_calls=0',rev6Stats.linked,rev6Stats.linkedStatic,metadataCache.stats.calls)
+log('PHASER_MOTION_PROOF_SUMMARY phaser_references=%d motion_proven=%d',rev6Stats.phaser,rev6Stats.moving)
+log('REV6_BRIDGED_METADATA_SUMMARY COMPLETE=%d PARTIAL=%d UNKNOWN=%d semantics_ms=%s cache_reused=true',rev6Stats.complete,rev6Stats.partial,rev6Stats.unknown,text(semanticsElapsed))
+log('REV6_BRIDGED_REVERSE_FINALIZED valid=%s refs=%d error=%s rows=%d lanes=%d static_terminators=%d moving_rows=%d unsafe_rows=%d reverse_ms=%s',text(rev6OK),count(rev6Final),text(rev6Error),#rev6Rows,rev6Result.lanesResolved or 0,rev6Result.staticRows or 0,rev6Result.movingRows or 0,#rev6Result.unsafe,text(rev6ReverseElapsed))
+identityOutput('REV6_BRIDGED_REVERSE_FINAL',rev6Final)
+for _,entry in pairs(rev6Result.refs) do log('REV6_ACTIVE reference=%s surviving_member_count=%d',desc(entry.ref),count(entry.members)) end
 phase='ORACLE'
-log('ORACLE_START native_finalized=true metadata_finalized=true bridge_finalized=true')
+log('ORACLE_START native_finalized=true metadata_finalized=true rev5_bridge_finalized=true rev6_finalized=true')
 local oracleLogs=0
 oracleLogSink=function(line)
  oracleLogs=oracleLogs+1
@@ -485,7 +569,26 @@ for _,row in ipairs(bridgeRows) do if (bridgedMissing[row.refId] or bridgedExtra
 end end
 log('BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count(bridgedMissing) or 'UNVERIFIED',oracleOK and count(bridgedExtra) or 'UNVERIFIED',joined(bridgedClassifications))
 log('BRIDGED_RESULT classification=%s refs=%d oracle_refs=%d unsafe_rows=%d safe_integration=false',joined(bridgedClassifications),count(bridgeFinal),count(oracle),#bridgeResult.unsafe)
+local rev6Missing,rev6Extra,rev6Classes={},{},{}
+if not rev6OK or not oracleOK or not stable then rev6Classes.UNVERIFIED=true
+else
+ for rid,ref in pairs(oracle) do if not rev6Final[rid] then rev6Missing[rid]=ref end end
+ for rid,ref in pairs(rev6Final) do if not oracle[rid] then rev6Extra[rid]=ref end end
+ if not next(rev6Missing) and not next(rev6Extra) then rev6Classes.REV6_BRIDGED_EXACT_MATCH=true end
+ if next(rev6Missing) then rev6Classes.REV6_BRIDGED_MISSING_REFERENCE=true end
+ if next(rev6Extra) then rev6Classes.REV6_BRIDGED_EXTRA_REFERENCE=true end
+end
+if #rev6Result.unsafe>0 or rev6Stats.partial>0 or rev6Stats.unknown>0 then rev6Classes.REV6_REFERENCE_UNSAFE=true end
+identityOutput('REV6_BRIDGED_DIFF_MISSING',rev6Missing,16)
+identityOutput('REV6_BRIDGED_DIFF_EXTRA',rev6Extra,16)
+local rev6DiffShown=0
+for _,row in ipairs(rev6Rows) do if (rev6Missing[row.refId] or rev6Extra[row.refId]) and rev6DiffShown<25 then
+ rev6DiffShown=rev6DiffShown+1
+ detail('REV6_BRIDGED_DIFF_SOURCE reference=%s Cue=%s Part=%s Recipe=%s Group=%s feature=%s layer=%s members=%d sample=%s reasons=%s',desc(row.ref),desc(row.cue),desc(row.part),desc(row.recipe),desc(row.group),joined(row.features),joined(row.layers),count(row.members),sample(row.members),text(row.evidence))
+end end
+log('REV6_BRIDGED_DIFF missing=%s extra=%s classification=%s',oracleOK and count(rev6Missing) or 'UNVERIFIED',oracleOK and count(rev6Extra) or 'UNVERIFIED',joined(rev6Classes))
+log('REV6_RESULT classification=%s refs=%d oracle_refs=%d unsafe_rows=%d safe_integration=false',joined(rev6Classes),count(rev6Final),count(oracle),#rev6Result.unsafe)
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
-return {bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
+return {rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleCalls=oracleCalls,fastOK=ok,oracleOK=oracleOK,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
 end
