@@ -2099,6 +2099,39 @@ function __rev13GlobalApplicability(raw, control, staticProof, groupScope, compa
  return out
 end
 
+-- Resolve the configured pool addresses to native handles, then compare only
+-- stable reference identities. Display descriptions are never identity keys.
+function __rev13SelectGlobalTargets(paths, objectList, identity, class, records)
+ local out={entries={},found=0,missing={},duplicates={}}
+ local owners={}
+ for _,path in ipairs(paths) do
+  local ok,list=pcall(objectList,path)
+  local entry={path=path,rows={}}
+  out.entries[#out.entries+1]=entry
+  if not ok or type(list)~='table' or #list~=1 then out.missing[#out.missing+1]=path
+  else
+   local ref=list[1]
+   local key=identity(ref)
+   if class(ref)~='Preset' or not key then out.missing[#out.missing+1]=path
+   elseif owners[key] then out.duplicates[#out.duplicates+1]=path
+   else entry.key=key; entry.ref=ref; owners[key]=entry end
+  end
+ end
+ for _,rec in ipairs(records or {}) do
+  if rec.category=='FINAL_SURVIVING_UNSAFE' then
+   local key=rec.ref and identity(rec.ref)
+   local entry=key and owners[key]
+   if entry then entry.rows[#entry.rows+1]=rec.row end
+  end
+ end
+ for _,entry in ipairs(out.entries) do
+  if entry.key and #entry.rows>0 then out.found=out.found+1
+  elseif entry.key then out.missing[#out.missing+1]=entry.path end
+ end
+ out.pass=out.found==#paths and #out.missing==0 and #out.duplicates==0
+ return out
+end
+
 -- Rev7 observation only. No value-zero inference enters the candidate.
 local function newRawRelZeroAudit(api)
  local patterns,order,states,linkedCache={},{},{REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0},{}
@@ -2908,37 +2941,33 @@ if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%
 -- grid A/B observation covers its tested fixture/attribute class, not Cue 8.
 local rev13OK,rev13=pcall(function()
  local start=now()
- local targets={['Preset 4.1']=true,['Preset 4.4']=true,['Preset 4.23']=true,['Preset 6.10']=true,['Preset 21.5']=true}
- local byLabel,control={},nil
- for _,row in ipairs(rev6Result.rev7.rows or {}) do
-  local label=desc(row.ref)
-  if label=='Preset 4.4' then control=metadataCache.raw[metadataCache.identity(row.ref)] end
- end
- for _,rec in ipairs(attribution.rows or {}) do
-  local label=desc(rec.ref)
-  if rec.category=='FINAL_SURVIVING_UNSAFE' and targets[label] then
-   local entry=byLabel[label] or {rows={},ref=rec.ref}; byLabel[label]=entry
-   entry.rows[#entry.rows+1]=rec.row
-  end
- end
+ local paths={'Preset 4.1','Preset 4.4','Preset 4.23','Preset 6.10','Preset 21.5'}
+ local selected=__rev13SelectGlobalTargets(paths,_G.ObjectList,metadataCache.identity,class,attribution.rows)
+ local control
+ for _,entry in ipairs(selected.entries) do if entry.path=='Preset 4.4' and entry.key then control=metadataCache.raw[entry.key] end end
  local eligible,eligibleCount={},0
- local labels={}; for label in pairs(byLabel) do labels[#labels+1]=label end; table.sort(labels)
- for _,label in ipairs(labels) do
-  local entry=byLabel[label]; local key=metadataCache.identity(entry.ref)
-  local raw=metadataCache.raw[key]
-  local static=attribution.ordinaryProof and attribution.ordinaryProof.proofs and attribution.ordinaryProof.proofs[key]
+ local classified=0
+ for _,entry in ipairs(selected.entries) do
+  local label,key=entry.path,entry.key
+  local raw=key and metadataCache.raw[key]
+  local static=key and attribution.ordinaryProof and attribution.ordinaryProof.proofs and attribution.ordinaryProof.proofs[key]
   local scope=true
   for _,row in ipairs(entry.rows) do if not row.members or not next(row.members) then scope=false end end
   -- The reference cache has no cooked fixture/attribute compatibility evidence
   -- for these Cue 8 rows. Do not transfer the A/B result by shape alone.
-  local p=__rev13GlobalApplicability(raw,control,static,scope and entry.rows[1].members or nil,false)
-  local info=rev6ByIdentity[key]
+  local p=__rev13GlobalApplicability(raw,control,static,scope and entry.rows[1] and entry.rows[1].members or nil,false)
+  if not key or #entry.rows==0 then p.reasons.TARGET_MISSING_OR_NOT_FINAL_SURVIVING=true end
+  local info=key and rev6ByIdentity[key]
   if not info or not info.featureScopeKnown or not next(info.features or {}) or not next(info.layers or {}) then p.reasons.FEATURE_OR_LAYER_SCOPE_UNPROVEN=true end
-  local allowed=next(p.reasons)==nil
+  local allowed=selected.pass and next(p.reasons)==nil
   if allowed then for _,row in ipairs(entry.rows) do eligible[row]=true; eligibleCount=eligibleCount+1 end end
+  if key and #entry.rows>0 then classified=classified+1 end
   log('GLOBAL_APPLICABILITY_CLASS reference=%s rows=%d store_mode=%s selective=%s motion_static_proven=%s grid_mask_shape=%s individual_mask_shape=%s value_mask_shape=%s effective_step_shape=%s layer=%s semantic_shape=%s matches_native_proven_class=%s remaining_reasons=%s',
    label,#entry.rows,joined(p.modes),joined(p.selective),text(static and static.motionStaticProven),joined(p.gridMasks),joined(p.individualMasks),joined(p.valueMasks),joined(p.steps),joined(p.layers),p.semanticShape,text(allowed),joined(p.reasons))
  end
+ local targetPass=selected.pass and classified==#paths
+ log('REV13_GLOBAL_TARGET_SUMMARY expected=%d found=%d classified=%d missing_targets=%s duplicate_targets=%s pass=%s',
+  #paths,selected.found,classified,table.concat(selected.missing,','),table.concat(selected.duplicates,','),text(targetPass))
  local alternateRows={}
  for _,row in ipairs(rev6Result.rev7.rows or {}) do
   local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,
@@ -2963,7 +2992,7 @@ local rev13OK,rev13=pcall(function()
  log('REV13_GLOBAL_ALTERNATE refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d final_surviving_unsafe=%d static_terminators=%d eligible_global_rows=%d classification=%s diagnostic_only=true alternate_ms=%s',
   count(final),count(oracle),oracleOK and tostring(missing) or 'UNVERIFIED',oracleOK and tostring(extra) or 'UNVERIFIED',
   #result.unsafe,alt.finalSurviving or 0,result.staticRows or 0,eligibleCount,
-  oracleOK and missing==0 and extra==0 and 'EXACT_MATCH' or 'INCONCLUSIVE',text(ms(start,now())))
+  targetPass and oracleOK and missing==0 and extra==0 and 'EXACT_MATCH' or 'INCONCLUSIVE',text(ms(start,now())))
  local remaining={}
  for _,rec in ipairs(alt.rows or {}) do if rec.category=='FINAL_SURVIVING_UNSAFE' then
   local label=desc(rec.ref); remaining[label]=(remaining[label] or 0)+1 end end

@@ -61,3 +61,36 @@ function __rev13GlobalApplicability(raw, control, staticProof, groupScope, compa
  out.semanticShape=next(candidateSet) and (sameShape and 'CONTROL_SIGNATURE_SUBSET' or 'DIFFERENT_FROM_CONTROL') or 'UNPROVEN'
  return out
 end
+
+-- Resolve the configured pool addresses to native handles, then compare only
+-- stable reference identities. Display descriptions are never identity keys.
+function __rev13SelectGlobalTargets(paths, objectList, identity, class, records)
+ local out={entries={},found=0,missing={},duplicates={}}
+ local owners={}
+ for _,path in ipairs(paths) do
+  local ok,list=pcall(objectList,path)
+  local entry={path=path,rows={}}
+  out.entries[#out.entries+1]=entry
+  if not ok or type(list)~='table' or #list~=1 then out.missing[#out.missing+1]=path
+  else
+   local ref=list[1]
+   local key=identity(ref)
+   if class(ref)~='Preset' or not key then out.missing[#out.missing+1]=path
+   elseif owners[key] then out.duplicates[#out.duplicates+1]=path
+   else entry.key=key; entry.ref=ref; owners[key]=entry end
+  end
+ end
+ for _,rec in ipairs(records or {}) do
+  if rec.category=='FINAL_SURVIVING_UNSAFE' then
+   local key=rec.ref and identity(rec.ref)
+   local entry=key and owners[key]
+   if entry then entry.rows[#entry.rows+1]=rec.row end
+  end
+ end
+ for _,entry in ipairs(out.entries) do
+  if entry.key and #entry.rows>0 then out.found=out.found+1
+  elseif entry.key then out.missing[#out.missing+1]=entry.path end
+ end
+ out.pass=out.found==#paths and #out.missing==0 and #out.duplicates==0
+ return out
+end

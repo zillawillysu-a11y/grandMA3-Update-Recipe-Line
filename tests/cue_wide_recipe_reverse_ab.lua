@@ -399,6 +399,27 @@ check(has('ORDINARY_STATIC_PROOF reference=Preset ordinary static') and has('pro
 check(r.attribution.ordinaryProof.alternate==nil,'no alternate when no eligible unsafe row exists')
 check(r.rev7Final and next(r.rev7Final)==nil,'Rev7 final reference set unchanged by observer')
 check(has('REV13_GLOBAL_ALTERNATE refs=0') and has('eligible_global_rows=0'),'Rev13 alternate does not alter baseline refs')
+-- Rev13 target identity survives the native description's [#...] suffix.
+p=setup(); metadataReads=0; oracleReads=0
+for i,path in ipairs({'Preset 4.1','Preset 4.4','Preset 4.23','Preset 6.10','Preset 21.5'}) do
+ local ref=obj('Preset',path); ref.db=92000+i; registry[path]=ref
+ references[ref.db]={[1]={[1]={absolute=50},mask_active_value=2,mask_active_phaser=64,
+  mask_individual=64,preset_store_mode=2,selective=false}}
+ row(p,group(800+i,{100+i}),ref,i)
+end
+data[p]={}
+r=run()
+local classCount=0
+for _,line in ipairs(logs) do if line:find('GLOBAL_APPLICABILITY_CLASS reference=',1,true) then classCount=classCount+1 end end
+check(classCount==5 and has('REV13_GLOBAL_TARGET_SUMMARY expected=5 found=5 classified=5'),'all five canonical targets classified despite description suffix')
+check(has('duplicate_targets= pass=true'),'Rev13 target sanity passes')
+check(next(r.rev7Final)==nil,'Rev7 baseline final refs unchanged by target selection')
+registry['Preset 4.23']=nil
+r=run()
+check(has('REV13_GLOBAL_TARGET_SUMMARY expected=5 found=4 classified=4') and has('classification=INCONCLUSIVE diagnostic_only=true'),'missing target fails Rev13 alternate closed')
+registry['Preset 4.23']=registry['Preset 4.4']
+r=run()
+check(has('duplicate_targets=Preset 4.23 pass=false') and has('classification=INCONCLUSIVE diagnostic_only=true'),'duplicate target fails Rev13 alternate closed')
 p=setup(); metadataReads=0; oracleReads=0
 local selectiveOrdinary=obj('Preset','Preset selective ordinary'); selectiveOrdinary.db=91028
 references[selectiveOrdinary.db]={[1]={[1]={absolute=50},mask_active_value=2,

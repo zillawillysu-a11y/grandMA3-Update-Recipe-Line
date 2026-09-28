@@ -6,11 +6,11 @@ Native validate the diagnostic-only Rev13 Global ordinary applicability classifi
 
 ## Current Working State
 
-The controlled Global Grid A/B probe passed natively. Rev13 now inspects final-surviving Global ordinary refs using cached metadata, comparing their semantic signatures with Preset 4.4. Fixture/Attribute compatibility for Cue 8 is not established by the A/B test, so this independent gate remains fail-closed and no row is promoted on shape alone. Rev13 computes an isolated alternate and leaves baseline Rev7 untouched. Native Rev13 validation is pending.
+The controlled Global Grid A/B probe passed natively. Rev13 target selection now resolves five Preset paths to native handles and joins by `metadataCache.identity`, with exactly-five sanity output. Missing or duplicate targets make its alternate INCONCLUSIVE. The classifier and fixture/Attribute compatibility gate are unchanged; Rev7 remains untouched. Native rerun is pending.
 
 ## Latest Real-World User Test
 
-Global Grid A/B native run passed: same seven canonical members, different grid hashes, `GLOBAL_AB_PRECHECK pass=true`, `GRID_NO_OBSERVED_MEMBER_EFFECT`, 42 comparable attributes, 21 absent on both sides, and all seven members with comparable Preset 4.4 links. This only establishes the controlled Preset 4.4 / fixture type case.
+Latest Rev13 native Cue 8 run: Rev7 remained four refs, missing=0, extra=0, final-surviving unsafe=19. Rev13 alternate reported zero eligible rows and 19 survivors, but printed no `GLOBAL_APPLICABILITY_CLASS`. Native `desc(ref)` includes a `[#...]` suffix, so full display-string equality missed all five targets.
 
 ## Verified Facts
 
@@ -21,7 +21,7 @@ Global Grid A/B native run passed: same seven canonical members, different grid 
 
 ## Current Problem
 
-Rev13 native Cue 8 metadata shapes and fixture/attribute compatibility remain to be reviewed. No production gate change is authorized.
+Rev13 must natively confirm all five targets are found/classified. The corrected target wiring is locally tested, not yet native verified. No production gate change is authorized.
 
 ## Known Failed Attempts
 
@@ -38,8 +38,8 @@ Treating Global grid/individual metadata as automatically harmless has no native
 
 ## Current Branch / Commit
 
-`origin/qwen` atop baseline `4ceef49a`; the older dirty `qwen` worktree is untouched.
+`origin/qwen` atop baseline `4e098ed`; the older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8 and review each `GLOBAL_APPLICABILITY_CLASS`, `REV13_GLOBAL_ALTERNATE`, and remaining unsafe refs. Determine what additional native compatibility evidence is needed before any promotion.
+Run the updated independent Cue-wide diagnostic on grandMA3 2.5.0.3 Cue 8. Confirm `REV13_GLOBAL_TARGET_SUMMARY expected=5 found=5 classified=5 pass=true`, five `GLOBAL_APPLICABILITY_CLASS` lines, and unchanged Rev7 results. Review shape reasons before any further rule.
