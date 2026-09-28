@@ -48,11 +48,6 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]=reason end
             return nil
         end
-        local function short(value)
-            if value==nil then return "nil" end
-            if type(value)=="table" then return "table" end
-            return tostring(value):gsub("[%c%s]","_"):sub(1,24)
-        end
         if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
@@ -82,9 +77,7 @@ local function newTrackARuntime(api)
                 if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
                 if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
                 if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
-                if pm~=modeNumber[nativeMode] then
-                    return reject("PRESET_MODE_NATIVE_MISMATCH(pm="..short(pm)..",PresetMode="..short(nativeMode)..")")
-                end
+                if pm~=modeNumber[nativeMode] then return reject("PRESET_MODE_NATIVE_MISMATCH") end
                 mode=pm
                 if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
                 if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
@@ -169,8 +162,8 @@ local function newTrackARuntime(api)
                         scope[lane].moving=channelMoving
                     end
                 end
-            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return reject("BY_FIXTURES_SHAPE") end
-            elseif ui~="count" then return reject("TOP_LEVEL_KEY_"..tostring(ui)) end
+            elseif ui=="by_fixtures" then if raw.by_fixtures~=false then return nil end
+            elseif ui~="count" then return nil end
         end
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
         if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then return nil end

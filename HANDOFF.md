@@ -2,34 +2,33 @@
 
 ## Current Goal
 
-Keep the Group UI and marker pulse responsive while the native-proven Track A resolver reads references; resolve remaining ordinary metadata blockers.
+Fix native Group and Recipe Pool markers plus selection response in grandMA3 2.5.0.3 without weakening Track A reference gates.
 
 ## Current Working State
 
-`C:\tmp\show-rel` is authoritative. v0.7.1.5 candidate incrementally resumes Track A in a coroutine, yielding after each native `GetPresetData` and `GetUIChannels` read. Pulse color now follows elapsed-time schedule; Pool discovery remains bounded at 500 ms unless dirty. `SELECT GROUP` preserves metadata caches while recomputing changed selection context. The panel shows exact ordinary header failure fields and reports per-slice plus total resolver time. Marker look, canonical member keys, and fail-closed reference gate remain.
+`C:\tmp\show-rel` is authoritative. v0.7.1.4 keeps Track A fail closed, canonical Fixture/SubFixture/Cell identity, original `frame0` theme marker appearance, and Cue Phaser scanner disabled. On selection change the panel and known displayed Recipe Group are painted first; expensive reference resolution runs on the next normal tick with old refs cleared. Ordinary header failures now identify the exact rejected native field or mask. Source/deployed hashes and backup are available from the deployment record and Git. Offline release checks passed.
 
 ## Latest Real-World User Test
 
-v0.7.1.4 native screenshot: Group 231 frame appears immediately, then pulse and SELECT GROUP response pause about 600 ms. Tracking measured 82 ms, resolver 612 ms. Parser reports ordinary `PresetMode` mismatch for Preset 1.1 and channel-shape failure for Preset 25.9010. The user confirms the pulse waits until resolver finishes. No v0.7.1.5 native test yet.
+v0.7.1.3 native screenshot: Group 231 lights, but after a noticeable delay. Panel shows 3 selected fixtures, `UNSAFE_LANE_ATTRIBUTION_BLOCKER`, ordinary Presets 1.1 and 25.9010 rejected at `ORDINARY_CHANNEL_HEADER_UNPROVEN`. Measured native timing: selection 0.0 ms, tracking about 67 ms, group 0.0 ms, resolver about 612 ms, Pool 0.0 ms. User says no further native steps needed for that screenshot.
 
 ## Verified Facts
 
-- The synchronous resolver was inside the UI loop. v0.7.1.5 now yields at native metadata reads; offline coroutine test proves it resumes to the same synthetic final ref.
-- `SELECT GROUP` previously set `forceRefresh`, clearing reference and member caches. It now preserves those caches for this action.
-- Flash rate previously toggled once per loop, so synchronous work changed its cadence. v0.7.1.5 schedules 250 ms color toggles and 500 ms Pool lookups.
-- Offline validation: 86 workflow checks, 107 show candidate checks, synthetic four refs exact; Lua/XML parse, deterministic build, and diff check pass.
-- Native ordinary mode disagreement is still unresolved. v0.7.1.5 reports `pm` and object `PresetMode` values in its bounded blocker detail; do not remove consistency checks without examining them.
+- One Group tile can be framed independently of unresolved Recipe Values. Preset/EFX frames remain absent because resolver returns INCONCLUSIVE.
+- The first panel update was delayed by synchronous Track A metadata resolution inside `render()`. v0.7.1.4 defers only that resolution one tick, clears stale refs on the context-change tick, and frames the displayed Group immediately. Native response time is not yet measured after this patch.
+- All ordinary header checks still fail closed; v0.7.1.4 replaces a broad stage code with specific field-level reasons. No native rule was relaxed.
+- Two-Group source attribution remains unresolved; old `scanTracking()` is single-source and name/subset heuristics cannot safely prove both current Groups.
+- Offline: 86 workflow assertions and 105 show candidate checks pass, synthetic four refs exact; Lua/XML parse, deterministic build, and diff check pass.
 
 ## Current Problem
 
-Need test coroutine scheduling, SELECT GROUP cache behavior, pulse cadence, and detailed ordinary parser reasons in grandMA3. Recipe refs remain fail closed; two-Group context is not yet solved.
+Native ordinary header rejection detail is needed to correct the production parser. The two-Group UI and actual Preset/EFX frames still require semantic proof. Do not claim show-ready.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
 - `tools/templates/show_track_a_runtime.lua`
 - `tests/show_candidate.lua`
-- `tests/recipe_workflow.lua`
 - `recipe_update_diagnostic.xml`
 
 ## Current Branch / Commit
@@ -38,4 +37,4 @@ Detached `C:\tmp\show-rel` worktree on origin/qwen; inspect Git status and log.
 
 ## Exact Next Action
 
-Deploy/test v0.7.1.5 on the same Cue 8 selection. Verify steady pulse while resolver is pending and SELECT GROUP does not restart all reference reads. Capture `Blocked refs:` and expanded `Timing ms:` including resolver slice/total values. Use those details to finish parsing ordinary native metadata.
+Load v0.7.1.4 in grandMA3. Select the same three fixtures in Cue 8 once; check whether Group 231 appears before the resolver settles and capture one panel screenshot showing the new detailed `Blocked refs:` reason. Use that exact native field result to correct metadata parsing; do not guess. Then address the two-Group display and remaining delay with measured evidence.
