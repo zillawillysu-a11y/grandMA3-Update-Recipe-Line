@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.8"
+local PLUGIN_VERSION = "0.7.1.9"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -16,6 +16,7 @@ local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
+local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -3877,7 +3878,9 @@ local function main()
             local effectsOK = pcall(refreshCueEffects, state, true)
             if not effectsOK then state.activeEffects, state.effectScanner = {}, nil end
         end
-        coroutine.yield(REFRESH_SECONDS)
+        local pendingResolver=state.provenSources
+            and state.provenSources.classification=="PENDING"
+        coroutine.yield(pendingResolver and PENDING_RESOLVER_REFRESH_SECONDS or REFRESH_SECONDS)
     end
 
     clearPoolMarkers(state)
