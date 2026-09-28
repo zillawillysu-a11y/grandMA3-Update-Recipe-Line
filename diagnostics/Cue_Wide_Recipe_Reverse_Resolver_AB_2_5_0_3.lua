@@ -1930,6 +1930,88 @@ end
  return {accept=accept,ordinary=ordinary,rawLayer=rawLayer,observe=observe,summary=summary,attributeUnsafe=attributeUnsafe}
 end
 
+-- Rev12 observer only. Static motion evidence is independent of member mapping.
+function __rev12OrdinaryStaticInspect(raw)
+  local out={channels=0,activeValue=0,activePhaser=0,steps={},layers={},modes={},selective={},reasons={}}
+  local function block(s) out.reasons[s]=true end
+  if type(raw)~='table' then block('REFERENCE_DATA_UNAVAILABLE'); return out end
+  for ui,p in pairs(raw) do
+   if ui=='count' then
+    if type(p)~='number' then block('INVALID_COUNT') end
+   elseif ui=='by_fixtures' then
+    if p~=false then block('NOT_UI_CHANNEL_INDEXED') end
+   elseif type(ui)~='number' or type(p)~='table' then block('UNSUPPORTED_TOP_LEVEL')
+   else
+    out.channels=out.channels+1
+    if out.channels>262144 then block('CHANNEL_LIMIT'); break end
+    local mask=p.mask_active_value
+    if type(mask)~='number' or math.type(mask)~='integer' or mask & ~(2|4)~=0 or mask & (2|4)==0 then block('ACTIVE_VALUE_MASK_UNPROVEN')
+    else out.activeValue=out.activeValue+1 end
+    if p.mask_active_phaser~=0 then out.activePhaser=out.activePhaser+1; block('ACTIVE_PHASER_MASK_NOT_ZERO') end
+    if p.mask_cooked~=nil and p.mask_cooked~=0 then block('COOKED_MASK_UNPROVEN') end
+    for _,k in ipairs({'speed','phase','measure','nshot_count','fade','delay','speed_master','abs_generator','rel_generator','generator','abs_preset','rel_preset'}) do
+     if p[k]~=nil and p[k]~=false and p[k]~=0 then block('MOTION_OR_DEPENDENCY_'..k) end
+    end
+    for k,v in pairs(p) do
+     if type(k)=='string' and not ({attribute=true,abs_preset=true,rel_preset=true,abs_generator=true,rel_generator=true,generator=true,
+      mask_active_phaser=true,mask_active_value=true,mask_cooked=true,mask_individual=true,mask_integrated=true,
+      dict_flags=true,dict_index=true,gridposmatr=true,gridpos=true,grid=true,phase=true,speed=true,measure=true,
+      fade=true,delay=true,selective=true,preset_store_mode=true,pm=true,ui_channel_index=true,
+      grid_origin=true,grid_matrix=true,nshot_count=true,nshot_flags=true,speed_master=true})[k] then
+      block('UNKNOWN_PHASER_FIELD_'..tostring(k))
+     end
+    end
+    if p.pm~=nil and p.pm~=1 and p.pm~=2 and p.pm~=3 then block('UNKNOWN_PRESET_MODE') end
+    if p.preset_store_mode~=nil and p.preset_store_mode~=1 and p.preset_store_mode~=2 and p.preset_store_mode~=3 then block('UNKNOWN_STORE_MODE') end
+    if p.ui_channel_index~=nil and p.ui_channel_index~=ui then block('UI_CHANNEL_INDEX_MISMATCH') end
+    if p.dict_flags~=nil then
+     if type(p.dict_flags)~='table' then block('DICTIONARY_FLAGS_UNPROVEN')
+     else for k,v in pairs(p.dict_flags) do
+      if not ({has_absolute=true,has_relative=true,blocked=true,blocked_rel=true})[k]
+       and v~=nil and v~=false and v~=0 then block('UNKNOWN_ACTIVE_DICTIONARY_FLAG_'..tostring(k)) end
+     end end
+    end
+    out.modes[tostring(p.preset_store_mode or p.pm or 'nil')]=true
+    out.selective[tostring(p.selective)]=true
+    local steps,n,seen={},0,{}
+    for k,v in pairs(p) do if type(k)=='number' then
+     n=n+1; seen[k]=true
+     if k<1 or k%1~=0 or type(v)~='table' then block('INVALID_STEP_SHAPE') else steps[#steps+1]=v end
+    end end
+    out.steps[tostring(n)]=(out.steps[tostring(n)] or 0)+1
+    if n~=1 or not seen[1] then block('SINGLE_EFFECTIVE_STEP_UNPROVEN') end
+    local step=steps[1]
+    if type(step)=='table' then
+     local touched=0
+     for _,spec in ipairs({{'ABS','absolute',2},{'REL','relative',4}}) do
+      local layer,value,bit=table.unpack(spec)
+      if step[value]~=nil then
+       if type(step[value])~='number' or step[value]~=step[value] or math.abs(step[value])==math.huge then block('EFFECTIVE_'..layer..'_UNPROVEN') end
+       if type(mask)~='number' or math.type(mask)~='integer' or mask & bit==0 then block('INACTIVE_'..layer..'_VALUE') end
+       touched=touched | bit; out.layers[layer]=true
+      end
+     end
+     if type(mask)=='number' and math.type(mask)=='integer' and mask & (2|4)~=touched then block('ACTIVE_LAYER_WITHOUT_EFFECTIVE_STEP') end
+     for _,k in ipairs({'abs_release','rel_release','abs_remove','rel_remove','abs_preset','rel_preset','integrated','accel','decel','trans','transition','width'}) do
+      if step[k]~=nil and step[k]~=false and step[k]~=0 then block('STEP_EFFECT_UNPROVEN_'..k) end
+     end
+     for k,v in pairs(step) do
+      if type(k)=='string' and not ({absolute=true,relative=true,absolute_value=true,abs_release=true,rel_release=true,
+       abs_remove=true,rel_remove=true,abs_preset=true,rel_preset=true,integrated=true,accel=true,decel=true,
+       trans=true,transition=true,width=true,channel_function=true,mask_active=true,mask_individual=true,
+       mask_integrated=true,dict_flags=true})[k] then block('UNKNOWN_STEP_FIELD_'..tostring(k)) end
+     end
+     if step.absolute_value~=nil and (type(step.absolute_value)~='number' or step.absolute==nil or type(mask)~='number' or math.type(mask)~='integer' or mask & 2==0) then
+      block('ABSOLUTE_VALUE_WITHOUT_EFFECTIVE_ABS') end
+    end
+   end
+  end
+  if out.channels==0 then block('EMPTY_REFERENCE_DATA') end
+  if raw.count~=nil and raw.count~=out.channels then block('COUNT_MISMATCH') end
+  out.staticProven=next(out.reasons)==nil
+  return out
+end
+
 -- Rev7 observation only. No value-zero inference enters the candidate.
 local function newRawRelZeroAudit(api)
  local patterns,order,states,linkedCache={},{},{REL_AUTHORED_PROVEN=0,REL_NOT_AUTHORED_PROVEN=0,REL_AMBIGUOUS=0},{}
@@ -2667,6 +2749,85 @@ end)()
 local attributionStart=now()
 local attributionOK,attribution=pcall(proof.attributeUnsafe,{rows=rev7Rows,result=rev6Result.rev7.result,final=rev6Result.rev7.final,infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,log=log,detail=detail,now=now,ms=ms,reverseMs=rev7ReverseElapsed,totalMs=ms(rev7PathStart,now())})
 if not attributionOK then log('UNSAFE_ATTRIBUTION_ERROR error=%s',text(attribution)); attribution={ok=false} end
+-- Rev12: read cached ordinary reference data only. This observer never edits
+-- Rev7 rows, classifications, final refs, or resolver gates.
+attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
+ local ordinaryProofStart=now()
+ local seen,proofs,eligible={},{},{}
+ local totals={ordinary=0,proven=0,unproven=0,eligibleRows=0}
+ for _,row in ipairs(rev6Result.rev7.rows or {}) do
+  local key=row.ref and metadataCache.identity(row.ref)
+  local info=key and rev6ByIdentity[key]
+  if key and info and info.source=='ORDINARY_GETPRESETDATA' and not seen[key] then
+   seen[key]=true
+   local p=__rev12OrdinaryStaticInspect(metadataCache.raw[key]); proofs[key]=p
+   totals.ordinary=totals.ordinary+1
+   if p.staticProven then totals.proven=totals.proven+1 else totals.unproven=totals.unproven+1 end
+   local stepCounts={}; for n,c in pairs(p.steps) do stepCounts[#stepCounts+1]=n..':'..c end; table.sort(stepCounts)
+   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d active_phaser_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s static_proven=%s blocking_reasons=%s',
+    text(desc(row.ref)),p.channels,p.activeValue,p.activePhaser,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
+    text(p.staticProven),joined(p.reasons))
+  end
+ end
+ for _,rec in ipairs(attribution.rows or {}) do
+  if rec.category=='FINAL_SURVIVING_UNSAFE' then
+   local key=rec.ref and metadataCache.identity(rec.ref)
+   local p=key and proofs[key]
+   local info=key and rev6ByIdentity[key]
+   -- Only the proven Universal/Global member rule can support a projected
+   -- terminator. Selective, individual and unknown mode remain unsafe.
+   local modeOK=true
+   local raw=key and metadataCache.raw[key]
+   for ui,ch in pairs(type(raw)=='table' and raw or {}) do if type(ui)=='number' then
+    local mode=ch.preset_store_mode or ch.pm
+    local flags=ch.dict_flags
+    if (mode~=2 and mode~=3) or (ch.pm~=nil and ch.preset_store_mode~=nil and ch.pm~=ch.preset_store_mode)
+      or ch.selective==true or (type(flags)=='table' and
+       ((flags.blocked~=nil and flags.blocked~=false and flags.blocked~=0) or
+        (flags.blocked_rel~=nil and flags.blocked_rel~=false and flags.blocked_rel~=0))) or
+      (ch.mask_individual~=nil and ch.mask_individual~=0 and ch.mask_individual~=false) then modeOK=false end
+   end end
+   if p and p.staticProven and modeOK and info and info.featureScopeKnown and next(info.features or {})
+      and next(info.layers or {}) and rec.row.members then totals.eligibleRows=totals.eligibleRows+1; eligible[rec.row]=true end
+  end
+ end
+ local projected=attribution.finalSurviving or 0
+ local alternate
+ if totals.eligibleRows>0 then
+  local alternateStart=now()
+  local alternateRows={}
+  for _,row in ipairs(rev6Result.rev7.rows or {}) do
+   local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,
+    members=row.members,features=row.features,layers=row.layers,lanes=row.lanes,moving=row.moving,
+    unsafe=row.unsafe,evidence=row.evidence}
+   if eligible[row] then
+    local info=rev6ByIdentity[metadataCache.identity(row.ref)]
+    copy.features=info.features; copy.layers=info.layers; copy.lanes=info.lanes
+    copy.moving=false; copy.unsafe={}
+   end
+   alternateRows[#alternateRows+1]=copy
+  end
+  local alternateResult=recipeReverseResolve(alternateRows)
+  local alternateFinal={}; for rid,entry in pairs(alternateResult.refs) do alternateFinal[rid]=entry.ref end
+  local silent=function() end
+  local altAttribution=proof.attributeUnsafe({rows=alternateRows,result=alternateResult,final=alternateFinal,
+   infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,
+   log=silent,detail=silent,now=now,ms=ms})
+  projected=altAttribution.finalSurviving
+  local missing,extra=0,0
+  for rid in pairs(oracle) do if not alternateFinal[rid] then missing=missing+1 end end
+  for rid in pairs(alternateFinal) do if not oracle[rid] then extra=extra+1 end end
+  log('ORDINARY_STATIC_ALTERNATE refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d final_surviving_unsafe=%d static_terminators=%d alternate_ms=%s diagnostic_only=true',
+   count(alternateFinal),count(oracle),oracleOK and tostring(missing) or 'UNVERIFIED',oracleOK and tostring(extra) or 'UNVERIFIED',
+   #alternateResult.unsafe,projected,alternateResult.staticRows or 0,text(ms(alternateStart,now())))
+  alternate={final=alternateFinal,result=alternateResult,attribution=altAttribution,missing=missing,extra=extra}
+ end
+ log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d static_proven=%d static_unproven=%d final_surviving_rows_before=%d projected_final_surviving_rows_after=%d projected_eligible_rows=%d extra_GetPresetData_calls=0 observer_ms=%s',
+  totals.ordinary,totals.proven,totals.unproven,attribution.finalSurviving or 0,
+  projected,totals.eligibleRows,text(ms(ordinaryProofStart,now())))
+ return {totals=totals,proofs=proofs,alternate=alternate}
+end)
+if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%s',text(attribution.ordinaryProof)); attribution.ordinaryProof={ok=false} end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
 return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}

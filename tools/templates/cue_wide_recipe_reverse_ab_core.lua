@@ -664,6 +664,85 @@ end)()
 local attributionStart=now()
 local attributionOK,attribution=pcall(proof.attributeUnsafe,{rows=rev7Rows,result=rev6Result.rev7.result,final=rev6Result.rev7.final,infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,log=log,detail=detail,now=now,ms=ms,reverseMs=rev7ReverseElapsed,totalMs=ms(rev7PathStart,now())})
 if not attributionOK then log('UNSAFE_ATTRIBUTION_ERROR error=%s',text(attribution)); attribution={ok=false} end
+-- Rev12: read cached ordinary reference data only. This observer never edits
+-- Rev7 rows, classifications, final refs, or resolver gates.
+attribution.ordinaryProofOK,attribution.ordinaryProof=pcall(function()
+ local ordinaryProofStart=now()
+ local seen,proofs,eligible={},{},{}
+ local totals={ordinary=0,proven=0,unproven=0,eligibleRows=0}
+ for _,row in ipairs(rev6Result.rev7.rows or {}) do
+  local key=row.ref and metadataCache.identity(row.ref)
+  local info=key and rev6ByIdentity[key]
+  if key and info and info.source=='ORDINARY_GETPRESETDATA' and not seen[key] then
+   seen[key]=true
+   local p=__rev12OrdinaryStaticInspect(metadataCache.raw[key]); proofs[key]=p
+   totals.ordinary=totals.ordinary+1
+   if p.staticProven then totals.proven=totals.proven+1 else totals.unproven=totals.unproven+1 end
+   local stepCounts={}; for n,c in pairs(p.steps) do stepCounts[#stepCounts+1]=n..':'..c end; table.sort(stepCounts)
+   log('ORDINARY_STATIC_PROOF reference=%s channels=%d active_value_channels=%d active_phaser_channels=%d effective_step_counts=%s layer=%s store_mode=%s selective=%s static_proven=%s blocking_reasons=%s',
+    text(desc(row.ref)),p.channels,p.activeValue,p.activePhaser,table.concat(stepCounts,','),joined(p.layers),joined(p.modes),joined(p.selective),
+    text(p.staticProven),joined(p.reasons))
+  end
+ end
+ for _,rec in ipairs(attribution.rows or {}) do
+  if rec.category=='FINAL_SURVIVING_UNSAFE' then
+   local key=rec.ref and metadataCache.identity(rec.ref)
+   local p=key and proofs[key]
+   local info=key and rev6ByIdentity[key]
+   -- Only the proven Universal/Global member rule can support a projected
+   -- terminator. Selective, individual and unknown mode remain unsafe.
+   local modeOK=true
+   local raw=key and metadataCache.raw[key]
+   for ui,ch in pairs(type(raw)=='table' and raw or {}) do if type(ui)=='number' then
+    local mode=ch.preset_store_mode or ch.pm
+    local flags=ch.dict_flags
+    if (mode~=2 and mode~=3) or (ch.pm~=nil and ch.preset_store_mode~=nil and ch.pm~=ch.preset_store_mode)
+      or ch.selective==true or (type(flags)=='table' and
+       ((flags.blocked~=nil and flags.blocked~=false and flags.blocked~=0) or
+        (flags.blocked_rel~=nil and flags.blocked_rel~=false and flags.blocked_rel~=0))) or
+      (ch.mask_individual~=nil and ch.mask_individual~=0 and ch.mask_individual~=false) then modeOK=false end
+   end end
+   if p and p.staticProven and modeOK and info and info.featureScopeKnown and next(info.features or {})
+      and next(info.layers or {}) and rec.row.members then totals.eligibleRows=totals.eligibleRows+1; eligible[rec.row]=true end
+  end
+ end
+ local projected=attribution.finalSurviving or 0
+ local alternate
+ if totals.eligibleRows>0 then
+  local alternateStart=now()
+  local alternateRows={}
+  for _,row in ipairs(rev6Result.rev7.rows or {}) do
+   local copy={recipe=row.recipe,part=row.part,cue=row.cue,group=row.group,ref=row.ref,refId=row.refId,
+    members=row.members,features=row.features,layers=row.layers,lanes=row.lanes,moving=row.moving,
+    unsafe=row.unsafe,evidence=row.evidence}
+   if eligible[row] then
+    local info=rev6ByIdentity[metadataCache.identity(row.ref)]
+    copy.features=info.features; copy.layers=info.layers; copy.lanes=info.lanes
+    copy.moving=false; copy.unsafe={}
+   end
+   alternateRows[#alternateRows+1]=copy
+  end
+  local alternateResult=recipeReverseResolve(alternateRows)
+  local alternateFinal={}; for rid,entry in pairs(alternateResult.refs) do alternateFinal[rid]=entry.ref end
+  local silent=function() end
+  local altAttribution=proof.attributeUnsafe({rows=alternateRows,result=alternateResult,final=alternateFinal,
+   infoByKey=rev6ByIdentity,identity=metadataCache.identity,desc=desc,joined=joined,sample=sample,count=count,text=text,
+   log=silent,detail=silent,now=now,ms=ms})
+  projected=altAttribution.finalSurviving
+  local missing,extra=0,0
+  for rid in pairs(oracle) do if not alternateFinal[rid] then missing=missing+1 end end
+  for rid in pairs(alternateFinal) do if not oracle[rid] then extra=extra+1 end end
+  log('ORDINARY_STATIC_ALTERNATE refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d final_surviving_unsafe=%d static_terminators=%d alternate_ms=%s diagnostic_only=true',
+   count(alternateFinal),count(oracle),oracleOK and tostring(missing) or 'UNVERIFIED',oracleOK and tostring(extra) or 'UNVERIFIED',
+   #alternateResult.unsafe,projected,alternateResult.staticRows or 0,text(ms(alternateStart,now())))
+  alternate={final=alternateFinal,result=alternateResult,attribution=altAttribution,missing=missing,extra=extra}
+ end
+ log('ORDINARY_STATIC_PROOF_SUMMARY ordinary_refs=%d static_proven=%d static_unproven=%d final_surviving_rows_before=%d projected_final_surviving_rows_after=%d projected_eligible_rows=%d extra_GetPresetData_calls=0 observer_ms=%s',
+  totals.ordinary,totals.proven,totals.unproven,attribution.finalSurviving or 0,
+  projected,totals.eligibleRows,text(ms(ordinaryProofStart,now())))
+ return {totals=totals,proofs=proofs,alternate=alternate}
+end)
+if not attribution.ordinaryProofOK then log('ORDINARY_STATIC_PROOF_ERROR error=%s',text(attribution.ordinaryProof)); attribution.ordinaryProof={ok=false} end
 log('RESULT classification=%s Recipe_refs=%d oracle_refs=%d missing=%s extra=%s unsafe_rows=%d oracle_calls=%d fast_GetPresetData_calls=%d oracle_error=%s identity_set_only=true safe_integration=false bridged_refs=%d bridged_classification=%s',joined(classifications)..';'..joined(metadataClassifications),count(final),count(oracle),oracleOK and count(missing) or 'UNVERIFIED',oracleOK and count(extra) or 'UNVERIFIED',#result.unsafe,oracleCalls,fastCalls,text(oracleError),count(bridgeFinal),joined(bridgedClassifications))
 log('END production_untouched=true markers=false waits=false metadata_targets=REFERENCE_ONLY cooked_history_fallback=false oracle_last=true')
 return {rev7=rev6Result.rev7.result,rev7Final=rev6Result.rev7.final,rev7Rows=rev6Result.rev7.rows,rev7Missing=rev6Result.rev7Diff.missing,rev7Extra=rev6Result.rev7Diff.extra,rev7Classes=rev6Result.rev7Diff.classes,rev7OK=rev6Result.rev7.ok,attribution=attribution,attributionOK=attributionOK,rawRelAudit=rev6Result.rev7.audit,rev6=rev6Result,rev6Final=rev6Final,rev6Rows=rev6Rows,rev6Stats=rev6Stats,rev6Missing=rev6Missing,rev6Extra=rev6Extra,rev6Classes=rev6Classes,rev6OK=rev6OK,bridge=bridgeResult,bridgeFinal=bridgeFinal,bridgeRows=bridgeRows,bridgeStats=bridgeStats,bridgedMissing=bridgedMissing,bridgedExtra=bridgedExtra,bridgedClassifications=bridgedClassifications,bridgeOK=bridgeOK,metadata=metadataResult,metadataFinal=metadataFinal,metadataRows=metadataRows,metadataStats=cs,metadataMissing=metadataMissing,metadataExtra=metadataExtra,metadataClassifications=metadataClassifications,metadataOK=metadataOK,fast=result,final=final,oracle=oracle,missing=missing,extra=extra,classifications=classifications,stats=stats,fastCalls=fastCalls,oracleOK=oracleOK,oracleCalls=oracleCalls,fastOK=ok,rows=rows,patterns=patternOrder,detailsSuppressed=detailsSuppressed,unresolvedGroups=unresolvedCount}
