@@ -1,0 +1,9 @@
+# Global Grid Applicability A/B probe
+
+This independent grandMA3 2.5.0.3 Plugin only reads two stored Groups, two exact Cue Parts, and Preset 4.4. It never changes selection, Programmer, Cue, Group, Preset, or production files. It does not run the Rev7 resolver or oracle.
+
+The `CONFIG` table at the top of `tools/templates/global_grid_ab.lua` uses the user-provided `Group 85`, `Group 86`, `Sequence 3858 Cue 1`, and `Sequence 3858 Cue 2`. A Cue path is accepted only when its native child tree contains exactly one Part with Recipe content; an exact Part path is also accepted. The Plugin prints `GLOBAL_AB_PROBE_CONFIGURATION_REQUIRED` if a path is missing or ambiguous. If native addressing differs, edit the four paths, rebuild with `python tools/build_global_grid_ab.py`, run `python tools/run_global_grid_ab.py`, then deploy with `python tools/deploy_global_grid_ab.py`.
+
+Group identity uses each stored selection entry's `sf_index`, the same native member key used by the independent reverse diagnostic. Grid coordinates come from `Group.Selection[*].grid.{x,y,z}`, as already observed in `RecipeUpdate_Diagnostic.lua`. `GetSubfixture(sf_index)` supplies a stable subfixture handle and Fixture ID for matching the cooked `by_fixtures` view; the probe fails closed on multi-instance or ambiguous keys. The Preset's `by_fixtures` view is metadata only and never treated as an applicability set.
+
+The probe requires exactly one Recipe per Cue Part, with the expected Group and Preset links, identical canonical Group members, and at least one changed grid coordinate. It logs bounded Group member samples, every tested cooked member/Attribute, preset metadata distributions, precheck reasons, A/B differences, and total time. `GRID_NO_OBSERVED_MEMBER_EFFECT` applies only to this controlled Preset, fixture type, and grid shape; it is not a general resolver rule.

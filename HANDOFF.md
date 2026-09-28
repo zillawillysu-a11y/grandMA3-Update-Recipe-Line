@@ -2,43 +2,44 @@
 
 ## Current Goal
 
-Native validate Rev12.1 ordinary Preset motion/static and member-applicability proofs on Cue 8 in grandMA3 2.5.0.3. Production, Rev7 baseline, oracle, UI marker, and Preset 25.9008 remain unchanged.
+Native validate the independent Global Grid Applicability A/B probe on grandMA3 2.5.0.3, focused on Preset 4.4. Production, Rev7 baseline, oracle, UI marker, Selective mapping, and Preset 25.9008 are out of scope.
 
 ## Current Working State
 
-Rev12.1 corrects only the diagnostic ordinary-static observer and its report. The isolated alternate resolver promotes a row only when static motion and member applicability are both proven. Local focused Lua 5.4 tests and deterministic build pass. REAL-WORLD VALIDATION PENDING.
+The new Plugin reads Group 85/86, Sequence 3858 Cue 1/2, and Preset 4.4. It resolves a Cue only when exactly one child Part has Recipe content, then compares canonical `sf_index` member sets, stored grid positions, and cooked per-member Attribute/Preset links. It changes no showfile state. Missing or ambiguous paths produce `GLOBAL_AB_PROBE_CONFIGURATION_REQUIRED`. Focused Lua 5.4, deterministic build, and XML validation pass. It is deployed to its own `Global Grid Applicability AB 2.5.0.3` Plugin folder with source/deployed SHA256 equality; production source/folder snapshots are unchanged. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
 
-Rev12 Cue 8: Rev7 EXACT_MATCH, refs=4, missing=0, extra=0, unsafe=50, final surviving=19, fully superseded=31, unknown=0. The Rev12 observer reported ordinary_refs=15, static_proven=2, static_unproven=13, eligible_rows=0, projected final surviving=19. Most ordinary static failures carried `ACTIVE_PHASER_MASK_NOT_ZERO`, although bit 64 is vendor grid-position applicability. Selective dictionary metadata also incorrectly blocked motion.
+Rev12.1 Cue 8: Rev7 EXACT_MATCH, four refs, missing=0, extra=0, unsafe=50, final surviving=19, fully superseded=31, unknown=0. All 15 ordinary refs are motion-static proven; only two are member-applicability proven. Fifteen final-surviving Global ordinary rows remain blocked by grid/individual metadata; three Selective ordinary rows and Preset 25.9008 remain out of scope.
 
 ## Verified Facts
 
-- Installed 2.5 vendor `GetPhaserMask`/`PhaserMaskToList` defines 64 as `gridpos`; 4/8/16/32/128/256 as fade/delay/speed/phase/measure/nshot; 1/2 as Preset dependencies.
-- The Rev6 field-semantics code already treats active bit 64 as `ACTIVE_GRID_POSITION_APPLICABILITY_UNPROVEN`.
-- Rev12.1 local tests show bit 64 and Selective metadata can coexist with static motion proof while member applicability stays unproven. Vendor speed bit 16 and unknown bits block static proof.
-- The observer reads only cached reference data, with no extra `GetPresetData` calls.
+- Existing `RecipeUpdate_Diagnostic.lua` reads Group `Selection[*].sf_index` and `Selection[*].grid.{x,y,z}` without changing selection.
+- Installed vendor tests use `GetSubfixture(sf_index)` and `GetPresetData(CuePart, false, true)` for cooked fixture/Attribute records.
+- `GetPresetData(Preset, false, true)` is a storage view, not an all-applicable-members list.
+- The new probe fails closed on unresolved Cue Part, ambiguous member identity, missing grid coordinates, incompatible Preset mode, Recipe link mismatch, and cooked mapping uncertainty.
 
 ## Current Problem
 
-Native Rev12.1 must determine how many of the 15 ordinary refs have static motion proven after separating bit 64, and whether member applicability remains the limiting evidence. The projected survivor count must come from the actual diagnostic alternate result, without forcing a decrease.
+Native A/B output is needed to determine whether changing Group grid position affects cooked applicability for the controlled Preset 4.4 case. User supplied Group 85/86 and Sequence 3858 Cue 1/2; native unique Part resolution remains to be verified.
 
 ## Known Failed Attempts
 
-Rev12 used `mask_active_phaser ~= 0` and treated `dict_flags.selective` as an unknown motion flag. Both conflated member applicability with motion. Do not restore either rule or relax the shared Rev7 resolver.
+Treating Global grid/individual metadata as automatically harmless has no native member-applicability proof. Do not promote Global rows into Rev7 based on this probe alone.
 
 ## Important Files
 
-- `tools/templates/cue_wide_recipe_ordinary_static.lua`
-- `tools/templates/cue_wide_recipe_reverse_ab_core.lua`
-- `tests/cue_wide_recipe_ordinary_static.lua`
-- `tests/cue_wide_recipe_reverse_ab.lua`
-- `docs/ordinary-static-semantics-rev12.md`
+- `tools/templates/global_grid_ab.lua`
+- `diagnostics/global_grid_applicability_ab_2_5_0_3.xml`
+- `tools/run_global_grid_ab.py`
+- `tools/deploy_global_grid_ab.py`
+- `tests/global_grid_ab.lua`
+- `docs/global-grid-ab-probe.md`
 
 ## Current Branch / Commit
 
-`origin/qwen`, Rev12.1 diagnostic checkpoint atop commit subject `test: observe ordinary Preset static semantics in Rev12`. The older dirty `qwen` worktree is untouched.
+`origin/qwen`, diagnostic checkpoint atop commit subject `test: separate ordinary Preset motion and member proof`. The older dirty `qwen` worktree is untouched.
 
 ## Exact Next Action
 
-Run Rev12.1 on native Cue 8. Capture all `ORDINARY_STATIC_PROOF` lines, the separate proof summary, any `ORDINARY_STATIC_ALTERNATE` line, Rev7 final refs/diff, and diagnostic timing. Report static versus member-proof counts and remaining reasons before any production decision.
+Run this independent Plugin on native grandMA3 2.5.0.3 and capture `GLOBAL_AB_PRECHECK`, both Group/member sections, cooked member lines, Preset metadata, `GLOBAL_AB_DIFF`, optional `GLOBAL_AB_RESULT`, and timing. If native object addressing differs, update the four CONFIG paths and redeploy. Review before any Rev13 resolver rule.
