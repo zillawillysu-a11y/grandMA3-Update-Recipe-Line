@@ -34,7 +34,7 @@ The 17:32:32 recording was sampled at 60 fps. The Group 79 border alternated wit
 
 ## Current Branch / Commit
 
-Worktree is detached at the v0.7.1.18 checkpoint `8f587b9`. v0.7.1.19 changes are pending commit/push.
+Worktree is detached at `fix: stabilize recipe marker pulse timing`, matching `origin/qwen`. v0.7.1.19 is deployed and pushed; native validation is pending.
 
 ## Exact Next Action
 
