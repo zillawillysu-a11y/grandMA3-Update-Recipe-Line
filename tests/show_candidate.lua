@@ -16,6 +16,11 @@ end
 collect(main)
 for _, fn in pairs(signals) do collect(fn) end
 local count = 0
+local function tableCount(value)
+    local n=0
+    for _ in pairs(value or {}) do n=n+1 end
+    return n
+end
 local function check(value, message)
     assert(value, message)
     count = count + 1
@@ -64,17 +69,26 @@ functions.recipePoolReferences(hookState)
 local provenApi = hookState.provenHooks
 assert(type(provenApi) == "table", "proven hook table must be attached")
 
--- A native member-channel walk is the bounded unit for each resolver slice.
+-- A large selection must complete its bounded native member pass in one
+-- refresh instead of waiting one polling cycle per member.
 local warmedHandles={}
-local warmTask={rows={},members={{handle="m1"},{handle="m2"},{handle="m3"},{handle="m4"}},
- memberIndex=1,metadataIndex=1,runtime={memberUI=function(handle,cache)
-  warmedHandles[#warmedHandles+1]=handle; cache[handle]={}
- end},selectedMembers={},targetFG=nil}
+local warmMembers,warmSelected={},{}
+for i=1,40 do
+ warmMembers[i]={key="m"..i,handle="m"..i}
+ warmSelected[warmMembers[i].key]=warmMembers[i].handle
+end
+local warmTask={rows={},members=warmMembers,memberIndex=1,metadataIndex=1,runtime={
+ memberUI=function(handle,cache) warmedHandles[#warmedHandles+1]=handle; cache[handle]={} end,
+ run=function(_,selected)
+  local refs={}; for key in pairs(selected) do refs["Preset "..key]=key end
+  return {classification="PROVEN",refs=refs,sourceGroups={}}
+ end},selectedMembers=warmSelected,targetFG=nil}
 local warmState={referenceMetadataCache={},memberUICache={}}
 local warmResult=provenApi.advanceStagedResolver(warmTask,warmState)
-check(warmResult.classification=="PENDING" and #warmedHandles==1
- and warmState.resolverMembersWarmed==1 and warmState.resolverMembersTotal==4,
- "large-selection resolver slices must warm only one member and expose progress")
+check(warmResult.classification=="PROVEN" and #warmedHandles==40
+ and warmState.resolverMembersWarmed==40 and warmState.resolverMembersTotal==40
+ and tableCount(warmResult.refs)==40,
+ "the current selection must finish one bounded member pass without per-poll warmup delays")
 
 -- 1. canonical member keys for Fixture / SubFixture / nested Cell.
 check(provenApi.canonicalMemberKey(selectedFixture(101)) == "101", "fixture key must be 101")
@@ -140,14 +154,22 @@ local uiByHandle={
  [subfixtureByIndex[202]]={1,2,3},
  [subfixtureByIndex[203]]={1,2,3,4}
 }
-local uiCalls=0
+local uiCalls,attributeByUICalls=0,0
 _G.GetUIChannels=function(h)
  uiCalls=uiCalls+1
  local list={}
  for _,ui in ipairs(uiByHandle[h] or {}) do list[#list+1]={INDEX=ui+1} end
  return list
 end
-_G.GetAttributeByUIChannel=function(ui) return attrs[ui] end
+_G.GetAttributeByUIChannel=function(ui) attributeByUICalls=attributeByUICalls+1; return attrs[ui] end
+local cacheContext={}
+local uiCallsBeforeCache=uiCalls
+local cacheFixtures={{handle=subfixtureByIndex[101]},{handle=subfixtureByIndex[203]}}
+functions.readProgrammer(cacheFixtures,cacheContext)
+local uiCallsAfterFirst=uiCalls
+functions.readProgrammer(cacheFixtures,cacheContext)
+check(uiCallsAfterFirst-uiCallsBeforeCache==2 and uiCalls==uiCallsAfterFirst,
+ "steady selection refresh must reuse native member UI channel lists")
 local referenceData,referenceReads={},{count=0,part=0}
 _G.GetPresetData=function(ref,selected,byFixtures)
  if ref:GetClass()=="Part" or ref:GetClass()=="Cue" then
@@ -232,6 +254,11 @@ check(staticResult.classification=="PROVEN" and next(staticResult.refs)==nil,
 local movingResult=result({recipe(gOne,moving,1)},fOne)
 check(movingResult.classification=="PROVEN" and movingResult.refs["Preset 1.2"]==moving,
  "ordinary structural moving reference must survive")
+local attributeReadsBefore=attributeByUICalls
+local sharedUiResult=result({recipe(gBoth,moving,1)},fBoth)
+check(sharedUiResult.classification=="PROVEN"
+ and attributeByUICalls-attributeReadsBefore==2,
+ "member UI capability mapping must reuse the resolver cache and resolve only new UI indexes")
 local metadataModeOnly=preset("Preset metadata mode only",0,2,true)
 metadataModeOnly.PresetMode="Selective"
 local metadataModeResult=result({recipe(gOne,metadataModeOnly,1)},fOne)
@@ -275,6 +302,7 @@ check(layoutPartial.classification=="PROVEN" and layoutPartial.refs["Preset 1.2"
 local savedUI=uiByHandle[subfixtureByIndex[203]]
 uiByHandle[subfixtureByIndex[203]]={2,3,4}
 hookState.memberUICache={}
+hookState.uiChannelCache={}
 local globalExcluded=result({recipe(gBoth,moving,1)},fBoth)
 check(globalExcluded.classification=="PROVEN"
  and globalExcluded.refMembers["Preset 1.2"]["101"]
@@ -282,6 +310,7 @@ check(globalExcluded.classification=="PROVEN"
  "Global applicability must exclude a member without target FeatureGroup")
 uiByHandle[subfixtureByIndex[203]]=savedUI
 hookState.memberUICache={}
+hookState.uiChannelCache={}
 local genResult=result({recipe(gOne,generator,1)},fOne)
 check(genResult.classification=="PROVEN" and genResult.refs["Generator 1"]==generator,
  "Generator must survive from structural Attribute ownership")
@@ -432,13 +461,13 @@ _G.SelectionNext=function(index)
 end
 _G.SelectedSequence=function() return finalSeq end
 _G.GetCurrentCue=function() return finalCue end
-local pendingText=functions.render(cached)
-check(pendingText:find("Resolver: PENDING | 0 refs",1,true)~=nil
- and cached.provenSourceKey==nil and next(cached.markerReferences or {})==nil,
- "selection change must paint panel first without stale refs or a blocking metadata read")
 local panelText=functions.render(cached)
-check(panelText:find("Groups:\n6 Key\n7 Cell",1,true)~=nil
- and panelText:find("Resolver: PROVEN | 4 refs",1,true)~=nil,
+local visibleSourceCount=0
+for key in pairs(expected) do if cached.markerReferences and cached.markerReferences[key] then visibleSourceCount=visibleSourceCount+1 end end
+check(panelText:find("Resolver: PROVEN | 4 refs",1,true)~=nil
+ and cached.provenSourceKey~=nil and visibleSourceCount==4,
+ "selection change must resolve and expose current Cue references in the same refresh")
+check(panelText:find("Groups:\n6 Key\n7 Cell",1,true)~=nil,
  "panel must show both numbered current Groups and visible resolver status")
 local first=functions.recipePoolReferences(cached)
 local reads=referenceReads.count
@@ -531,13 +560,12 @@ local expected9009=preset("Preset 25.9009",0,2,true)
 local markerSeq,markerCue=tree({recipe(gOne,expected9009,1)})
 local markerState=state(markerSeq,markerCue,fOne)
 markerState.currentGroup=gOne; markerState.currentRecipe=markerCue:Children()[1]:Children()[1]
-markerState.deferResolverOnce=true
-local immediateGroup=functions.recipePoolReferences(markerState)
-check(immediateGroup["Group 6"]==gOne and immediateGroup["Preset 25.9009"]==nil
- and markerState.provenSourceKey==nil,
- "context-change tick must show Group immediately and defer expensive reference metadata")
+local immediateRefs=functions.recipePoolReferences(markerState)
+check(immediateRefs["Group 6"]==gOne and immediateRefs["Preset 25.9009"]==expected9009
+ and markerState.provenSourceKey~=nil,
+ "one context refresh must resolve surviving Cue refs and the matched Group without an extra poll")
 markerState.running=true; markerState.poolBlink=true
-markerState.markerReferences=functions.recipePoolReferences(markerState)
+markerState.markerReferences=immediateRefs
 check(markerState.poolMarkersDirty==true,
  "semantic recompute must request a marker refresh in the same loop")
 check(markerState.markerReferences["Preset 25.9009"]==expected9009,
@@ -546,19 +574,12 @@ check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
  "final 9009-style ref must survive recipePoolReferences admission")
 local stagedSeq,stagedCue=tree({recipe(gOne,moving,1)})
 local stagedState=state(stagedSeq,stagedCue,fOne); stagedState.incrementalResolver=true
-local stagedRefs,pendingStages={},0
+local stagedRefs={}
 local stagedUIBefore=uiCalls
-stagedRefs=functions.recipePoolReferences(stagedState)
-if stagedState.provenSources and stagedState.provenSources.classification=="PENDING" then
- pendingStages=pendingStages+1
-end
-check(pendingStages==1 and stagedState.provenSources.reason=="REFERENCE_METADATA_PENDING"
- and uiCalls==stagedUIBefore,
- "first incremental resolver slice must read reference metadata only and return without member UI work")
 stagedRefs=functions.recipePoolReferences(stagedState)
 check(stagedState.provenSources.classification=="PROVEN"
  and stagedRefs["Preset 1.2"]==moving and uiCalls>stagedUIBefore,
- "next normal refresh slice may warm member UI and complete Track A without coroutines")
+ "one context refresh must resolve metadata and member lanes without polling-cycle staging")
 local stagedReads=referenceReads.count
 functions.recipePoolReferences(stagedState)
 check(referenceReads.count==stagedReads,
@@ -605,8 +626,9 @@ local display=object("Display","Display 1",{}, {pool})
 _G.GetDisplayByIndex=function(index) return index==1 and display or nil end
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
- and overlay.Visible=="Yes" and overlay.HasHover=="No",
- "nested Preset Pool tile must receive the existing visible frame0 marker")
+ and overlay.Visible=="Yes" and overlay.HasHover=="No"
+ and overlay.BackColor=="SheetColor.PhaserText",
+ "nested Recipe Pool tile must receive a visible native Phaser-purple frame0 marker")
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn==blinkPhase,
@@ -614,8 +636,14 @@ check(markerState.poolBlinkOn==blinkPhase,
 markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn~=blinkPhase
- and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
- "pool pulse must advance on its elapsed-time deadline using the existing theme colors")
+ and overlay.BackColor=="SheetColor.PhaserText",
+ "Cue Recipe source marker must stay steadily purple while Group markers pulse")
+check(functions.poolPulseColor("group",true)=="Global.SuccessText"
+ and functions.poolPulseColor("group",false)=="Global.Selected",
+ "Stored Group marker pulse must preserve its existing theme colors")
+check(functions.poolPulseColor("recipe",true)=="SheetColor.PhaserText"
+ and functions.poolPulseColor("recipe",false)=="SheetColor.PhaserText",
+ "Cue Recipe source marker must remain purple in both Group pulse phases")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
 check(markerState.markerStatus=="1/1 frames",

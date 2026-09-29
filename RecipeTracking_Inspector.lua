@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.10"
+local PLUGIN_VERSION = "0.7.1.11"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -308,14 +308,34 @@ local function recipeField(recipe, name)
     return nil, text
 end
 
-local function readProgrammer(fixtures)
+local function uiChannelsForMember(handle,state)
+    if handle==nil or not callable("GetUIChannels") then return nil end
+    local cache=state and state.uiChannelCache
+    if state and not cache then cache={}; state.uiChannelCache=cache end
+    if cache then
+        local cached=cache[handle]
+        if cached~=nil then return cached end
+    end
+    local channels=safe(GetUIChannels,handle,true)
+    if cache and type(channels)=="table" then
+        local count=state.uiChannelCacheCount or 0
+        if count>=8192 then
+            cache={}; state.uiChannelCache=cache; state.uiChannelCacheCount=0; count=0
+        end
+        cache[handle]=channels
+        state.uiChannelCacheCount=count+1
+    end
+    return channels
+end
+
+local function readProgrammer(fixtures,state)
     local presets, assignedAttributes, rawCount = {}, {}, 0
     local selectedFeature = normalizeFeature(selectedFeatureLabel())
     if #fixtures == 0 or not callable("GetUIChannels") then
         return { feature = selectedFeature }
     end
     for _, fixture in ipairs(fixtures) do
-        local channels = safe(GetUIChannels, fixture.handle or fixture.index, true)
+        local channels = uiChannelsForMember(fixture.handle or fixture.index,state)
         if type(channels) == "table" then
             for _, channel in pairs(channels) do
                 local uiIndex = tonumber(property(channel, "INDEX") or property(channel, "Index"))
@@ -1045,7 +1065,7 @@ local function render(state)
     local fixtures = readSelection()
     if state then state.lastSelectionReadMs=contextElapsed(selectionStarted) end
     local programmerStarted=contextClock()
-    local info = readProgrammer(fixtures)
+    local info = readProgrammer(fixtures,state)
     if state then state.lastProgrammerMs=contextElapsed(programmerStarted) end
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
@@ -1060,7 +1080,6 @@ local function render(state)
             state.markerContextKey=contextKey
             state.poolMarkersDirty=true
             if ENABLE_TRACK_A_SHOW_CANDIDATE then
-                state.deferResolverOnce=true
                 state.provenSourceKey=nil
                 state.provenSources={classification="PENDING",refs={}}
                 state.currentGroups={}
@@ -1388,6 +1407,8 @@ local function newTrackARuntime(api)
         local channels=api.safe(api.getUIChannels,handle,true)
         if type(channels)~="table" then return nil end
         local result={byFG={},byUI={}}
+        cache.__featureGroupByUI=cache.__featureGroupByUI or {}
+        local featureGroupByUI=cache.__featureGroupByUI
         local seen=0
         for _,channel in pairs(channels) do
             if type(channel)~="table" and type(channel)~="userdata" then return nil end
@@ -1396,8 +1417,12 @@ local function newTrackARuntime(api)
             if type(index)~="number" or index%1~=0 or index<1 then return nil end
             local ui=index-1
             if result.byUI[ui] then return nil end
-            local attr=api.safe(api.attributeByUI,ui)
-            local fg=attrFG(attr)
+            local fg=featureGroupByUI[ui]
+            if fg==nil then
+                local attr=api.safe(api.attributeByUI,ui)
+                fg=attrFG(attr)
+                if fg then featureGroupByUI[ui]=fg end
+            end
             if not fg then return nil end
             result.byUI[ui]=fg; result.byFG[fg]=true; seen=seen+1
             if seen>65536 then return nil end
@@ -2049,36 +2074,31 @@ end
                 task.runtime.metadata(row.ref,cache)
                 task.metadataIndex=cursor+1
                 taskState.lastResolverStage="REFERENCE_METADATA"
-                return {classification="PENDING",reason="REFERENCE_METADATA_PENDING",refs={}}
             end
             cursor=cursor+1
         end
         task.metadataIndex=#task.rows+1
         cursor=task.memberIndex or 1
-        local warmed=0
-        -- One native GetUIChannels/member walk per refresh keeps the UI and
-        -- existing Pool overlays responsive while large selections warm.
-        while cursor<=#task.members and warmed<1 do
+        -- Selection context is already read on this host refresh. Complete
+        -- its bounded Recipe/member pass now so the corresponding frames do
+        -- not wait through dozens of polling yields.
+        while cursor<=#task.members do
             local member=task.members[cursor]
             if taskState.memberUICache[member.handle]==nil then
                 task.runtime.memberUI(member.handle,taskState.memberUICache)
                 taskState.lastResolverStage="MEMBER_UI"
             end
             cursor=cursor+1
-            warmed=warmed+1
         end
         task.memberIndex=cursor
         taskState.resolverMembersWarmed=math.min(cursor-1,#task.members)
         taskState.resolverMembersTotal=#task.members
-        if cursor<=#task.members then
-            return {classification="PENDING",reason="MEMBER_UI_PENDING",refs={}}
-        end
         local ok,result=pcall(task.runtime.run,task.rows,task.selectedMembers,
             taskState.referenceMetadataCache,taskState.memberUICache,task.targetFG)
         if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
         if result.classification~="PROVEN" then return result end
         local refs={}
-        for id,ref in pairs(result.refs) do refs[id]=ref end
+        for id,ref in pairs(result.refs or {}) do refs[id]=ref end
         result.refs=refs
         return result
     end
@@ -2152,7 +2172,8 @@ end
     state.memberUICache=state.memberUICache or {}
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
         identity=commandAddress,objectList=_G.ObjectList,getPresetData=_G.GetPresetData,
-        getUIChannels=_G.GetUIChannels,attributeByUI=_G.GetAttributeByUIChannel})
+        getUIChannels=function(handle) return uiChannelsForMember(handle,state) end,
+        attributeByUI=_G.GetAttributeByUIChannel})
     local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
     local feature=selected and safe(function() return selected.Feature end)
     if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
@@ -2273,19 +2294,6 @@ end
     end
     local flagOn = state ~= nil and state.provenEnabled == true
     if flagOn then
-        -- Let the panel and the displayed Recipe's Group frame paint on the
-        -- context-change tick. Native reference metadata can take hundreds
-        -- of milliseconds; resolve it on the next normal tick.
-        if state.deferResolverOnce then
-            state.deferResolverOnce=false
-            state.currentGroups={}
-            if state.currentGroup and (state.currentRecipe
-                or relation(state.currentGroup,state.lastFixtures)=="EXACT_COMPLETE") then
-                state.currentGroups={state.currentGroup}
-                add(state.currentGroup)
-            end
-            return references
-        end
         local provenResult = refresh(state, state.currentSequence, state.currentCue,
             state.lastFixtures, { feature = state.lastFeature })
         state.currentGroups={}
@@ -2408,6 +2416,13 @@ local function formatElapsed(value)
     return value ~= nil and string.format("%.1f", value) or "n/a"
 end
 
+local function poolPulseColor(kind,on)
+    if kind=="recipe" then
+        return "SheetColor.PhaserText"
+    end
+    return on and "Global.SuccessText" or "Global.Selected"
+end
+
 local function advancePoolPulse(state)
     if state.poolBlink == false or not state.running then return end
     local now=clockSeconds()
@@ -2422,11 +2437,10 @@ local function advancePoolPulse(state)
         state.poolBlinkDeadline=state.poolBlinkDeadline+steps*0.125
     end
     if pulseChanged then
-        local pulseColor=state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
         for _,entry in pairs(state.poolMarkers or {}) do
             pcall(function()
                 entry.overlay.Visible="Yes"
-                entry.overlay.BackColor=pulseColor
+                entry.overlay.BackColor=poolPulseColor(entry.markerKind,state.poolBlinkOn)
             end)
         end
     end
@@ -2831,7 +2845,6 @@ local function refreshPoolMarkers(state)
     -- Advance existing overlays before doing any new discovery or tile work.
     advancePoolPulse(state)
     local now=clockSeconds()
-    local pulseColor = state.poolBlinkOn and "Global.SuccessText" or "Global.Selected"
     local cachedGridInvalid=false
     if not state.poolMarkersDirty and not state.poolGridRefreshNeeded and now and now<(state.poolLookupDeadline or 0) then
         for _,grid in ipairs(state.poolGrids or {}) do
@@ -2954,6 +2967,7 @@ local function refreshPoolMarkers(state)
                     probe.matchMethod=identityMethod
                 end
                 found[button] = true
+                local markerKind=string.lower(class(matched))=="group" and "group" or "recipe"
                 local entry = markers[button]
                 if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end
                 if not entry then
@@ -2968,12 +2982,12 @@ local function refreshPoolMarkers(state)
                             overlay.Anchors = onGrid and button.Anchors
                                 or { left = 0, right = 0, top = 0, bottom = 0 }
                             overlay.Texture = "frame0"
-                            overlay.BackColor = pulseColor
+                            overlay.BackColor = poolPulseColor(markerKind,state.poolBlinkOn)
                             overlay.HasHover = "No"
                             overlay.Interactive = "No"
                         end)
                         if ok then
-                            entry = { overlay = overlay }
+                            entry = { overlay = overlay,markerKind=markerKind }
                             markers[button] = entry
                         else
                             deleteHandle(overlay)
@@ -2981,11 +2995,12 @@ local function refreshPoolMarkers(state)
                     end
                 end
                 if entry then
+                    entry.markerKind=markerKind
                     pcall(function()
                         entry.overlay.W = button.W
                         entry.overlay.H = button.H
                         entry.overlay.Visible = "Yes"
-                        entry.overlay.BackColor = pulseColor
+                        entry.overlay.BackColor = poolPulseColor(markerKind,state.poolBlinkOn)
                         entry.overlay.Text = ""
                     end)
                     if probe then probe.frameCreated=true end
@@ -3845,6 +3860,8 @@ local function main()
                 state.groupPoolReferenceKey = nil
                 state.referenceMetadataCache = nil
                 state.memberUICache = nil
+                state.uiChannelCache = nil
+                state.uiChannelCacheCount = 0
             end
             state.preserveResolverCaches=false
         end

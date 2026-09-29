@@ -23,6 +23,8 @@ local function newTrackARuntime(api)
         local channels=api.safe(api.getUIChannels,handle,true)
         if type(channels)~="table" then return nil end
         local result={byFG={},byUI={}}
+        cache.__featureGroupByUI=cache.__featureGroupByUI or {}
+        local featureGroupByUI=cache.__featureGroupByUI
         local seen=0
         for _,channel in pairs(channels) do
             if type(channel)~="table" and type(channel)~="userdata" then return nil end
@@ -31,8 +33,12 @@ local function newTrackARuntime(api)
             if type(index)~="number" or index%1~=0 or index<1 then return nil end
             local ui=index-1
             if result.byUI[ui] then return nil end
-            local attr=api.safe(api.attributeByUI,ui)
-            local fg=attrFG(attr)
+            local fg=featureGroupByUI[ui]
+            if fg==nil then
+                local attr=api.safe(api.attributeByUI,ui)
+                fg=attrFG(attr)
+                if fg then featureGroupByUI[ui]=fg end
+            end
             if not fg then return nil end
             result.byUI[ui]=fg; result.byFG[fg]=true; seen=seen+1
             if seen>65536 then return nil end

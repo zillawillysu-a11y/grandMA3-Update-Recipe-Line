@@ -537,7 +537,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.1.10"}
+local sameInstance = {running = true, version = "0.7.1.11"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
@@ -627,10 +627,10 @@ functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
 check(next(purpleState.poolMarkers) == nil,
     "Dormant Cue Phaser state must not create purple Pool frames")
-purpleState.currentGroup = allPreset
+purpleState.currentGroup = otherGroup
 functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
-local groupPulse = purpleState.poolMarkers[buttons[2]].overlay
+local groupPulse = purpleState.poolMarkers[buttons[1]].overlay
 check(groupPulse ~= nil and groupPulse.BackColor ~= "GroupedProgLayerActive.Phaser",
     "The current Group must keep its non-purple pulsing Pool frame")
 local groupPulseColor = groupPulse.BackColor
