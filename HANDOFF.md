@@ -33,7 +33,7 @@ The v0.7.1.17 recording does not expose the first missing marker stage for Prese
 
 ## Current Branch / Commit
 
-Worktree is detached at `35c7e5c`; v0.7.1.18 source changes and this handoff are pending commit/push.
+v0.7.1.18 code checkpoint is `6b3a263` and is pushed to `origin/qwen`. Worktree remains detached at that pushed commit.
 
 ## Exact Next Action
 
