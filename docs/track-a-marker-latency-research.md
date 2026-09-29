@@ -276,3 +276,12 @@ three source/deployed SHA256 pairs match. Backup:
 `C:/tmp/update-plugin-pre-0.7.1.34-20260930-001236`. The stale-grid explanation
 remains a source-supported hypothesis pending on-console confirmation. The
 100–200 ms latency target also remains open.
+
+## 2026-09-30 console confirmation: v0.7.1.34
+
+The user reports that v0.7.1.34 restored the purple frames and feels much
+faster. This confirms the visible-grid rediscovery change against the reported
+regression. The user also reports remaining bugs, but has no quota to describe
+them yet. No exact Cue-to-purple measurement was supplied, so the <=300 ms
+acceptance target remains unmeasured. Resume by collecting concrete symptoms
+and reproduction steps, while preserving the confirmed marker behavior.
