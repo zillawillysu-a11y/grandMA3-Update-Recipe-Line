@@ -16,7 +16,8 @@ The user reports that purple tracking markers still do not cover all expected Se
 
 - Source regression: 87 workflow assertions and 160 show-candidate checks pass; synthetic resolver remains 4 refs, 0 missing, 0 extra.
 - Lua 5.4 suites, candidate build consistency, XML/component/version checks, and `git diff --check` pass.
-- Local confirmed Update Plugin directory currently contains Lua/XML version `0.7.1.15`; its hashes match the `.15` deployment.
+- Before deployment, the confirmed Update Plugin directory contained Lua/XML version `0.7.1.15`; its hashes matched the `.15` deployment.
+- It now contains Lua/XML version `0.7.1.16`; the deployed title and manifest match.
 - `.15` files were backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.16-20260929`; all three backup files match the pre-deploy target hashes.
 - Deployed `.16` Lua SHA256: `296FCDEDCDE7CAAC703AB165334240FFCB45A968BE7B94FF562CAF90AB1E06E3`; XML SHA256: `BA336CAD4CBEB93DE2E435076287B54896EE576E91114253B8B0F517368DB89B`. Source and deployed hashes match.
 
