@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.13"
+local PLUGIN_VERSION = "0.7.1.14"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1079,6 +1079,8 @@ local function render(state)
             state.trackARecipeStructureKey=trackARecipeStructure
             state.trackAHistoryRowsCache=nil
             state.trackAStageSourcesCache=nil
+            state.provenSourceKey=nil
+            state.poolMarkersDirty=true
         end
     end
     if state then
@@ -1097,7 +1099,14 @@ local function render(state)
                 state.markerReferences={}
             end
         end
-        if #fixtures==0 or not sequence or not currentCue then
+        if #fixtures==0 then
+            -- The stage Recipe set is Sequence/Cue scoped, not selection scoped.
+            state.currentGroups={}
+            state.completeGroupSelectionKey=nil
+            state.completeGroupCandidates=nil
+            state.poolMarkersDirty=true
+        end
+        if not sequence or not currentCue then
             state.currentGroups={}
             state.markerReferences={}
             state.provenSourceKey=nil
@@ -1245,7 +1254,7 @@ local function render(state)
         state.lastFixtures = fixtures
         state.lastFeature = info.feature
         state.provenEnabled = ENABLE_TRACK_A_SHOW_CANDIDATE
-        if ENABLE_TRACK_A_SHOW_CANDIDATE and #fixtures>0 and sequence and currentCue
+        if ENABLE_TRACK_A_SHOW_CANDIDATE and sequence and currentCue
             and recipePoolReferences then
             local ok,refs=pcall(recipePoolReferences,state)
             state.markerReferences=ok and refs or {}
@@ -1254,7 +1263,9 @@ local function render(state)
     local resolverLines={}
     if state and ENABLE_TRACK_A_SHOW_CANDIDATE and state.provenSources then
         local refKeys={}
-        for key in pairs(state.provenSources.refs or {}) do refKeys[#refKeys+1]=key end
+        for key in pairs(state.provenSources.activeRefs or state.provenSources.refs or {}) do
+            refKeys[#refKeys+1]=key
+        end
         table.sort(refKeys)
         resolverLines[1]=string.format("Resolver: %s | %d refs%s",
             tostring(state.provenSources.classification),#refKeys,
@@ -1788,7 +1799,7 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
-    local function run(rows,members,referenceCache,uiCache,targetFG)
+    local function run(rows,members,referenceCache,uiCache)
         local normalized={}
         for _,source in ipairs(rows) do
             local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
@@ -1968,12 +1979,12 @@ local function newTrackARuntime(api)
             if (victims[barrier] or 0)>0 then return fail("REL_BARRIER_BLOCKS_HISTORY") end
         end
         local sourceGroups={}
-        if targetFG then for _,assignment in ipairs(assignments) do
-            if assignment.fg==targetFG and assignment.row.group then
+        for _,assignment in ipairs(assignments) do
+            if assignment.row.group then
                 local groupId=api.identity(assignment.row.group)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
-        end end
+        end
         local laneAssignments={}
         for _,assignment in ipairs(assignments) do
             laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,
@@ -2151,7 +2162,7 @@ end
         taskState.resolverMembersTotal=#task.members
         local engineStarted=contextClock()
         local ok,result=pcall(task.runtime.run,task.rows,task.selectedMembers,
-            taskState.referenceMetadataCache,taskState.memberUICache,task.targetFG)
+            taskState.referenceMetadataCache,taskState.memberUICache)
         taskState.lastResolverReverseMs=contextElapsed(engineStarted)
         taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
             and math.max(0,taskState.lastResolverReverseMs-(taskState.lastResolverMetadataMs or 0)
@@ -2163,7 +2174,7 @@ end
         result.refs=refs
         return result
     end
-    local function selectStageResult(stageResult,selectedMembers,targetFG)
+    local function selectStageResult(stageResult,selectedMembers)
         if stageResult.classification~="PROVEN" then return stageResult end
         local result={}
         for key,value in pairs(stageResult) do result[key]=value end
@@ -2175,7 +2186,7 @@ end
                     refMembers[assignment.refId]=refMembers[assignment.refId] or {}
                     refMembers[assignment.refId][assignment.member]=true
                 end
-                if targetFG and assignment.fg==targetFG and assignment.group then
+                if assignment.group then
                     local groupId=commandAddress(assignment.group)
                     if groupId then sourceGroups[groupId]=assignment.group end
                 end
@@ -2186,18 +2197,18 @@ end
         result.sourceGroups=sourceGroups
         return result
     end
-    local function cacheAndSelectStageResult(taskState,stageKey,stageResult,selectedMembers,targetFG)
+    local function cacheAndSelectStageResult(taskState,stageKey,stageResult,selectedMembers)
         if taskState and stageResult.classification~="PENDING" then
             taskState.trackAStageSourcesCache={key=stageKey,result=stageResult}
         end
-        return selectStageResult(stageResult,selectedMembers,targetFG)
+        return selectStageResult(stageResult,selectedMembers)
     end
     local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
     if taskState and taskState.incrementalResolver and taskState.resolverTask
         and taskState.resolverTask.key==taskState.resolverWorkKey then
         local task=taskState.resolverTask
         local result=advanceStagedResolver(task,taskState)
-        return cacheAndSelectStageResult(taskState,task.stageKey,result,task.selectedMembers,task.targetFG)
+        return cacheAndSelectStageResult(taskState,task.stageKey,result,task.selectedMembers)
     end
     if not sequence or not currentCue then
         return { classification = "INCONCLUSIVE" }
@@ -2208,7 +2219,6 @@ end
         if not key then return {classification="INCONCLUSIVE", reason="MEMBER_IDENTITY_UNPROVEN"} end
         selectedMembers[key]=fixture.handle or fixture
     end
-    if next(selectedMembers) == nil then return { classification = "INCONCLUSIVE" } end
     local currentNumber = cueNumber(currentCue)
     if currentNumber == nil then return { classification = "INCONCLUSIVE" } end
     local historySignature=taskState and taskState.trackARecipeStructureKey
@@ -2293,16 +2303,11 @@ end
         return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"}
     end
     local stageKey=table.concat({historyKey,tostring(historySignature),table.concat(stageSignatures,"\1")},"\2")
-    local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
-    local feature=selected and safe(function() return selected.Feature end)
-    if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
-    local fg=feature and safe(function() return feature:Parent() end)
-    local targetFG=string.lower(class(fg))=="featuregroup" and commandAddress(fg) or nil
     if taskState then taskState.lastResolverStageCacheHit=false end
     local stageCache=taskState and taskState.trackAStageSourcesCache
     if stageCache and stageCache.key==stageKey then
         taskState.lastResolverStageCacheHit=true
-        return selectStageResult(stageCache.result,selectedMembers,targetFG)
+        return selectStageResult(stageCache.result,selectedMembers)
     end
     state.referenceMetadataCache=state.referenceMetadataCache or {}
     state.memberUICache=state.memberUICache or {}
@@ -2326,15 +2331,15 @@ end
         for key,handle in pairs(stageMembers) do members[#members+1]={key=key,handle=handle} end
         table.sort(members,function(a,b) return a.key<b.key end)
         local task={key=taskState.resolverWorkKey,stageKey=stageKey,rows=scopedRows,
-            selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,targetFG=targetFG,
+            selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,
             metadataIndex=1,memberIndex=1}
         taskState.resolverTask=task
         local result=advanceStagedResolver(task,taskState)
-        return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers,targetFG)
+        return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers)
     end
     local reverseStarted=contextClock()
     local ok,result=pcall(runtime.run,scopedRows,stageMembers,
-        state.referenceMetadataCache,state.memberUICache,targetFG)
+        state.referenceMetadataCache,state.memberUICache)
     if taskState then
         taskState.lastResolverReverseMs=contextElapsed(reverseStarted)
         taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
@@ -2342,10 +2347,11 @@ end
                 -(taskState.lastResolverMemberUIMs or 0)) or nil
     end
     if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
-    return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers,targetFG)
-end
+    return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers)
+    end
     local function refresh(state, sequence, currentCue, fixtures, info)
     if not state then return nil end
+    fixtures=fixtures or {}
     local memberKeys = {}
     for _, fixture in ipairs(fixtures or {}) do
         local key = canonicalMemberKey(fixture)
@@ -2355,7 +2361,10 @@ end
     local selectionKey=table.concat(memberKeys, ",")
     state.lastGroupMatchMs=0
     state.groupMemberCacheHits=0
-    if state.completeGroupSelectionKey~=selectionKey or not state.completeGroupCandidates then
+    if #fixtures==0 then
+        state.completeGroupSelectionKey=selectionKey
+        state.completeGroupCandidates={}
+    elseif state.completeGroupSelectionKey~=selectionKey or not state.completeGroupCandidates then
         local groupStarted=contextClock()
         state.completeGroupSelectionKey=selectionKey
         state.completeGroupCandidates=completeGroups(fixtures)
@@ -2980,16 +2989,15 @@ end
 
 local function refreshPoolMarkers(state)
     if state.poolBlink == false or not state.running then clearPoolMarkers(state); return end
-    if (state.provenEnabled==true and #(state.lastFixtures or {})==0)
-        or (state.currentRecipe==nil and state.currentGroup==nil
-            and #(state.currentGroups or {})==0 and #(state.matchingCandidates or {})==0) then
+    local provenStageContext=state.provenEnabled==true and state.currentSequence and state.currentCue
+    if not provenStageContext and state.currentRecipe==nil and state.currentGroup==nil
+        and #(state.currentGroups or {})==0 and #(state.matchingCandidates or {})==0 then
         clearPoolMarkers(state)
         state.markerReferences=nil
         state.poolMarkersDirty=false
         return
     end
-    if state.provenEnabled==true and (#(state.lastFixtures or {})==0
-        or not state.currentSequence or not state.currentCue) then
+    if state.provenEnabled==true and (not state.currentSequence or not state.currentCue) then
         clearPoolMarkers(state)
         state.currentGroups={}
         state.markerReferences={}

@@ -391,7 +391,7 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
-    local function run(rows,members,referenceCache,uiCache,targetFG)
+    local function run(rows,members,referenceCache,uiCache)
         local normalized={}
         for _,source in ipairs(rows) do
             local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
@@ -571,12 +571,12 @@ local function newTrackARuntime(api)
             if (victims[barrier] or 0)>0 then return fail("REL_BARRIER_BLOCKS_HISTORY") end
         end
         local sourceGroups={}
-        if targetFG then for _,assignment in ipairs(assignments) do
-            if assignment.fg==targetFG and assignment.row.group then
+        for _,assignment in ipairs(assignments) do
+            if assignment.row.group then
                 local groupId=api.identity(assignment.row.group)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
-        end end
+        end
         local laneAssignments={}
         for _,assignment in ipairs(assignments) do
             laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,

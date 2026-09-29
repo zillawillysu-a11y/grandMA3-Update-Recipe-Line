@@ -289,6 +289,8 @@ local phaseResult=result({recipe(gOne,movingPhaser,1)},fOne)
 check(phaseResult.classification=="PROVEN" and phaseResult.refs["Preset 25.A"]==movingPhaser
  and phaseResult.activeRefs["Preset 25.A"]==movingPhaser,
  "a surviving moving Phaser must be both a resolver source and a steady stage marker")
+check(phaseResult.sourceGroups["Group 6"]==gOne,
+ "a selected fixture's active Phaser Group must pulse even when its lane differs from the selected Attribute")
 local selectiveResult=result({recipe(gBoth,selective,1)},fBoth)
 check(selectiveResult.classification=="PROVEN" and next(selectiveResult.refs)==nil,
  "Selective static reference must remain a terminator")
@@ -337,6 +339,19 @@ check(stageWideResult.classification=="PROVEN"
  and stageWideResult.activeRefs["Preset 1.1"]==static
  and stageWideResult.activeRefs["Preset 1.2"]==moving,
  "purple stage references must include surviving Recipe lanes across this Sequence while selection only filters Group blink refs")
+do
+ local startupState={provenEnabled=true,currentSequence=sequenceWide,currentCue=selectedCue,lastFixtures={}}
+ local startupRefs=functions.recipePoolReferences(startupState)
+ check(startupState.provenSources.classification=="PROVEN"
+  and startupRefs["Preset 1.1"]==static and startupRefs["Preset 1.2"]==moving
+  and startupRefs["Group 4"]==nil and startupRefs["Group 6"]==nil,
+  "opening with a valid Sequence/Cue must scan all Recipe Groups for purple refs without requiring a fixture selection")
+ startupState.lastFixtures=fOne
+ local selectedStageRefs=functions.recipePoolReferences(startupState)
+ check(startupState.currentGroups[1]==gOne and selectedStageRefs["Group 6"]==gOne
+  and selectedStageRefs["Group 4"]==nil and selectedStageRefs["Preset 1.2"]==moving,
+  "selecting a fixture must derive its active Recipe Group from cached lanes across all Attributes")
+end
 local splitResult=result({recipe(gOne,splitPhaser,1)},fOne)
 check(splitResult.classification=="PROVEN" and splitResult.refs["Preset 25.B"]==splitPhaser
  and splitResult.barriers==1,"known ABS with noncontributing unknown REL must publish ABS")
@@ -475,7 +490,7 @@ check(#attr(finalResult).fullySuperseded==1 and finalResult.remainingSemanticBlo
  "synthetic four-reference result must exclude fully superseded unsafe history")
 check(finalResult.sourceGroups["Group 6"]==gOne and finalResult.sourceGroups["Group 7"]==gCell
  and finalResult.sourceGroups["Group 8"]==nil,
- "only contributing Group lanes for the selected Attribute become current Groups")
+ "only Groups with surviving lanes for selected members become current Groups")
 do
  local embeddedPhaserOnly=phaser("Preset 25.P",attrs[0],11,21,nil,nil,nil)
  local directPhaser=embeddedPhaserOnly:Children()[1]
@@ -495,9 +510,11 @@ _G.GetCurrentCue=function() return finalCue end
 local panelText=functions.render(cached)
 local visibleSourceCount=0
 for key in pairs(expected) do if cached.markerReferences and cached.markerReferences[key] then visibleSourceCount=visibleSourceCount+1 end end
-check(panelText:find("Resolver: PROVEN | 4 refs",1,true)~=nil
- and cached.provenSourceKey~=nil and visibleSourceCount==4,
- "selection change must resolve and expose current Cue references in the same refresh")
+local stageActiveCount=tableCount(cached.provenSources.activeRefs)
+check(panelText:find("Resolver: PROVEN | "..stageActiveCount.." refs",1,true)~=nil
+ and cached.provenSourceKey~=nil and visibleSourceCount==4
+ and stageActiveCount>=visibleSourceCount,
+ "selection refresh must expose the complete tracked stage set while retaining all four moving compatibility refs")
 check(panelText:find("Groups:\n6 Key\n7 Cell",1,true)~=nil,
  "panel must show both numbered current Groups and visible resolver status")
 local first=functions.recipePoolReferences(cached)
@@ -740,12 +757,28 @@ check(markerState.markerStatus=="1/1 overlays",
 markerState.currentGroup=gOne
 markerState.currentGroups={gOne}
 markerState.currentRecipe=recipe(gOne,expected9009,2)
+markerState.lastFixtures={}
+markerState.currentGroup=nil
+markerState.currentRecipe=nil
+do
+ local stageRefsWithoutSelection=functions.recipePoolReferences(markerState)
+ markerState.markerReferences=stageRefsWithoutSelection
+ markerState.poolMarkersDirty=true
+ functions.refreshPoolMarkers(markerState)
+ check(stageRefsWithoutSelection["Preset 25.9009"]==expected9009
+  and stageRefsWithoutSelection["Group 6"]==nil and overlay.deleted~=true
+  and markerState.poolMarkers[button]~=nil,
+  "clearing fixture selection must stop Group pulses but preserve purple refs tracked by the valid Sequence/Cue")
+end
+markerState.currentSequence=nil
+markerState.currentCue=nil
+markerState.markerReferences={}
+markerState.poolMarkersDirty=true
 _G.SelectionFirst=function() return nil end
 _G.SelectionNext=function() return nil end
-functions.render(markerState)
 functions.refreshPoolMarkers(markerState)
 check(overlay.deleted and next(markerState.poolMarkers)==nil
  and #markerState.currentGroups==0 and markerState.currentGroup==nil
  and markerState.currentRecipe==nil and (not markerState.markerReferences or next(markerState.markerReferences)==nil),
- "Clear must remove Group, Recipe context and frames on the next refresh")
+ "losing the active Sequence/Cue context must remove stale Group and Recipe frames on the next refresh")
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")
