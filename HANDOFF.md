@@ -32,7 +32,7 @@ Need native evidence whether `SheetColor.Phaser` renders a visible purple frame 
 
 ## Current Branch / Commit
 
-Branch `qwen` (worktree detached at the current qwen checkpoint); v0.7.1.12 edits are uncommitted.
+Branch `qwen` (worktree detached at the pushed v0.7.1.12 candidate checkpoint); native validation is pending.
 
 ## Exact Next Action
 
