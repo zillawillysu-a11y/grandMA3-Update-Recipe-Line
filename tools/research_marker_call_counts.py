@@ -1,4 +1,4 @@
-"""Count calls through unchanged production closures; NOT a native benchmark.
+"""Count calls through current production closures; NOT a native benchmark.
 Run: uv run --with lupa python tools/research_marker_call_counts.py
 """
 from pathlib import Path
@@ -64,16 +64,16 @@ local state={running=true,poolBlink=true,provenEnabled=true,currentSequence={},c
 functions.refreshPoolMarkers(state)
 local n=0
 for button in pairs(state.poolMarkers) do n=n+1; assert(button.ObjectIndex<=13) end
-assert(n==13 and calls.CompareHandle==187*13)
-report('PRODUCTION_FIRST_SCAN buttons=200 refs=13 marked=13')
+assert(n==13 and (calls.CompareHandle or 0)==0)
+report('PRODUCTION_INDEXED_FIRST_SCAN buttons=200 refs=13 marked=13')
 functions.refreshPoolMarkers(state)
 assert((calls.UIChildren or 0)==0)
 report('PRODUCTION_CACHED_BEFORE_DEADLINE')
 -- This forces exactly the condition render() sets on every empty-selection tick.
 state.poolMarkersDirty=true
 functions.refreshPoolMarkers(state)
-assert(calls.CompareHandle==187*13)
-report('PRODUCTION_DIRTY_BEFORE_DEADLINE')
+assert((calls.CompareHandle or 0)==0)
+report('PRODUCTION_INDEXED_DIRTY_BEFORE_DEADLINE')
 -- An illustrative index, NOT a proposed identity implementation or replacement.
 -- Native alias/collision/invalidation proof is still needed before production.
 local byId={}

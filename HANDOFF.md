@@ -2,78 +2,72 @@
 
 ## Current Goal
 
-Preserve the native-correct v0.7.1.28 Recipe/Fixture/SubFixture/Cell and marker
-results; target end-to-end selection/Cue/marker response <=100 ms. Latest task
-is research and a measurable cold/warm architecture, not another speculative
-production deployment.
+Preserve the native-correct Recipe/Fixture/SubFixture/Cell results while
+bringing selection/Cue/marker response into the user's acceptable 100–200 ms
+range. Separate warm-cache behavior from cold Cue resolution.
 
 ## Current Working State
 
-Production is unchanged at v0.7.1.28. Added an API/source research document and
-an offline call-count tool. Read the report before implementing. Runtime
-latency optimizations have NOT been deployed. REAL-WORLD PERFORMANCE
-VALIDATION PENDING.
+v0.7.1.29 implements Pool reference identity indexing, avoids marking the Pool
+dirty on every empty-selection refresh, and skips unchanged overlay writes.
+Lua/XML static parsing and `git diff --check` passed. The three intended plugin
+files were deployed to the Update Plugin directory and their SHA256 hashes
+match. Offline assertions and native behavior have not been run for this
+change. REAL-WORLD VALIDATION PENDING.
 
 ## Latest Real-World User Test
 
-User confirms contents are completely correct in the September 29 22:01/22:03
-videos, but results take 2-3 seconds. Detail samples: resolver elapsed 2220.5
-and 4331.1 ms, 43 rows/1295 members, scope 77.4-95.2 ms, Pool tile work
-126.6-274.6 ms. These are not isolated native API lower bounds.
+On v0.7.1.28 the user confirmed correct contents but reported 2–3 second
+responses. Detail samples recorded 2220.5 and 4331.1 ms resolver elapsed for
+43 rows / 1295 members; they are not native API lower bounds. v0.7.1.29 has not
+yet been tested on grandMA3.
 
 ## Verified Facts
 
-- Official documented GetUIChannels takes one member, not a member array.
-  Exact 2.5.0.3 API descriptors still need a native read-only check.
-- MA-supplied 2.5.0 Pool wrappers use PoolObject:Ptr(button.ObjectIndex).
-  Scrolling tests confirm recycled buttons change ObjectIndex.
-- Unmodified production closures, 200 mock tiles/13 refs: 2431 unsuccessful
-  CompareHandle calls plus thousands of identity conversions per full scan.
-  A stable non-dirty scan before deadline performs only 13 Ptr checks.
-- render marks Pool dirty on every empty-selection refresh, bypassing throttle.
-- A warm 1295-member groupKeys hit still calls GetSubfixture and ToAddr 1295
-  times each. The offline tool asserts this; it does not measure native speed.
-- Workflow: 88 assertions passed; call-count assertions passed on Lua 5.4.
-- Existing show_candidate.lua fails Lua 5.4 parsing at line 1155 (200-local
-  limit); file unchanged. Repair test scopes before the next runtime change.
-- Runtime/XML hashes still match the deployed Update Plugin files. No Show
-  commands or MA system tests were executed.
+- The implementation indexes command/native addresses and HandleToInt /
+  HandleToStr tokens. It verifies indexed candidates with `sameReference` and
+  retains a Generator/Random alias fallback.
+- Existing marked buttons still validate `ObjectIndex` through `PoolObject:Ptr`
+  on each refresh; grid visibility and bounded rediscovery remain in place.
+- Current steady marker colors allow W/H/Visible/BackColor/Text writes to be
+  skipped when the cached overlay properties are unchanged.
+- Research call-count tool expectations were updated for the new index but
+  were not executed. No tests were added or run in this change.
+- Existing native evidence observed the Recipe reference and visible Generator
+  tile returning the same handle for Generator 103. Other alias forms and
+  handle-conversion behavior still need on-console confirmation.
+- Deployment backup: `C:/tmp/update-plugin-pre-0.7.1.29-20260929-225201`.
 
 ## Current Problem
 
-100 ms is not established for cold or warm paths. Current elapsed timers mix
-scheduler waits, normalization, panel/programmer work and Pool matching. Do
-not call current 2-4 seconds an unavoidable platform limit without isolating
-the necessary native calls. Native hook coverage and alternative numeric UI
-channel equivalence need validation before cache invalidation is changed.
+This bounded Pool/UI change does not remove the staged Sequence resolver's
+multi-second cold work. Cache invalidation and identity equivalence beyond the
+observed Generator case need native validation before broader warm-path reuse.
 
 ## Known Failed Attempts
 
-Larger slices or shorter yields alone do not remove total work. Pool discovery
-was already cheap in the captured samples; per-tile matching was not. A cache
-that fingerprints all members before every hit still incurs native read cost.
+Increasing resolver slices or shortening yields alone did not remove total
+work. Current 2–4 second samples mix scheduler waits and processing; they do
+not establish a platform lower bound.
 
 ## Important Files
 
-- docs/track-a-marker-latency-research.md
-- tools/research_marker_call_counts.py
-- RecipeTracking_Inspector.lua
-- tools/templates/show_track_a_runtime.lua
-- tests/show_candidate.lua
+- `RecipeTracking_Inspector.lua`
+- `recipe_update_diagnostic.xml`
+- `tools/research_marker_call_counts.py`
+- `docs/track-a-marker-latency-research.md`
+- `tools/templates/show_track_a_runtime.lua`
 
 ## Current Branch / Commit
 
-Authoritative continuation worktree: C:/tmp/show-rel, detached, pushed to
-origin/qwen. Research checkpoint subject: docs: investigate Track A marker
-latency and native API options. Verify actual status with Git. The older
-Documents worktree remains untouched.
+Worktree: `C:/tmp/show-rel`, detached from `origin/qwen` at the research
+checkpoint subject `docs: investigate Track A marker latency and native API
+options`. v0.7.1.29 changes are local and not yet committed or pushed.
 
 ## Exact Next Action
 
-Implement the report's first bounded optimization: eliminate all-ref identity
-fallback for unmatched tiles through validated identity indexing; remove
-unchanged empty-selection dirty and unchanged overlay writes. Preserve native
-recycle/hidden-grid checks and Generator aliases. Add equivalence/invalidations
-coverage, then measure native matching/apply time separately. In parallel in
-the implementation plan (not delegated agents), design dependency epochs and
-measure necessary capability calls before choosing a cold-path strategy.
+User tests v0.7.1.29 on grandMA3 2.5.0.3: verify marker equivalence for
+Generator 103 and other visible references, empty-selection stability, Pool
+scroll/View Recall recycling, and hidden-grid cleanup. Capture end-to-end
+selection/Cue-to-final-frame latency and `tile_apply_ms`. Then continue with a
+warm stage-cache shortcut only after its dependency invalidation is proven.

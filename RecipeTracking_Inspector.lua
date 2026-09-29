@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.28"
+local PLUGIN_VERSION = "0.7.1.29"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1193,7 +1193,6 @@ local function render(state)
             state.currentGroups={}
             state.completeGroupSelectionKey=nil
             state.completeGroupCandidates=nil
-            state.poolMarkersDirty=true
         end
         if not sequence or not currentCue then
             state.currentGroups={}
@@ -3064,6 +3063,109 @@ local function elapsedMs(started)
     return elapsed >= 0 and elapsed or 0
 end
 
+-- Index the identities already used by sameReference so Pool scans can look
+-- up likely aliases without comparing every visible tile to every Recipe ref.
+-- Handle tokens are only candidate keys: sameReference remains the authority
+-- for accepting a non-address match, so token collisions fail closed.
+local function referenceIdentityTokens(object, command)
+    local tokens, seen = {}, {}
+    local function add(prefix, value)
+        if value == nil then return end
+        local text = tostring(value)
+        if text == "" then return end
+        local token = prefix .. text
+        if not seen[token] then
+            seen[token] = true
+            tokens[#tokens + 1] = token
+        end
+    end
+    if callable("HandleToInt") then
+        local id = safe(HandleToInt, object)
+        if type(id) == "number" and id ~= 0 then add("i:", id) end
+    end
+    if callable("HandleToStr") then
+        local id = safe(HandleToStr, object)
+        if type(id) == "string" then add("s:", id) end
+    end
+    if command then add("c:", command) end
+    local native = address(object)
+    if native ~= "" then add("a:", native) end
+    return tokens
+end
+
+local function buildPoolReferenceIndex(references)
+    local index = { byToken = {}, generators = {}, weak = {}, all = {} }
+    for _, reference in pairs(references or {}) do
+        index.all[#index.all + 1] = reference
+        if isRandomGenerator(reference) then
+            index.generators[#index.generators + 1] = reference
+        end
+        local tokens = referenceIdentityTokens(reference, commandAddress(reference))
+        local hasStrongHandleToken = false
+        for _, token in ipairs(tokens) do
+            if token:sub(1, 2) == "i:" or token:sub(1, 2) == "s:" then
+                hasStrongHandleToken = true
+            end
+            local bucket = index.byToken[token]
+            if not bucket then bucket = {}; index.byToken[token] = bucket end
+            bucket[#bucket + 1] = reference
+        end
+        if not hasStrongHandleToken then index.weak[#index.weak + 1] = reference end
+    end
+    return index
+end
+
+local function indexedPoolReference(object, command, references, index)
+    local direct = command and references[command] or nil
+    if direct then return direct, "ADDRESS" end
+
+    local tokens = referenceIdentityTokens(object, command)
+    local hasStrongHandleToken = false
+    for _, token in ipairs(tokens) do
+        if token:sub(1, 2) == "i:" or token:sub(1, 2) == "s:" then
+            hasStrongHandleToken = true
+            break
+        end
+    end
+    local candidates, seen = {}, {}
+    local function addCandidates(items)
+        for _, reference in ipairs(items or {}) do
+            if not seen[reference] then
+                seen[reference] = true
+                candidates[#candidates + 1] = reference
+            end
+        end
+    end
+    for _, token in ipairs(tokens) do addCandidates(index.byToken[token]) end
+    addCandidates(index.weak)
+    for _, reference in ipairs(candidates) do
+        if sameReference(object, reference) then return reference, "HANDLE_INDEX" end
+    end
+
+    -- MA exposes Generator links as Random Pool targets on some paths. Their
+    -- command addresses differ, so retain this narrow native-handle fallback.
+    if isRandomGenerator(object) then
+        for _, reference in ipairs(index.generators) do
+            if not seen[reference] and sameReference(object, reference) then
+                return reference, "GENERATOR_ALIAS"
+            end
+        end
+    end
+
+    -- Older hosts may omit both handle conversion APIs. Preserve their prior
+    -- matching behavior in that compatibility mode; normal indexed hosts avoid
+    -- the all-reference scan for ordinary unmatched Pool tiles.
+    if not hasStrongHandleToken or not callable("HandleToInt")
+        or not callable("HandleToStr") then
+        for _, reference in ipairs(index.all) do
+            if not seen[reference] and sameReference(object, reference) then
+                return reference, "HANDLE_FALLBACK"
+            end
+        end
+    end
+    return nil, nil
+end
+
 formatElapsed = function(value)
     return value ~= nil and string.format("%.1f", value) or "n/a"
 end
@@ -3524,6 +3626,7 @@ local function refreshPoolMarkers(state)
     local markerStarted=clockSeconds()
     state.poolMarkersDirty = false
     local references = state.markerReferences or recipePoolReferences(state)
+    local referenceIndex = buildPoolReferenceIndex(references)
     local markers, found = state.poolMarkers or {}, {}
     state.poolMarkers = markers
     local displayProbe={}
@@ -3604,17 +3707,9 @@ local function refreshPoolMarkers(state)
                 candidateProbe.poolTileFound=true
                 candidateProbe.poolTileVisible=actuallyVisible(node) and actuallyVisible(button)
             end
-            local matched = key and references[key] or nil
-            local identityMethod=matched and "ADDRESS" or nil
-            if not matched and object then
-                -- Generator Recipe links and Generator Pool targets can expose
-                -- different command-address text (Random vs Generator) for the
-                -- same native object. Fall back only after the O(1) key lookup.
-                for _, reference in pairs(references) do
-                    if sameReference(object, reference) then
-                        matched = reference; identityMethod="HANDLE"; break
-                    end
-                end
+            local matched,identityMethod
+            if object then
+                matched,identityMethod=indexedPoolReference(object,key,references,referenceIndex)
             end
             if matched then
                 local probe=state.markerProbe and state.markerProbe[commandAddress(matched)]
@@ -3638,17 +3733,19 @@ local function refreshPoolMarkers(state)
                     local onGrid = overlay ~= nil
                     if not overlay then overlay = safe(function() return button:Append("UIObject") end) end
                     if overlay then
+                        local initialColor=poolPulseColor(markerKind,state.poolBlinkOn)
                         local ok = pcall(function()
                             overlay.Name = "RecipeTrackingPoolMarker"
                             overlay.Anchors = onGrid and button.Anchors
                                 or { left = 0, right = 0, top = 0, bottom = 0 }
                             overlay.Texture = "frame0"
-                            overlay.BackColor = poolPulseColor(markerKind,state.poolBlinkOn)
+                            overlay.BackColor = initialColor
                             overlay.HasHover = "No"
                             overlay.Interactive = "No"
                         end)
                         if ok then
-                            entry = { overlay = overlay,markerKind=markerKind }
+                            entry = { overlay = overlay,markerKind=markerKind,
+                                backColor=initialColor }
                             markers[button] = entry
                         else
                             deleteHandle(overlay)
@@ -3660,12 +3757,29 @@ local function refreshPoolMarkers(state)
                     entry.pool=pool
                     entry.poolIndex=index
                     entry.reference=matched
+                    local width,height=button.W,button.H
+                    local color=poolPulseColor(markerKind,state.poolBlinkOn)
                     pcall(function()
-                        entry.overlay.W = button.W
-                        entry.overlay.H = button.H
-                        entry.overlay.Visible = "Yes"
-                        entry.overlay.BackColor = poolPulseColor(markerKind,state.poolBlinkOn)
-                        entry.overlay.Text = ""
+                        if entry.width~=width then
+                            entry.overlay.W=width
+                            entry.width=width
+                        end
+                        if entry.height~=height then
+                            entry.overlay.H=height
+                            entry.height=height
+                        end
+                        if entry.visible~="Yes" then
+                            entry.overlay.Visible="Yes"
+                            entry.visible="Yes"
+                        end
+                        if entry.backColor~=color then
+                            entry.overlay.BackColor=color
+                            entry.backColor=color
+                        end
+                        if entry.text~="" then
+                            entry.overlay.Text=""
+                            entry.text=""
+                        end
                     end)
                     if probe then probe.frameCreated=true end
                 end
