@@ -5,6 +5,7 @@ local signals = {}
 local sourceFile = assert(io.open("RecipeTracking_Inspector.lua", "rb"))
 local source = sourceFile:read("*a")
 sourceFile:close()
+local pluginVersion=assert(source:match('local PLUGIN_VERSION = "([^"]+)"'))
 local patched, flagCount = source:gsub("local ENABLE_TRACK_A_SHOW_CANDIDATE = true",
     "local ENABLE_TRACK_A_SHOW_CANDIDATE = false")
 assert(flagCount == 1, "expected one enabled Track A feature flag")
@@ -84,10 +85,13 @@ DataPool = function() return {Groups = object("Groups", "Groups", {}, {group})} 
 replace(functions.render, "readSelection", function() return fixtures end)
 replace(functions.render, "readProgrammer", function() return info end)
 replace(functions.render, "directRecipes", function() return {} end)
-local state = {update = {}, selectGroup = {}}
+local state = {update = {}, selectGroup = {}, poolMarkersDirty = false,
+    poolGridRefreshNeeded = false}
 RecipeTrackingInspectorState = state
 functions.render(state)
 check(state.currentRecipe == last and state.update.Enabled == "Yes", "Resolved row must enable update")
+check(state.poolGridRefreshNeeded == true,
+    "Sequence/Cue changes must rediscover visible Pool grids even when cached grids remain valid")
 local dialogs, commands, undoCount = {}, {}, 0
 local answer = 0
 MessageBox = function(args)
@@ -547,7 +551,7 @@ check(functions.stopExistingForLaunch(oldInstance) == false and oldInstance.runn
         and next(oldInstance.markerReferences)==nil and #oldInstance.currentGroups==0
         and oldInstance.currentGroup==nil and oldInstance.provenSources==nil,
     "replacing a loaded Plugin must immediately delete old Pool overlays and context state")
-local sameInstance = {running = true, version = "0.7.1.28"}
+local sameInstance = {running = true, version = pluginVersion}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {

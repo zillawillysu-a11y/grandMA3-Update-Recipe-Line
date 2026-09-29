@@ -183,3 +183,96 @@ D. 額外共用 Attribute handle -> FeatureGroup 的 memo，避免不同 UI chan
 - 額外嘗試直接執行現有 show_candidate.lua：Lua 5.4 在第 1155 行解析失敗，訊息為 too many local variables (limit is 200)。該檔與 HEAD 無差異，這是本次發現的既有測試入口限制，不能宣稱本次 candidate suite 全綠；後續實作前須先整理測試區塊 scope，再補效能／失效測試。
 - production Lua/XML 與部署檔案 SHA256 相同；這只確認研究未改動已部署版本，並非新效能驗收。
 - 研究檔案與 HANDOFF 執行 git diff --check；不進行 production 部署。
+
+## 2026-09-29 follow-up: staged member rescans
+
+The user's v0.7.1.29 video feedback says markers remain correct but loading
+still takes particularly long. The video starts with the resolver already
+PROVEN, so it does not expose the transition duration. Source inspection found
+a repeat cost in newTrackARuntime.run: each 32-member staged slice iterated
+every member in each Recipe's stored Group and filtered against that slice.
+With 43 rows, a shared 1,295-member Group, and 41 slices, that is about
+2.28 million membership probes, despite only 56,416 row/member candidates
+belonging to the current slices.
+
+v0.7.1.30 adds a slice-only membership path that iterates the current slice
+and tests membership in each row's Group. The full unsliced path retains its
+existing Group-driven loop, which is better for small Groups. This reduces the
+identified redundant checks by roughly 40x for the observed workload shape.
+That figure is a source-derived operation count, not a measured grandMA3
+speedup; console timing and marker equivalence remain to be validated.
+
+## 2026-09-29 adaptive slice direction
+
+Review before console validation found that always iterating the active slice
+could cost more than iterating a small Recipe Group. v0.7.1.31 records each
+row's canonical Group member count once and chooses the smaller side for each
+staged slice: slice-driven lookup for larger Groups, Group-driven lookup for
+Groups smaller than the active slice. The unsliced path stays unchanged.
+
+For the 43-row / 1,295-member shared-Group shape, expected membership probes
+fall from 2,283,085 to 55,685. For Groups smaller than a slice, the prior
+Group-driven loop is retained. These remain source-derived counts; console
+latency and marker behavior still require real-world validation.
+
+## 2026-09-29 follow-up: v0.7.1.31 timing and batching
+
+The user's v0.7.1.31 video shows Cue 11 completing with 123 Recipe rows,
+1,265 members, and 2,699.3 ms resolver total. The last displayed slice was
+16.5 ms, scope was 111.1 ms, signature 18.5 ms, and the last Pool tile pass
+46.1 ms. These are different scopes: the video does not report cumulative
+metadata or member-UI time, and the tile figure is one scan, so it cannot be
+multiplied across every resolver slice.
+
+v0.7.1.32 raises metadata batches from 4 to 8 rows and member batches from
+32 to 128, targeting fewer 10 ms pending yields while keeping a reverse batch
+near the accepted 100-200 ms response budget. Recipe-structure polling backs
+off to 500 ms only while a resolver task is pending; Sequence/Cue changes
+still trigger immediate checks. Cumulative metadata, member-UI, and engine
+times are now displayed and logged. These are unmeasured tuning changes; the
+next grandMA3 run must verify latency and marker equivalence.
+
+## 2026-09-29 follow-up: v0.7.1.32 console timing and v0.7.1.33 candidate
+
+The user's v0.7.1.32 video ends at Cue 8 with PROVEN, 13 refs, and 2 selected
+frames. The expanded panel reports 2,100.4 ms resolver total, 96/96 rows,
+1,265 members, cumulative engine work of 608.8 ms, metadata 0 ms, and member
+UI 0 ms. The final displayed scope was 96.4 ms, the current engine slice was
+47.0 ms, and one Pool tile pass was 33.2 ms. The user reports some improvement
+but confirms the 200 ms target is still not met. The 608.8 ms engine sum is
+not the same scope as the 2,100.4 ms end-to-end elapsed time.
+
+v0.7.1.33 adds a one-time member-to-row index for sparse Recipe Groups across
+staged slices. Dense rows retain the prior adaptive Group/slice traversal.
+The estimated row/member work per reverse slice is capped at 24,000, with a
+maximum of 256 members; the batch limit shrinks as Recipe row count grows.
+Selected members remain first in the ordered member list. When the final
+metadata slice reaches the last row, the same refresh now continues into lane
+resolution instead of yielding an empty extra cycle.
+
+Local validation passed: candidate generation check, Lua/XML parsing, 88
+workflow assertions, and 209 Track A candidate checks, including baseline vs
+indexed-path equality for safe moving refs and member/lane ownership. This optimization has
+not yet been measured on-console; the 100-200 ms user target remains open.
+
+## 2026-09-30 follow-up: v0.7.1.33 Pool marker regression
+
+The user's v0.7.1.33 video shows Cue 4 as PROVEN with 13 refs but only 4/13
+Pool overlays. The first reported miss is `Preset 1.1 @ VISIBLE_POOL_TILE_NOT_FOUND`,
+and the user reports that purple frames for Pool 9001–9012 no longer appear.
+The visible Pool row and resolver references are both present in the video.
+
+Inspection found that Sequence/Cue changes and changed marker references only
+marked overlays dirty. The discovery path reused cached `PoolLayoutGrid`
+handles while they remained valid and visible, so a newly opened/switched Pool
+could be omitted. v0.7.1.34 marks the visible-grid list for rediscovery on both
+stage-context changes and final marker-reference changes. The bounded display
+tree walk remains in place.
+
+Local validation passes with 89 workflow assertions, 209 Track A candidate
+checks, Lua/XML parsing, candidate generation consistency, and `git diff
+--check`. v0.7.1.34 was deployed to the grandMA3 plugin directory and all
+three source/deployed SHA256 pairs match. Backup:
+`C:/tmp/update-plugin-pre-0.7.1.34-20260930-001236`. The stale-grid explanation
+remains a source-supported hypothesis pending on-console confirmation. The
+100–200 ms latency target also remains open.

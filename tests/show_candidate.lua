@@ -94,7 +94,7 @@ warmRuntime.run=function(_,selected,_,uiCache)
  return {classification="PROVEN",refs=refs,activeRefs=activeRefs,sourceGroups={}}
 end
 local warmTask={rows={},members=warmMembers,memberIndex=1,metadataIndex=1,runtime=warmRuntime,
- selectedMembers=warmSelected,stageMembers=warmSelected,targetFG=nil}
+ selectedMembers=warmSelected,stageMembers=warmSelected,targetFG=nil,memberSliceLimit=32}
 local warmState={referenceMetadataCache={},memberUICache={}}
 local warmResult,slices
 slices=0
@@ -105,7 +105,7 @@ until warmResult.classification~="PENDING" or slices>20
 check(warmResult.classification=="PROVEN" and #warmedHandles==40
  and warmState.resolverMembersWarmed==40 and warmState.resolverMembersTotal==40
  and tableCount(warmResult.refs)==40 and warmRunCalls==2 and warmMaxBatch==32 and slices==2,
- "large sequence lane resolution must preserve all refs in deterministic batches of at most thirty-two members")
+ "large sequence lane resolution must preserve refs across the configured bounded member slices")
 end
 
 -- Only real cache misses consume the metadata slice budget. A warm cache must
@@ -129,19 +129,14 @@ do
  stationTime=200.1
  functions.advancePoolPulse(pulse)
  local first=provenApi.advanceStagedResolver(task,state)
- check(first.classification=="PENDING" and metadataReads==4 and engineRuns==0,
-  "resolver reference metadata must be limited to four rows per UI refresh")
+ check(first.classification=="PENDING" and metadataReads==8 and engineRuns==0,
+  "resolver reference metadata must be limited to eight rows per UI refresh")
  stationTime=200.2
  functions.advancePoolPulse(pulse)
  local second=provenApi.advanceStagedResolver(task,state)
- check(second.classification=="PENDING" and metadataReads==8 and engineRuns==0
+ check(second.classification=="PROVEN" and metadataReads==9 and engineRuns==1
   and pulse.poolBlinkOn==true,
-  "stable marker colors must not incur timer-driven overlay writes during metadata slices")
- stationTime=200.3
- functions.advancePoolPulse(pulse)
- local final=provenApi.advanceStagedResolver(task,state)
- check(final.classification=="PROVEN" and metadataReads==9 and engineRuns==1,
-  "the final metadata slice must run the lane engine exactly once")
+  "the final metadata slice must run the lane engine without another polling cycle")
  local warmRows,warmCache={},{}
  for i=1,9 do
   local ref=object("Preset","Preset warm metadata "..i)
@@ -165,7 +160,7 @@ do
  local manyMembers,manySelected={},{}
  for i=1,64 do manyMembers[i]={key="x"..i,handle="x"..i}; manySelected["x"..i]="x"..i end
  local calls=0
- local memberTask={rows={},members=manyMembers,memberIndex=1,metadataIndex=1,
+ local memberTask={rows={},members=manyMembers,memberIndex=1,metadataIndex=1,memberSliceLimit=32,
   selectedMembers=manySelected,stageMembers=manySelected,runtime={
    memberUI=function(handle,cache) cache[handle]={} end,
    run=function(_,members)
@@ -203,7 +198,7 @@ do
  for _,key in ipairs(keys) do members[#members+1]={key=key,handle=key} end
  local calls=0
  local task={key="same-stage-context",stageKey="stage",rows={},members=members,
-  memberIndex=1,metadataIndex=1,runtime={run=function(_,batch)
+  memberIndex=1,metadataIndex=1,memberSliceLimit=32,runtime={run=function(_,batch)
    calls=calls+1
    local assignments,active={},{}
    for key in pairs(batch) do
@@ -967,6 +962,68 @@ do
  check(sparseResult.classification=="INCONCLUSIVE" and scopeMisses==0
   and scopeEnumerations==48 and #sparseResult.unsafeAttribution.finalSurviving==48,
   "sparse single-member Recipe rows must normalize without scanning unrelated Sequence members")
+ scopeEnumerations=0
+ local rowsByMember,indexedRows={},{}
+ for rowIndex,row in ipairs(rowList) do
+  indexedRows[rowIndex]=true
+  for key in pairs(row.groupMembers) do
+   rowsByMember[key]=rowsByMember[key] or {}
+   rowsByMember[key][#rowsByMember[key]+1]=rowIndex
+  end
+ end
+ local indexedResult=sparseRuntime.run(rowList,memberMap,{}, {},true,rowsByMember,indexedRows)
+ check(indexedResult.classification==sparseResult.classification
+  and indexedResult.reason==sparseResult.reason
+  and #indexedResult.unsafeAttribution.finalSurviving==#sparseResult.unsafeAttribution.finalSurviving
+  and indexedResult.laneWork==sparseResult.laneWork and scopeMisses==0 and scopeEnumerations==48,
+  "indexed sparse Recipe rows must preserve reverse results while avoiding per-slice Group rescans")
+end
+do
+ local fg={kind="FeatureGroup",addr="FeatureGroup 1"}
+ local featureHandle={kind="Feature",addr="Feature 1",Parent=function() return fg end}
+ local attributeHandle={kind="Attribute",addr="Attribute 1",Feature=featureHandle}
+ local presetData={}
+ local function safeMovingPreset(addr)
+  local ref={kind="Preset",addr=addr}
+  presetData[ref]={[0]={attribute=attributeHandle,pm=2,preset_store_mode=2,
+   selective=false,mask_active_phaser=4,mask_active_value=2,mask_cooked=0,
+   ui_channel_index=0,[1]={absolute=10},[2]={absolute=20}},count=1,by_fixtures=false}
+  return ref
+ end
+ local safeRuntime=functions.newTrackARuntime({
+  safe=function(fn,...) local ok,value=pcall(fn,...); if ok then return value end end,
+  class=function(value) return value and value.kind or "Unknown" end,
+  identity=function(value) return value and value.addr end,
+  children=function(value) return value and value.children or {} end,
+  getPresetData=function(ref) return presetData[ref] end,
+  getUIChannels=function() return {{INDEX=1}} end,
+  attributeByUI=function() return attributeHandle end,
+ })
+ local f1,f2="Fixture 101","Fixture 102"
+ local members={[f1]={kind="SubFixture",addr=f1},[f2]={kind="SubFixture",addr=f2}}
+ local rows={
+  {ref=safeMovingPreset("Preset indexed new"),groupMembers={[f1]=true,[f2]=true},groupMemberCount=2},
+  {ref=safeMovingPreset("Preset indexed older 1"),groupMembers={[f1]=true},groupMemberCount=1},
+  {ref=safeMovingPreset("Preset indexed older 2"),groupMembers={[f2]=true},groupMemberCount=1},
+ }
+ local baseline=safeRuntime.run(rows,members,{}, {},true)
+ local rowsByMember={[f1]={1,2},[f2]={1,3}}
+ local indexed=safeRuntime.run(rows,members,{}, {},true,rowsByMember,{[1]=true,[2]=true,[3]=true})
+ local sameRefs=baseline.classification==indexed.classification and baseline.laneWork==indexed.laneWork
+ for id,ref in pairs(baseline.refs or {}) do sameRefs=sameRefs and indexed.refs[id]==ref end
+ for id,ref in pairs(indexed.refs or {}) do sameRefs=sameRefs and baseline.refs[id]==ref end
+ local function assignmentSet(result)
+  local set={}
+  for _,a in ipairs(result.laneAssignments or {}) do
+   set[table.concat({a.member,a.lane,a.refId,tostring(a.moving)},"\0")]=true
+  end
+  return set
+ end
+ local aSet,bSet=assignmentSet(baseline),assignmentSet(indexed)
+ for key in pairs(aSet) do sameRefs=sameRefs and bSet[key]==true end
+ for key in pairs(bSet) do sameRefs=sameRefs and aSet[key]==true end
+ check(sameRefs and tableCount(baseline.refs)==1 and tableCount(indexed.refs)==1,
+  "indexed sparse rows must preserve proven moving refs and member/lane ownership")
 end
 local editRecipe=recipe(gOne,moving,1)
 local editSeq,editCue=tree({editRecipe})
@@ -1140,7 +1197,7 @@ do
    members={{key="101",handle=subfixtureByIndex[101]},
     {key="201",handle=subfixtureByIndex[201]},{key="201.1",handle=subfixtureByIndex[202]},
     {key="201.1.1",handle=subfixtureByIndex[203]},{key="900",handle=subfixtureByIndex[101]}},
-    memberIndex=1,metadataIndex=1,selectedMembers={["101"]=subfixtureByIndex[101]},
+    memberIndex=1,metadataIndex=1,memberSliceLimit=32,selectedMembers={["101"]=subfixtureByIndex[101]},
     runtime={memberUI=function(handle,cache) cache[handle]={} end,
     run=function(_,memberSlice)
      local assignments={}

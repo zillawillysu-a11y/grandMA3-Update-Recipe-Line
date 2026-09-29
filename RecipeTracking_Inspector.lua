@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.29"
+local PLUGIN_VERSION = "0.7.1.34"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -18,9 +18,15 @@ local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
 local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
-local RESOLVER_METADATA_ROWS_PER_SLICE = 4
-local RESOLVER_MEMBERS_PER_SLICE = 32
+-- Bound each reverse slice by an estimated row/member work count, with a
+-- generous member cap for shows with fewer Recipe rows.
+local RESOLVER_METADATA_ROWS_PER_SLICE = 8
+local RESOLVER_MAX_MEMBERS_PER_SLICE = 256
+local RESOLVER_ROW_MEMBER_WORK_PER_SLICE = 24000
 local TRACKING_SIGNATURE_POLL_SECONDS = 0.1
+-- Sequence/Cue changes still force an immediate signature; only recipe edits
+-- are polled less often while a long resolver task is pending.
+local TRACKING_SIGNATURE_PENDING_POLL_SECONDS = 0.5
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -1132,6 +1138,8 @@ local function render(state)
     if state then
         local structureContext=tostring(commandAddress(sequence))..":"..tostring(cueNumber(currentCue))
         local now=contextClock()
+        local signaturePollSeconds=state.resolverTask
+            and TRACKING_SIGNATURE_PENDING_POLL_SECONDS or TRACKING_SIGNATURE_POLL_SECONDS
         local checkStructure=state.trackARecipeStructureContext~=structureContext
             or state.forceRefresh==true or state.trackARecipeStructureCheckAt==nil
             or now==nil or now>=state.trackARecipeStructureCheckAt
@@ -1140,7 +1148,7 @@ local function render(state)
             trackARecipeStructure=trackingStructureKey(sequence,currentCue)
             state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
             state.trackARecipeStructureContext=structureContext
-            state.trackARecipeStructureCheckAt=now and now+TRACKING_SIGNATURE_POLL_SECONDS or nil
+            state.trackARecipeStructureCheckAt=now and now+signaturePollSeconds or nil
         else
             trackARecipeStructure=state.trackARecipeStructureKey
             state.lastTrackingFingerprintMs=0
@@ -1164,6 +1172,9 @@ local function render(state)
         if state.stageMarkerContextKey~=stageContextKey then
             state.stageMarkerContextKey=stageContextKey
             state.poolMarkersDirty=true
+            -- A new Cue can be paired with a newly opened or switched Pool
+            -- grid while the old grid handles remain valid and visible.
+            state.poolGridRefreshNeeded=true
             if ENABLE_TRACK_A_SHOW_CANDIDATE then
                 state.provenSourceKey=nil
                 state.provenSources={classification="PENDING",refs={}}
@@ -1356,7 +1367,12 @@ local function render(state)
                     if previousReferences[key]==nil then sameKeys=false; break end
                 end
             end
-            if not sameKeys then state.poolMarkersDirty=true end
+            if not sameKeys then
+                state.poolMarkersDirty=true
+                -- Recipe references can move between Pools without invalidating
+                -- the previously cached PoolLayoutGrid objects.
+                state.poolGridRefreshNeeded=true
+            end
             state.markerReferences=nextReferences
         end
     end
@@ -1434,6 +1450,11 @@ local function render(state)
             if evidence then resolverLines[#resolverLines+1]="Selected source ref: "..evidence end
         end
         if state.expanded then
+            local resolverTotalDisplay=state.lastResolverTotalMs
+            if state.provenSources.classification=="PENDING" then
+                resolverTotalDisplay=state.resolverWorkStarted
+                    and contextElapsed(state.resolverWorkStarted) or resolverTotalDisplay
+            end
             resolverLines[#resolverLines+1]=string.format(
                 "Time ms: scan %s | signature %s | scope %s | engine %s",
                 formatElapsed(state.lastTrackingScanMs),
@@ -1441,8 +1462,13 @@ local function render(state)
                 formatElapsed(state.lastResolverScopeMs),formatElapsed(state.lastResolverEngineMs))
             resolverLines[#resolverLines+1]=string.format(
                 "Time ms: resolver %s / total %s | Pool scan %s / tiles %s",
-                formatElapsed(state.lastResolverSliceMs),formatElapsed(state.lastResolverTotalMs),
+                formatElapsed(state.lastResolverSliceMs),formatElapsed(resolverTotalDisplay),
                 formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs))
+            resolverLines[#resolverLines+1]=string.format(
+                "Resolver work ms: metadata %s | member UI %s | engine %s",
+                formatElapsed(state.lastResolverMetadataTotalMs),
+                formatElapsed(state.lastResolverMemberUITotalMs),
+                formatElapsed(state.lastResolverEngineTotalMs))
         end
     end
     if state and #state.matchingCandidates > 1 then
@@ -2014,18 +2040,45 @@ local function newTrackARuntime(api)
         cache.__unsafeScope[key]=entry
         return features,layers
     end
-    local function run(rows,members,referenceCache,uiCache)
-        local normalized={}
-        for _,source in ipairs(rows) do
+    local function run(rows,members,referenceCache,uiCache,memberSliceOnly,memberRowsByKey,indexedRows)
+        local normalized,normalizedByIndex={},{}
+        local sliceSize=memberSliceOnly and count(members) or 0
+        for sourceIndex,source in ipairs(rows) do
             local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
                 members={},lanes={},superseded={}}
             if not row.refId then return fail("REFERENCE_IDENTITY_UNPROVEN") end
-            -- Iterate this Recipe row's stored Group members. Scanning the
-            -- union of all Sequence members for every row is quadratic for
-            -- many small Groups, even though almost all members are skipped.
-            for key in pairs(source.groupMembers or {}) do
-                local handle=members[key]
-                if handle then row.members[key]=handle end
+            normalizedByIndex[sourceIndex]=row
+        end
+        if memberSliceOnly and memberRowsByKey and indexedRows then
+            for key,handle in pairs(members) do
+                local rowIndexes=memberRowsByKey[key]
+                if rowIndexes then
+                    for _,rowIndex in ipairs(rowIndexes) do
+                        local row=normalizedByIndex[rowIndex]
+                        if row and indexedRows[rowIndex] then row.members[key]=handle end
+                    end
+                end
+            end
+        end
+        for sourceIndex,source in ipairs(rows) do
+            local row=normalizedByIndex[sourceIndex]
+            if not (memberSliceOnly and indexedRows and indexedRows[sourceIndex])
+                and memberSliceOnly and (source.groupMemberCount or 0)>=sliceSize then
+                -- Staged resolution calls run once per small member slice.
+                -- Drive from that slice so every call does not rescan a large
+                -- stored Group (e.g. 1,295 members across 41 slices).
+                for key,handle in pairs(members) do
+                    if source.groupMembers and source.groupMembers[key] then
+                        row.members[key]=handle
+                    end
+                end
+            elseif not (memberSliceOnly and indexedRows and indexedRows[sourceIndex]) then
+                -- Iterate the row's Group when it is smaller than the active
+                -- slice (or on a full pass). This keeps small Groups cheap.
+                for key in pairs(source.groupMembers or {}) do
+                    local handle=members[key]
+                    if handle then row.members[key]=handle end
+                end
             end
             if next(row.members) then
                 local meta=metadata(source.ref,referenceCache)
@@ -2382,6 +2435,9 @@ end
         end
         taskState.resolverMembersTotal=#task.members
         taskState.resolverRecipeRowsTotal=#task.rows
+        task.metadataMs=task.metadataMs or 0
+        task.memberUIMs=task.memberUIMs or 0
+        task.engineMs=task.engineMs or 0
         local function pendingResult()
             -- Keep completed member slices private until the whole Sequence
             -- context is resolved; publishing them here lights Pool frames in
@@ -2423,6 +2479,8 @@ end
         task.metadataIndex=cursor
         taskState.resolverRecipeRowsWarmed=math.min(#task.rows,cursor-1)
         if cursor<=#task.rows then
+            task.metadataMs=task.metadataMs+(taskState.lastResolverMetadataMs or 0)
+            task.memberUIMs=task.memberUIMs+(taskState.lastResolverMemberUIMs or 0)
             return pendingResult()
         end
         task.metadataIndex=#task.rows+1
@@ -2474,7 +2532,8 @@ end
         end
         cursor=task.memberIndex or 1
         if cursor<=#task.members then
-            local last=math.min(#task.members,cursor+RESOLVER_MEMBERS_PER_SLICE-1)
+            local sliceLimit=task.memberSliceLimit or RESOLVER_MAX_MEMBERS_PER_SLICE
+            local last=math.min(#task.members,cursor+sliceLimit-1)
             local memberSlice={}
             for index=cursor,last do
                 local member=task.members[index]
@@ -2483,12 +2542,16 @@ end
             taskState.lastResolverStage="REVERSE_LANES"
             local engineStarted=contextClock()
             local ok,result=pcall(task.runtime.run,task.rows,memberSlice,
-                taskState.referenceMetadataCache,taskState.memberUICache)
+                taskState.referenceMetadataCache,taskState.memberUICache,true,
+                task.memberRowsByKey,task.indexedRows)
             local elapsed=contextElapsed(engineStarted)
             taskState.lastResolverReverseMs=elapsed
             taskState.lastResolverEngineMs=type(elapsed)=="number"
                 and math.max(0,elapsed-(taskState.lastResolverMetadataMs or 0)
                     -(taskState.lastResolverMemberUIMs or 0)) or nil
+            task.metadataMs=task.metadataMs+(taskState.lastResolverMetadataMs or 0)
+            task.memberUIMs=task.memberUIMs+(taskState.lastResolverMemberUIMs or 0)
+            task.engineMs=task.engineMs+(taskState.lastResolverEngineMs or 0)
             if not ok then
                 mergeResult({classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR"})
             else
@@ -2580,6 +2643,33 @@ end
         table.sort(remaining,byKey)
         for _,item in ipairs(remaining) do selected[#selected+1]=item end
         return selected
+    end
+    local function resolverMemberSliceLimit(rowCount)
+        local rowWork=math.max(1,tonumber(rowCount) or 0)
+        return math.max(1,math.min(RESOLVER_MAX_MEMBERS_PER_SLICE,
+            math.floor(RESOLVER_ROW_MEMBER_WORK_PER_SLICE/rowWork)))
+    end
+    local function buildStageMemberRowIndex(rows,stageMembers,memberCount,sliceLimit)
+        local sliceCount=math.ceil(memberCount/math.max(1,sliceLimit))
+        if sliceCount<=2 then return nil,nil end
+        local rowsByMember,indexedRows={},{}
+        for rowIndex,row in ipairs(rows or {}) do
+            local groupCount=tonumber(row.groupMemberCount) or 0
+            local indexRow=groupCount>0 and (groupCount<sliceLimit
+                or groupCount*2<memberCount)
+            if indexRow then
+                indexedRows[rowIndex]=true
+                for key in pairs(row.groupMembers or {}) do
+                    if stageMembers[key] then
+                        local rowIndexes=rowsByMember[key]
+                        if not rowIndexes then rowIndexes={}; rowsByMember[key]=rowIndexes end
+                        rowIndexes[#rowIndexes+1]=rowIndex
+                    end
+                end
+            end
+        end
+        if not next(indexedRows) then return nil,nil end
+        return rowsByMember,indexedRows
     end
     local function reprioritizeRemainingStageMembers(task,selectedMembers)
         local first=task.memberIndex or 1
@@ -2682,11 +2772,12 @@ end
         local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
         if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
         if not values then return { classification = "INCONCLUSIVE" } end
-        scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
         for key,handle in pairs(handles or {}) do stageMembers[key]=handle end
         local memberKeys={}
         for key in pairs(keys) do memberKeys[#memberKeys+1]=key end
         table.sort(memberKeys)
+        scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys,
+            groupMemberCount=#memberKeys}
         stageSignatures[#stageSignatures+1]=table.concat({
             tostring(commandAddress(row.recipe)),tostring(commandAddress(values)),gid,
             tostring(groupSignature or table.concat(memberKeys,","))
@@ -2722,9 +2813,15 @@ end
         attributeByUI=_G.GetAttributeByUIChannel})
     if taskState and taskState.incrementalResolver then
         local members=orderedStageMembers(stageMembers,selectedMembers)
+        local memberSliceLimit=resolverMemberSliceLimit(#scopedRows)
+        local indexStarted=contextClock()
+        local memberRowsByKey,indexedRows=buildStageMemberRowIndex(
+            scopedRows,stageMembers,#members,memberSliceLimit)
+        local indexElapsed=contextElapsed(indexStarted) or 0
         local task={key=taskState.resolverWorkKey,stageKey=stageKey,rows=scopedRows,
             selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,
-            metadataIndex=1,memberIndex=1}
+            memberSliceLimit=memberSliceLimit,memberRowsByKey=memberRowsByKey,indexedRows=indexedRows,
+            metadataIndex=1,memberIndex=1,engineMs=indexElapsed}
         taskState.resolverTask=task
         local result=advanceStagedResolver(task,taskState)
         return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers)
@@ -2788,6 +2885,9 @@ end
         state.resolverMembersTotal=0
         state.resolverRecipeRowsWarmed=0
         state.resolverRecipeRowsTotal=0
+        state.lastResolverMetadataTotalMs=0
+        state.lastResolverMemberUITotalMs=0
+        state.lastResolverEngineTotalMs=0
     end
     local started = contextClock()
     state.lastResolverMetadataMs=0
@@ -2797,12 +2897,20 @@ end
     local sliceElapsed = contextElapsed(started) or "UNMEASURED"
     state.lastResolverSliceMs=type(sliceElapsed)=="number" and sliceElapsed or nil
     if result.classification=="PENDING" then
+        local task=state.resolverTask
+        state.lastResolverMetadataTotalMs=task and task.metadataMs or state.lastResolverMetadataMs
+        state.lastResolverMemberUITotalMs=task and task.memberUIMs or state.lastResolverMemberUIMs
+        state.lastResolverEngineTotalMs=task and task.engineMs or state.lastResolverEngineMs
         state.provenSourceKey=nil
         state.provenSources=result
         state.lastResolverMs=state.lastResolverSliceMs
         return result
     end
     local elapsed=contextElapsed(state.resolverWorkStarted) or sliceElapsed
+    local completedTask=state.resolverTask
+    state.lastResolverMetadataTotalMs=completedTask and completedTask.metadataMs or state.lastResolverMetadataMs
+    state.lastResolverMemberUITotalMs=completedTask and completedTask.memberUIMs or state.lastResolverMemberUIMs
+    state.lastResolverEngineTotalMs=completedTask and completedTask.engineMs or state.lastResolverEngineMs
     state.resolverWorkKey=nil
     state.resolverTask=nil
     state.resolverWorkStarted=nil
@@ -3824,7 +3932,7 @@ local function refreshPoolMarkers(state)
                 tostring(probe.matchMethod or "-"))) end
         end
         if callable("ErrEcho") then safe(ErrEcho,string.format(
-            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s group_cache_hits=%d resolver_cue_scan_ms=%s resolver_scope_ms=%s metadata_ms=%s member_ui_ms=%s resolver_engine_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
+            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s group_cache_hits=%d resolver_cue_scan_ms=%s resolver_scope_ms=%s metadata_ms=%s member_ui_ms=%s resolver_engine_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d metadata_total_ms=%s member_ui_total_ms=%s engine_total_ms=%s",
             formatElapsed(state.lastSelectionReadMs),formatElapsed(state.lastProgrammerMs),
             formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastTrackingFingerprintMs),
             formatElapsed(state.lastRenderMs),
@@ -3835,7 +3943,10 @@ local function refreshPoolMarkers(state)
             formatElapsed(state.lastResolverEngineMs),formatElapsed(state.lastResolverSliceMs),
             formatElapsed(state.lastResolverTotalMs),
             formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs),
-            formatElapsed(elapsedMs(markerStarted)),#grids,#keys)) end
+            formatElapsed(elapsedMs(markerStarted)),#grids,#keys,
+            formatElapsed(state.lastResolverMetadataTotalMs),
+            formatElapsed(state.lastResolverMemberUITotalMs),
+            formatElapsed(state.lastResolverEngineTotalMs))) end
     end
 end
 

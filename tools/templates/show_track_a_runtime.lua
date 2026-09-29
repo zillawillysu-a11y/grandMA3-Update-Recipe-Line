@@ -463,18 +463,45 @@ local function newTrackARuntime(api)
         cache.__unsafeScope[key]=entry
         return features,layers
     end
-    local function run(rows,members,referenceCache,uiCache)
-        local normalized={}
-        for _,source in ipairs(rows) do
+    local function run(rows,members,referenceCache,uiCache,memberSliceOnly,memberRowsByKey,indexedRows)
+        local normalized,normalizedByIndex={},{}
+        local sliceSize=memberSliceOnly and count(members) or 0
+        for sourceIndex,source in ipairs(rows) do
             local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
                 members={},lanes={},superseded={}}
             if not row.refId then return fail("REFERENCE_IDENTITY_UNPROVEN") end
-            -- Iterate this Recipe row's stored Group members. Scanning the
-            -- union of all Sequence members for every row is quadratic for
-            -- many small Groups, even though almost all members are skipped.
-            for key in pairs(source.groupMembers or {}) do
-                local handle=members[key]
-                if handle then row.members[key]=handle end
+            normalizedByIndex[sourceIndex]=row
+        end
+        if memberSliceOnly and memberRowsByKey and indexedRows then
+            for key,handle in pairs(members) do
+                local rowIndexes=memberRowsByKey[key]
+                if rowIndexes then
+                    for _,rowIndex in ipairs(rowIndexes) do
+                        local row=normalizedByIndex[rowIndex]
+                        if row and indexedRows[rowIndex] then row.members[key]=handle end
+                    end
+                end
+            end
+        end
+        for sourceIndex,source in ipairs(rows) do
+            local row=normalizedByIndex[sourceIndex]
+            if not (memberSliceOnly and indexedRows and indexedRows[sourceIndex])
+                and memberSliceOnly and (source.groupMemberCount or 0)>=sliceSize then
+                -- Staged resolution calls run once per small member slice.
+                -- Drive from that slice so every call does not rescan a large
+                -- stored Group (e.g. 1,295 members across 41 slices).
+                for key,handle in pairs(members) do
+                    if source.groupMembers and source.groupMembers[key] then
+                        row.members[key]=handle
+                    end
+                end
+            elseif not (memberSliceOnly and indexedRows and indexedRows[sourceIndex]) then
+                -- Iterate the row's Group when it is smaller than the active
+                -- slice (or on a full pass). This keeps small Groups cheap.
+                for key in pairs(source.groupMembers or {}) do
+                    local handle=members[key]
+                    if handle then row.members[key]=handle end
+                end
             end
             if next(row.members) then
                 local meta=metadata(source.ref,referenceCache)
