@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.18"
+local PLUGIN_VERSION = "0.7.1.19"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -17,6 +17,7 @@ local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
 local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
+local POOL_PULSE_PHASE_SECONDS = 0.2
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -34,8 +35,10 @@ local function safe(fn, ...)
 end
 
 local function contextClock()
-    if type(os)=="table" and type(os.clock)=="function" then return safe(os.clock) end
     if callable("Time") then return safe(Time) end
+    -- os.clock measures process CPU time, so its apparent rate changes with
+    -- resolver and Pool workload. Use it only when the station clock is absent.
+    if type(os)=="table" and type(os.clock)=="function" then return safe(os.clock) end
     return nil
 end
 
@@ -2747,12 +2750,12 @@ local function advancePoolPulse(state)
     local pulseChanged=false
     if type(state.poolBlinkDeadline)~="number" then
         state.poolBlinkOn=true
-        state.poolBlinkDeadline=now and now+0.125 or nil
+        state.poolBlinkDeadline=now and now+POOL_PULSE_PHASE_SECONDS or nil
         pulseChanged=true
     elseif now and now>=state.poolBlinkDeadline then
-        local steps=math.floor((now-state.poolBlinkDeadline)/0.125)+1
+        local steps=math.floor((now-state.poolBlinkDeadline)/POOL_PULSE_PHASE_SECONDS)+1
         if steps%2==1 then state.poolBlinkOn=not state.poolBlinkOn; pulseChanged=true end
-        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*0.125
+        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*POOL_PULSE_PHASE_SECONDS
     end
     if pulseChanged then
         for _,entry in pairs(state.poolMarkers or {}) do

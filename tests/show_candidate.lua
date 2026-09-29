@@ -805,6 +805,28 @@ check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and markerState.poolMarkers[button].markerKind=="selectedRecipe"
  and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
  "a selected member's surviving Recipe tile must pulse with the existing theme colors")
+do
+ local savedTime=Time
+ local stationTime=100
+ Time=function() return stationTime end
+ check(functions.clockSeconds()==stationTime,
+  "pulse scheduling must use the station wall clock ahead of process CPU time")
+ local timedPulse={running=true,poolBlinkOn=true,poolBlinkDeadline=100.2,poolMarkers={}}
+ stationTime=100.1; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==true,"pulse must hold its phase before the fixed deadline")
+ stationTime=100.2; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==false and math.abs(timedPulse.poolBlinkDeadline-100.4)<1e-9,
+  "first pulse transition must occur at the fixed 200 ms phase boundary")
+ stationTime=100.3; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==false,"a 100 ms refresh between phase boundaries must not toggle")
+ stationTime=100.4; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==true and math.abs(timedPulse.poolBlinkDeadline-100.6)<1e-9,
+  "red/white phase transitions must stay aligned to the fixed cadence")
+ stationTime=101.01; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==false and math.abs(timedPulse.poolBlinkDeadline-101.2)<1e-9,
+  "a delayed refresh must catch up without shifting the pulse schedule")
+ Time=savedTime
+end
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn==blinkPhase,
