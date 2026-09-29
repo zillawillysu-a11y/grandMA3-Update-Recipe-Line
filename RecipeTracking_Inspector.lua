@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.23"
+local PLUGIN_VERSION = "0.7.1.24"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1816,15 +1816,24 @@ local function newTrackARuntime(api)
         local linkedCount=0
         if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN" end
         for _,entry in pairs(linked) do
-            linkedCount=linkedCount+1
             local handle=entry.handle
             local key=api.identity(handle) or handle
-            local meta=referenceCache[key]
-            if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
-            if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then return nil end
-            if meta.mode~=2 and meta.mode~=3 then return nil end
-            for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
-            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
+            if key~=refKey then
+                linkedCount=linkedCount+1
+                -- A ValueSource may point back to the Preset whose embedded
+                -- PhaserRecipe is being parsed. That is the same native
+                -- reference, not an ordinary linked-Preset dependency: its
+                -- lanes are already derived from this Phaser tree. Do not
+                -- feed its empty ordinary UI-channel view back into ordinary().
+                -- In particular, a self-link is not independent evidence for
+                -- closing an unknown REL barrier below.
+                local meta=referenceCache[key]
+                if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
+                if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then return nil end
+                if meta.mode~=2 and meta.mode~=3 then return nil end
+                for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
+                for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
+            end
         end
         if unknownRel then
             if not provenMovingAbs or count(features)~=1 or linkedCount==0 then return nil end
@@ -1843,7 +1852,10 @@ local function newTrackARuntime(api)
         if c=="preset" then
             local structural=false
             for _,child in ipairs(api.children(ref)) do if api.class(child):lower()=="phaserrecipe" then structural=true; break end end
-            m=structural and phaser(ref,cache) or ordinary(ref,cache)
+            -- Keep the structural dispatch explicit: a failed Phaser proof is
+            -- still a Phaser failure and must not fall through to parsing its
+            -- empty ordinary UI-channel view.
+            if structural then m=phaser(ref,cache) else m=ordinary(ref,cache) end
         elseif c=="random" or c=="generator" or c=="generatorrandom" then
             m={kind="GENERATOR",lanes={}}
             local channels=api.safe(function() return ref.RandomChannels end)

@@ -2,63 +2,60 @@
 
 ## Current Goal
 
-Native-validate v0.7.1.23: confirm selection changes reuse the active
-Sequence resolver pass, and capture the bounded native metadata shape for
-Recipe Preset 25.9003.
+Native-validate v0.7.1.24's Phaser metadata routing fix, especially Recipe
+Preset 25.9003.
 
 ## Current Working State
 
-v0.7.1.23 is deployed to the confirmed Update Plugin directory. A selection
-change now updates the in-flight task's selected-member projection and moves
-newly selected, unprocessed members to the next resolver slice. Selection-only
-changes no longer clear the Sequence-wide purple reference set. Empty ordinary
-Preset metadata remains fail-closed; the UI now shows bounded top-level key
-types and child classes for that failure.
+v0.7.1.24 is deployed to the confirmed Update Plugin folder. A Preset with an
+embedded `PhaserRecipe` now stays on the Phaser parser path even when that
+parse fails; it no longer falls through to the ordinary UI-channel parser.
+Exact self-links use the already parsed Phaser tree and do not count as
+independent linked-Preset proof for an unknown REL barrier. Distinct external
+linked Presets retain the existing complete-metadata gate.
 
 ## Latest Real-World User Test
 
-The 2026-09-29 v0.7.1.22 Cue 1 image shows Recipe Preset 25.9003 with no purple
-frame. The panel reports `ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels=0,count=0,
-lanes=0)`, so it is blocked in semantic parsing before Pool tile discovery.
+The v0.7.1.23 Cue 1 screenshot shows Preset 25.9003 unmarked. Its diagnostic
+shape has zero ordinary UI-channel records and one `PhaserRecipe` child.
 
 ## Verified Facts
 
-- Lua 5.4: 87 workflow assertions and 193 show-candidate checks pass.
-- Synthetic four-reference result remains `final_refs=4 missing=0 extra=0`.
-- Deterministic build, Lua parsing, XML/component/version checks, and
+- Lua 5.4: 87 workflow assertions and 196 show-candidate checks pass.
+- Four-reference fixture remains `final_refs=4 missing=0 extra=0`.
+- New tests cover embedded self-link resolution, unknown REL remaining blocked,
+  and distinct incomplete external links remaining fail-closed.
+- Lua parsing, XML parsing, version consistency, deterministic generation, and
   `git diff --check` pass.
-- v0.7.1.22 deployed files were backed up at
-  `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.23-20260929`.
-- v0.7.1.23 deployed/source Lua SHA256:
-  `EA116F5AC0F6240AE272FBA12B8642B937AE300EB2518C0110A16BFCCF065DFC`.
-- v0.7.1.23 deployed/source XML SHA256:
-  `E22016B726DB92012BD62E8C0F8EE27F13B62C8DD349A2E99C7D9F281EE4C54C`.
-- Diagnostic component remains unchanged at SHA256
-  `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`.
+- The exact deployed v0.7.1.23 files were backed up at
+  `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.24-20260929`.
+- Source/deployed SHA256 matches for v0.7.1.24 Lua, XML, and referenced
+  diagnostic Lua.
 
 ## Current Problem
 
-The existing native log does not reveal whether 25.9003 has truly empty
-`GetPresetData` UI-channel data or another child representation. v0.7.1.23
-surfaces a bounded `Metadata shape:` line; no semantic gate was weakened.
+The native screenshot's ordinary-summary reason was caused by structural
+Phaser parse failure falling through into `ordinary()`, which masked the
+Phaser failure and performed an extra metadata read. v0.7.1.24 fixes that
+routing. Native Cue 1 behavior is not yet verified.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
 - `tools/templates/show_track_a_runtime.lua`
 - `tests/show_candidate.lua`
+- `tests/recipe_workflow.lua`
 - `recipe_update_diagnostic.xml`
 
 ## Current Branch / Commit
 
-Branch `qwen`; the latest pushed checkpoint is `fix: retain resolver progress
-across selection changes`. v0.7.1.23 is deployed and real-world validation is
-pending.
+Branch `qwen`; current checkpoint subject: `fix: keep embedded Phaser
+references on structural path`. v0.7.1.24 is deployed and awaits real-world
+validation.
 
 ## Exact Next Action
 
-Reload the Update Plugin and confirm the title is v0.7.1.23. Reopen Cue 1 where
-Preset 25.9003 is referenced and report the `Metadata shape:` line. Also change
-fixture selection while the resolver is pending and verify the selected
-member's frames appear without restarting the Sequence pass or clearing the
-purple tracked references.
+Reload the plugin and confirm the title is v0.7.1.24. Revisit Cue 1 with
+Preset 25.9003. Check whether its Pool tile is marked; if not, capture the
+Resolver/Blocked refs lines, which should now report the actual Phaser gate
+instead of an ordinary-channel summary.
