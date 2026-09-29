@@ -2,38 +2,38 @@
 
 ## Current Goal
 
-Native-validate v0.7.1.14 startup stage scan, immediate Group pulse, and steady purple tracking references in grandMA3 2.5.0.3.
+Ensure steady purple markers cover all surviving Recipe tracking references from Cue 1 through the active Cue, while selected-member references and exact current Groups pulse.
 
 ## Current Working State
 
-v0.7.1.14 is deployed. With a valid selected Sequence/Cue, the Track A resolver now scans Recipe history even when no fixtures are selected. Purple frames represent final surviving Recipe lanes across Recipe Groups and Attributes through the current Cue. Group pulse scope is derived from surviving lanes for the selected members, independent of the current Attribute tab. Clearing fixture selection removes Group pulses but leaves valid stage-tracking purple refs; losing Sequence/Cue clears both.
+The uncommitted `0.7.1.16` candidate passes offline regression. Its incremental resolver now runs across the union of all members in enabled Recipe rows up to the active Cue (`stageMembers`); fixture selection is applied only afterward to derive pulse refs. Sequence-wide stage refs remain available with no selected fixtures.
 
 ## Latest Real-World User Test
 
-Video `2026-09-29 14-37-12.mp4` on v0.7.1.13 shows plugin startup with zero fixtures and no resolver scan; after selecting fixtures, Group/Purple markers appear late. A red error names grandMA3's own `lib_menus/ui/bars/encoder_bar.lua:142`, where `OnMAtrickschange` dereferences nil `caller`; the plugin does not issue `_FrameSelection` commands.
+The user reports that purple tracking markers still do not cover all expected Sequence tracking content. Recent onPC screenshots show plugin title `0.7.1.19`.
 
 ## Verified Facts
 
-- Offline: 87 workflow assertions; 152 show-candidate checks; synthetic refs=4, missing=0, extra=0.
-- Lua 5.4 parse, deterministic build/check, XML/version consistency, and `git diff --check` pass.
-- v0.7.1.13 was backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.14-20260929`.
-- v0.7.1.14 source/deployed hashes match. Inspector Lua SHA256: `656C7A951D03B1A61C5FE7928495B787607E42E389D2073CAC78025FAB746F17`; XML SHA256: `9930B0E2315FC6F24538D4EA359F549B992F5452B8AC0324F505D317B60CA267`.
+- Source regression: 87 workflow assertions and 160 show-candidate checks pass; synthetic resolver remains 4 refs, 0 missing, 0 extra.
+- Lua 5.4 suites, candidate build consistency, XML/component/version checks, and `git diff --check` pass.
+- Local confirmed Update Plugin directory currently contains Lua/XML version `0.7.1.15`; its hashes match the earlier `.15` deployment. No local `.19` source was found.
+- The `.16` source changes have not been deployed. Do not overwrite until the `.19` source/worktree mismatch is resolved.
 
 ## Current Problem
 
-Native startup scan timing and visible frame timing are unverified. The vendor encoder-bar nil-caller error is outside this plugin's Lua files.
+The tracked source available here is based on `c54dcbb` and does not include the code shown as `0.7.1.19` in native screenshots. The stage-wide correction is locally test-proven but not native-tested in the currently reported build.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
-- `tools/templates/show_track_a_runtime.lua`
 - `tests/show_candidate.lua`
+- `tests/recipe_workflow.lua`
 - `recipe_update_diagnostic.xml`
 
 ## Current Branch / Commit
 
-Branch `qwen`; latest checkpoint is v0.7.1.14 (see `git log`).
+Worktree `C:\tmp\show-rel` is detached from the `qwen` candidate history; this validated patch is intended as a `qwen` checkpoint.
 
 ## Exact Next Action
 
-Reload v0.7.1.14. With Sequence/Cue selected and no fixtures selected, verify tracked Preset/Phaser/Generator tiles become purple. Then select fixtures without pressing SELECT GROUP and verify the corresponding active Recipe Group pulses immediately; confirm Recipe markers persist until superseded. Report whether `encoder_bar.lua:142` still appears.
+Obtain or identify the source/worktree for the onPC-tested `0.7.1.19`, then port the tested `stageMembers` scope fix onto that version, rerun validation, and deploy only the resulting newer candidate to the confirmed active plugin path.

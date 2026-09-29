@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.14"
+local PLUGIN_VERSION = "0.7.1.16"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1267,8 +1267,9 @@ local function render(state)
             refKeys[#refKeys+1]=key
         end
         table.sort(refKeys)
-        resolverLines[1]=string.format("Resolver: %s | %d refs%s",
+        resolverLines[1]=string.format("Resolver: %s | %d refs | %d selected pulse%s",
             tostring(state.provenSources.classification),#refKeys,
+            state.selectedRecipeReferenceCount or 0,
             state.markerStatus and (" | "..state.markerStatus) or "")
         if state.provenSources.classification=="PENDING"
             and state.provenSources.reason=="MEMBER_UI_PENDING"
@@ -2161,7 +2162,9 @@ end
         taskState.resolverMembersWarmed=math.min(cursor-1,#task.members)
         taskState.resolverMembersTotal=#task.members
         local engineStarted=contextClock()
-        local ok,result=pcall(task.runtime.run,task.rows,task.selectedMembers,
+        -- Resolve the Sequence-wide tracked stage using every member supplied
+        -- by every Recipe Group. Selection is only a later pulse projection.
+        local ok,result=pcall(task.runtime.run,task.rows,task.stageMembers,
             taskState.referenceMetadataCache,taskState.memberUICache)
         taskState.lastResolverReverseMs=contextElapsed(engineStarted)
         taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
@@ -2178,9 +2181,10 @@ end
         if stageResult.classification~="PROVEN" then return stageResult end
         local result={}
         for key,value in pairs(stageResult) do result[key]=value end
-        local refs,refMembers,sourceGroups={},{},{}
+        local refs,refMembers,selectedActiveRefs,sourceGroups={},{},{},{}
         for _,assignment in ipairs(stageResult.laneAssignments or {}) do
             if selectedMembers[assignment.member] then
+                selectedActiveRefs[assignment.refId]=assignment.ref
                 if assignment.moving then
                     refs[assignment.refId]=assignment.ref
                     refMembers[assignment.refId]=refMembers[assignment.refId] or {}
@@ -2194,6 +2198,7 @@ end
         end
         result.refs=refs
         result.refMembers=refMembers
+        result.selectedActiveRefs=selectedActiveRefs
         result.sourceGroups=sourceGroups
         return result
     end
@@ -2456,10 +2461,77 @@ end
         local provenResult = refresh(state, state.currentSequence, state.currentCue,
             state.lastFixtures, { feature = state.lastFeature })
         state.currentGroups={}
+        state.selectedRecipeReferenceKeys={}
+        state.selectedRecipeReferenceCount=0
         if provenResult and provenResult.classification == "PROVEN" then
-            for _,group in pairs(provenResult.sourceGroups or {}) do
-                state.currentGroups[#state.currentGroups+1]=group
+            for key,object in pairs(provenResult.selectedActiveRefs or {}) do
+                local refKey=commandAddress(object) or key
+                if refKey and not state.selectedRecipeReferenceKeys[refKey] then
+                    state.selectedRecipeReferenceKeys[refKey]=true
+                    state.selectedRecipeReferenceCount=state.selectedRecipeReferenceCount+1
+                end
             end
+
+            -- Pulse the Recipe Group identified by the selected-member
+            -- tracking context. Do not pulse every historical Group that
+            -- happens to own some other surviving lane on an overlapping
+            -- fixture. When the selection itself is a union of multiple
+            -- complete Groups, admit only active Groups needed to cover that
+            -- exact selected member set; redundant contained Groups stay out.
+            local admittedGroups={}
+            local function admitGroup(group)
+                local key=group and commandAddress(group)
+                if key and not admittedGroups[key] then
+                    admittedGroups[key]=group
+                    return true
+                end
+                return false
+            end
+            local activeGroupIds={}
+            for id in pairs(provenResult.sourceGroups or {}) do activeGroupIds[id]=true end
+            local contextGroup=state.currentGroup
+            local contextGroupId=contextGroup and commandAddress(contextGroup)
+            local contextRelation=contextGroup and relation(contextGroup,state.lastFixtures) or nil
+            local candidates,union,ownerCount={},{},{}
+            for _,group in ipairs(state.completeGroupCandidates or {}) do
+                local id=commandAddress(group)
+                if id and activeGroupIds[id] then
+                    local keys,bad=groupKeys(group)
+                    if bad==0 and next(keys) then
+                        candidates[#candidates+1]={group=group,keys=keys}
+                        for member in pairs(keys) do
+                            union[member]=true
+                            ownerCount[member]=(ownerCount[member] or 0)+1
+                        end
+                    end
+                end
+            end
+            local splitGroups={}
+            if #candidates>1 then
+                local selected,selectionBad=selectionKeys(state.lastFixtures)
+                local covers=selectionBad==0
+                for member in pairs(selected) do if not union[member] then covers=false end end
+                for member in pairs(union) do if not selected[member] then covers=false end end
+                if covers then
+                    for _,candidate in ipairs(candidates) do
+                        for member in pairs(candidate.keys) do
+                            if ownerCount[member]==1 then
+                                splitGroups[#splitGroups+1]=candidate.group
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if #splitGroups>=2 then
+                for _,group in ipairs(splitGroups) do admitGroup(group) end
+            elseif contextGroup and contextGroupId and activeGroupIds[contextGroupId]
+                and (state.currentRecipe or contextRelation=="EXACT_COMPLETE") then
+                admitGroup(contextGroup)
+            elseif #candidates==1 then
+                admitGroup(candidates[1].group)
+            end
+            for _,group in pairs(admittedGroups) do state.currentGroups[#state.currentGroups+1]=group end
             table.sort(state.currentGroups,function(a,b)
                 return tostring(commandAddress(a))<tostring(commandAddress(b))
             end)
@@ -3128,7 +3200,10 @@ local function refreshPoolMarkers(state)
                     probe.matchMethod=identityMethod
                 end
                 found[button] = true
-                local markerKind=string.lower(class(matched))=="group" and "group" or "recipe"
+                local matchedKey=commandAddress(matched)
+                local markerKind=string.lower(class(matched))=="group" and "group"
+                    or state.selectedRecipeReferenceKeys and state.selectedRecipeReferenceKeys[matchedKey]
+                        and "selectedRecipe" or "recipe"
                 local entry = markers[button]
                 if entry and not valid(entry.overlay) then markers[button], entry = nil, nil end
                 if not entry then

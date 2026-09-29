@@ -82,13 +82,51 @@ local warmTask={rows={},members=warmMembers,memberIndex=1,metadataIndex=1,runtim
  run=function(_,selected)
   local refs={}; for key in pairs(selected) do refs["Preset "..key]=key end
   return {classification="PROVEN",refs=refs,sourceGroups={}}
- end},selectedMembers=warmSelected,targetFG=nil}
+ end},selectedMembers=warmSelected,stageMembers=warmSelected,targetFG=nil}
 local warmState={referenceMetadataCache={},memberUICache={}}
 local warmResult=provenApi.advanceStagedResolver(warmTask,warmState)
 check(warmResult.classification=="PROVEN" and #warmedHandles==40
  and warmState.resolverMembersWarmed==40 and warmState.resolverMembersTotal==40
  and tableCount(warmResult.refs)==40,
  "the current selection must finish one bounded member pass without per-poll warmup delays")
+
+-- The staged production path must resolve purple stage refs over every
+-- Recipe Group member, then project selection pulses over selected members.
+do
+ local allStageMembers={ ["101"]=subfixtureByIndex[101], ["201.1.1"]=subfixtureByIndex[203] }
+ local selectedOnly={ ["101"]=subfixtureByIndex[101] }
+ local observedMembers
+ local stagedTaskState={incrementalResolver=true,resolverWorkKey="scope-test",
+  referenceMetadataCache={},memberUICache={},resolverTask={key="scope-test",stageKey="scope",
+   rows={},selectedMembers=selectedOnly,stageMembers=allStageMembers,
+   members={{key="101",handle=subfixtureByIndex[101]},
+    {key="201.1.1",handle=subfixtureByIndex[203]}},memberIndex=1,metadataIndex=1,
+   runtime={memberUI=function(handle,cache) cache[handle]={} end,
+    run=function(_,members)
+     observedMembers=members
+     local a,b=object("Preset","Preset stage A"),object("Preset","Preset stage B")
+     return {classification="PROVEN",refs={"moving"},
+      activeRefs={["Preset stage A"]=a,["Preset stage B"]=b},
+      laneAssignments={
+       {member="101",lane="fg|ABS",fg="fg",refId="Preset stage A",ref=a,moving=false},
+       {member="201.1.1",lane="fg|ABS",fg="fg",refId="Preset stage B",ref=b,moving=true}
+      },sourceGroups={}}
+    end}}}
+ local scoped=provenApi.sources(nil,nil,{selectedFixture(101)},{feature="Dimmer"},nil,stagedTaskState)
+ check(observedMembers==allStageMembers and tableCount(scoped.activeRefs)==2,
+  "staged resolver must use all Sequence Recipe members for steady stage refs")
+ check(tableCount(scoped.selectedActiveRefs)==1 and scoped.selectedActiveRefs["Preset stage A"]
+  and next(scoped.refs)==nil,
+  "selected pulse refs must be independently projected, including a selected static Recipe ref")
+ local noSelection=provenApi.sources(nil,nil,{}, {feature="Dimmer"},nil,
+  {incrementalResolver=true,resolverWorkKey="scope-test-empty",referenceMetadataCache={},memberUICache={},
+   resolverTask={key="scope-test-empty",stageKey="scope-empty",rows={},selectedMembers={},
+    stageMembers=allStageMembers,members={{key="101",handle=subfixtureByIndex[101]},
+     {key="201.1.1",handle=subfixtureByIndex[203]}},memberIndex=1,metadataIndex=1,
+    runtime=stagedTaskState.resolverTask.runtime}})
+ check(tableCount(noSelection.activeRefs)==2 and tableCount(noSelection.selectedActiveRefs)==0,
+  "Sequence purple refs must remain available with no fixture selection and no pulse refs")
+end
 
 -- 1. canonical member keys for Fixture / SubFixture / nested Cell.
 check(provenApi.canonicalMemberKey(selectedFixture(101)) == "101", "fixture key must be 101")
@@ -642,8 +680,7 @@ editState.currentRecipe=nil; editState.currentOldPreset=nil
 local deleted=functions.recipePoolReferences(editState)
 check(deleted["Preset 2.1"]==nil,
  "Recipe deletion must invalidate the source cache")
-local unrelated=object("Preset","Preset Unknown")
-local unrelatedResult=result({recipe(gOne,unrelated,1),recipe(gCell,beam,2)},fBoth)
+local unrelatedResult=result({recipe(gOne,object("Preset","Preset Unknown"),1),recipe(gCell,beam,2)},fBoth)
 check(unrelatedResult.classification=="INCONCLUSIVE",
  "unresolved reference semantics anywhere in admitted scope must fail closed")
 local expected9009=preset("Preset 25.9009",0,2,true)
@@ -654,6 +691,9 @@ local immediateRefs=functions.recipePoolReferences(markerState)
 check(immediateRefs["Group 6"]==gOne and immediateRefs["Preset 25.9009"]==expected9009
  and markerState.provenSourceKey~=nil,
  "one context refresh must resolve surviving Cue refs and the matched Group without an extra poll")
+check(markerState.selectedRecipeReferenceKeys["Preset 25.9009"]==true
+ and markerState.selectedRecipeReferenceCount==1,
+ "a currently selected member's surviving Recipe ref must be marked for pulse independently of stage purple")
 markerState.running=true; markerState.poolBlink=true
 markerState.markerReferences=immediateRefs
 check(markerState.poolMarkersDirty==true,
@@ -662,6 +702,18 @@ check(markerState.markerReferences["Preset 25.9009"]==expected9009,
  "9009-style final ref must reach marker source")
 check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
  "final 9009-style ref must survive recipePoolReferences admission")
+do
+ local overlapGroup=object("Group","Group 231",{Name="Overlapping",Selection={{sf_index=101}}})
+ local currentRecipe=recipe(gOne,expected9009,1)
+ local overlapRecipe=recipe(overlapGroup,beam,2)
+ local overlapSeq,overlapCue=tree({currentRecipe,overlapRecipe})
+ local overlapState=state(overlapSeq,overlapCue,fOne)
+ overlapState.currentGroup=gOne; overlapState.currentRecipe=currentRecipe
+ local overlapRefs=functions.recipePoolReferences(overlapState)
+ check(overlapRefs["Group 6"]==gOne and overlapRefs["Group 231"]==nil
+  and #overlapState.currentGroups==1 and overlapState.currentGroups[1]==gOne,
+  "the current Recipe Group alone must pulse when overlapping historical Groups also own other surviving lanes")
+end
 do
  local embedded=phaser("Preset 25.P2",attrs[0],11,21,nil,nil,nil)
  local phaserReference=embedded:Children()[1]
@@ -733,23 +785,29 @@ _G.GetDisplayByIndex=function(index) return index==1 and display or nil end
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No"
- and overlay.BackColor=="RecipeEditing.PhaserRecipe",
- "nested Recipe Pool tile must receive the native Phaser-color frame0 marker")
+ and markerState.poolMarkers[button].markerKind=="selectedRecipe"
+ and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ "a selected member's surviving Recipe tile must pulse with the existing theme colors")
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn==blinkPhase,
  "pool pulse phase must not advance just because another fast refresh loop ran")
+local beforeSelectedPulse=overlay.BackColor
 markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn~=blinkPhase
- and overlay.BackColor=="RecipeEditing.PhaserRecipe",
- "Cue Recipe source marker must stay steadily purple while Group markers pulse")
+ and overlay.BackColor~=beforeSelectedPulse
+ and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ "selected Recipe references must follow the same stable pulse phase as matched Groups")
 check(functions.poolPulseColor("group",true)=="Global.SuccessText"
  and functions.poolPulseColor("group",false)=="Global.Selected",
  "Stored Group marker pulse must preserve its existing theme colors")
 check(functions.poolPulseColor("recipe",true)=="RecipeEditing.PhaserRecipe"
  and functions.poolPulseColor("recipe",false)=="RecipeEditing.PhaserRecipe",
  "Cue Recipe source marker must remain purple in both Group pulse phases")
+check(functions.poolPulseColor("selectedRecipe",true)=="Global.SuccessText"
+ and functions.poolPulseColor("selectedRecipe",false)=="Global.Selected",
+ "selected Recipe marker state must reuse the established Group pulse colors")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
 check(markerState.markerStatus=="1/1 overlays",
@@ -767,8 +825,10 @@ do
  functions.refreshPoolMarkers(markerState)
  check(stageRefsWithoutSelection["Preset 25.9009"]==expected9009
   and stageRefsWithoutSelection["Group 6"]==nil and overlay.deleted~=true
-  and markerState.poolMarkers[button]~=nil,
-  "clearing fixture selection must stop Group pulses but preserve purple refs tracked by the valid Sequence/Cue")
+  and markerState.poolMarkers[button]~=nil
+  and markerState.poolMarkers[button].markerKind=="recipe"
+  and overlay.BackColor=="RecipeEditing.PhaserRecipe",
+  "clearing fixture selection must stop selected pulses but preserve steady purple Sequence refs")
 end
 markerState.currentSequence=nil
 markerState.currentCue=nil
