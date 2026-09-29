@@ -4,20 +4,20 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.20"
+local PLUGIN_VERSION = "0.7.1.21"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
 -- Keep the unfinished current-Cue Phaser resolver dormant for live use. This
 -- disables its old Pool frames and all automatic Cue/Recipe/cooked-data
--- scanning, while regular current Group/Recipe reference frames keep pulsing.
+-- scanning. Track A Pool frames use steady purple (Sequence) or red
+-- (selection) colors while responsive marker delivery is validated.
 local ENABLE_CUE_PHASER_MARKERS = false
 local MAX_SELECTION = 2048
 local MAX_CUES = 512
 local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
 local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
-local POOL_PULSE_PHASE_SECONDS = 0.2
 local RESOLVER_METADATA_ROWS_PER_SLICE = 4
 local RESOLVER_MEMBERS_PER_SLICE = 4
 local PANEL_WIDTH = 640
@@ -773,7 +773,7 @@ local function trackedRecipeEffects(sequence, currentCue)
 end
 
 -- Resolve only the Recipe references that are still tracked for the currently
--- selected Group. This keeps the useful green Group/Recipe pulse without
+-- selected Group. This keeps the useful Group/Recipe marker without
 -- enabling Cue-wide Phaser markers or touching cooked GetPresetData records.
 local function trackedGroupRecipeReferences(sequence, currentCue, wantedGroup)
     local result, rows = {}, {}
@@ -1069,7 +1069,7 @@ local function sourceMarkerEvidence(state,reference)
             elseif not probe.poolTileVisible then status="POOL_TILE_HIDDEN"
             elseif not probe.identityMatch then status="POOL_IDENTITY_MISMATCH"
             elseif not probe.frameCreated then status="OVERLAY_NOT_CREATED"
-            else status="RED_WHITE_PULSE" end
+            else status="RED_STATIC_FRAME" end
         end
     else
         local attribution=result.unsafeAttribution or {}
@@ -1309,7 +1309,19 @@ local function render(state)
         if ENABLE_TRACK_A_SHOW_CANDIDATE and sequence and currentCue
             and recipePoolReferences then
             local ok,refs=pcall(recipePoolReferences,state)
-            state.markerReferences=ok and refs or {}
+            local nextReferences=ok and refs or {}
+            local previousReferences=state.markerReferences or {}
+            local sameKeys=true
+            for key in pairs(previousReferences) do
+                if nextReferences[key]==nil then sameKeys=false; break end
+            end
+            if sameKeys then
+                for key in pairs(nextReferences) do
+                    if previousReferences[key]==nil then sameKeys=false; break end
+                end
+            end
+            if not sameKeys then state.poolMarkersDirty=true end
+            state.markerReferences=nextReferences
         end
     end
     local resolverLines={}
@@ -1323,7 +1335,7 @@ local function render(state)
         end
         table.sort(refKeys)
         local refLabel=state.provenSources.classification=="PROVEN" and "refs" or "proven refs (partial)"
-        resolverLines[1]=string.format("Resolver: %s | %d %s | %d selected pulse%s",
+        resolverLines[1]=string.format("Resolver: %s | %d %s | %d selected frames%s",
             tostring(state.provenSources.classification),#refKeys,
             refLabel,
             state.selectedRecipeReferenceCount or 0,
@@ -2210,24 +2222,39 @@ end
         return tostring(commandAddress(a)) < tostring(commandAddress(b))
     end)
     return matches
-end
+    end
     local function advanceStagedResolver(task,taskState)
         local cache=taskState.referenceMetadataCache
         local cursor=task.metadataIndex or 1
-        local metadataRows=0
-        while cursor<=#task.rows and metadataRows<RESOLVER_METADATA_ROWS_PER_SLICE do
+        local aggregate=task.aggregate
+        if not aggregate then
+            aggregate={classification="PROVEN",refs={},activeRefs={},refMembers={},sourceGroups={},
+                provenActiveRefs={},provenMovingRefs={},provenLaneAssignments={},laneAssignments={},
+                unsafeRefs={},unsafeRefDetails={},unsafeAttribution={finalSurviving={},fullySuperseded={},unknown={}},
+                attributionSeen={},barriers=0,laneWork=0}
+            task.aggregate=aggregate
+        end
+        local function pendingResult()
+            return {classification="PENDING",refs={},
+                provenActiveRefs=aggregate.provenActiveRefs,
+                provenMovingRefs=aggregate.provenMovingRefs,
+                laneAssignments=aggregate.laneAssignments,
+                provenLaneAssignments=aggregate.provenLaneAssignments}
+        end
+        local metadataReads=0
+        while cursor<=#task.rows and metadataReads<RESOLVER_METADATA_ROWS_PER_SLICE do
             local row=task.rows[cursor]
             local refKey=commandAddress(row.ref)
             if refKey and cache[refKey]==nil then
                 task.runtime.metadata(row.ref,cache)
                 taskState.lastResolverStage="REFERENCE_METADATA"
+                metadataReads=metadataReads+1
             end
             cursor=cursor+1
-            metadataRows=metadataRows+1
         end
         task.metadataIndex=cursor
         if cursor<=#task.rows then
-            return {classification="PENDING",refs={}}
+            return pendingResult()
         end
         task.metadataIndex=#task.rows+1
         taskState.resolverMembersTotal=#task.members
@@ -2241,14 +2268,6 @@ end
                     if present then target[key][value]=true end
                 end
             end
-        end
-        local aggregate=task.aggregate
-        if not aggregate then
-            aggregate={classification="PROVEN",refs={},activeRefs={},refMembers={},sourceGroups={},
-                provenActiveRefs={},provenMovingRefs={},provenLaneAssignments={},laneAssignments={},
-                unsafeRefs={},unsafeRefDetails={},unsafeAttribution={finalSurviving={},fullySuperseded={},unknown={}},
-                attributionSeen={},barriers=0,laneWork=0}
-            task.aggregate=aggregate
         end
         local function mergeResult(result)
             if result.classification~="PROVEN" then
@@ -2309,7 +2328,7 @@ end
             task.memberIndex=last+1
             taskState.resolverMembersWarmed=last
             if task.memberIndex<=#task.members then
-                return {classification="PENDING",refs={}}
+                return pendingResult()
             end
         end
         if #task.members==0 and not task.emptyRunDone then
@@ -2339,24 +2358,26 @@ end
         return aggregate
     end
     local function selectStageResult(stageResult,selectedMembers)
-        local provenPartial=stageResult.classification=="INCONCLUSIVE"
+        local provenPartial=(stageResult.classification=="INCONCLUSIVE"
+            or stageResult.classification=="PENDING")
             and type(stageResult.provenActiveRefs)=="table"
         if stageResult.classification~="PROVEN" and not provenPartial then return stageResult end
         local result={}
         for key,value in pairs(stageResult) do result[key]=value end
         local refs,refMembers,selectedActiveRefs,sourceGroups={},{},{},{}
-        local assignments=stageResult.laneAssignments or stageResult.provenLaneAssignments or {}
-        for _,assignment in ipairs(assignments) do
-            if selectedMembers[assignment.member] then
-                selectedActiveRefs[assignment.refId]=assignment.ref
-                if assignment.moving and not provenPartial then
-                    refs[assignment.refId]=assignment.ref
-                    refMembers[assignment.refId]=refMembers[assignment.refId] or {}
-                    refMembers[assignment.refId][assignment.member]=true
-                end
-                if assignment.group then
-                    local groupId=commandAddress(assignment.group)
-                    if groupId then sourceGroups[groupId]=assignment.group end
+        for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
+            for _,assignment in ipairs(stageResult[field] or {}) do
+                if selectedMembers[assignment.member] then
+                    selectedActiveRefs[assignment.refId]=assignment.ref
+                    if assignment.moving and not provenPartial then
+                        refs[assignment.refId]=assignment.ref
+                        refMembers[assignment.refId]=refMembers[assignment.refId] or {}
+                        refMembers[assignment.refId][assignment.member]=true
+                    end
+                    if assignment.group then
+                        local groupId=commandAddress(assignment.group)
+                        if groupId then sourceGroups[groupId]=assignment.group end
+                    end
                 end
             end
         end
@@ -2373,6 +2394,22 @@ end
             taskState.trackAStageSourcesCache={key=stageKey,result=stageResult}
         end
         return selectStageResult(stageResult,selectedMembers)
+    end
+    local function orderedStageMembers(stageMembers,selectedMembers)
+        local selected,remaining={},{}
+        for key,handle in pairs(stageMembers or {}) do
+            local item={key=key,handle=handle}
+            if selectedMembers and selectedMembers[key] then
+                selected[#selected+1]=item
+            else
+                remaining[#remaining+1]=item
+            end
+        end
+        local function byKey(a,b) return a.key<b.key end
+        table.sort(selected,byKey)
+        table.sort(remaining,byKey)
+        for _,item in ipairs(remaining) do selected[#selected+1]=item end
+        return selected
     end
     local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
     if taskState and taskState.incrementalResolver and taskState.resolverTask
@@ -2498,9 +2535,7 @@ end
         end,
         attributeByUI=_G.GetAttributeByUIChannel})
     if taskState and taskState.incrementalResolver then
-        local members={}
-        for key,handle in pairs(stageMembers) do members[#members+1]={key=key,handle=handle} end
-        table.sort(members,function(a,b) return a.key<b.key end)
+        local members=orderedStageMembers(stageMembers,selectedMembers)
         local task={key=taskState.resolverWorkKey,stageKey=stageKey,rows=scopedRows,
             selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,
             metadataIndex=1,memberIndex=1}
@@ -2622,6 +2657,8 @@ end
             sources = sources,
             refresh = refresh,
             advanceStagedResolver = advanceStagedResolver,
+            selectStageResult = selectStageResult,
+            orderedStageMembers = orderedStageMembers,
         }
     end
     local flagOn = state ~= nil and state.provenEnabled == true
@@ -2640,8 +2677,8 @@ end
                 end
             end
 
-            -- Pulse the Recipe Group identified by the selected-member
-            -- tracking context. Do not pulse every historical Group that
+            -- Mark the Recipe Group identified by the selected-member
+            -- tracking context. Do not mark every historical Group that
             -- happens to own some other surviving lane on an overlapping
             -- fixture. When the selection itself is a union of multiple
             -- complete Groups, admit only active Groups needed to cover that
@@ -2710,7 +2747,8 @@ end
             end
             return references
         end
-        if provenResult and provenResult.classification=="INCONCLUSIVE"
+        if provenResult and (provenResult.classification=="INCONCLUSIVE"
+            or provenResult.classification=="PENDING")
             and type(provenResult.provenActiveRefs)=="table" then
             for key,object in pairs(provenResult.selectedActiveRefs or {}) do
                 local refKey=commandAddress(object) or key
@@ -2719,6 +2757,10 @@ end
                     state.selectedRecipeReferenceCount=state.selectedRecipeReferenceCount+1
                 end
             end
+            -- A completed member chunk is already lane-proven in isolation.
+            -- Publish its Pool references while later members continue; the
+            -- final resolver still withholds the complete `refs` set until all
+            -- chunks settle.
             for _,object in pairs(provenResult.provenActiveRefs) do add(object) end
             for key,probe in pairs(state.markerProbe or {}) do
                 probe.sourceAdmitted=references[key]~=nil
@@ -2831,33 +2873,18 @@ end
 
 local function poolPulseColor(kind,on)
     if kind=="recipe" then
-        -- Use the brighter stock Phaser text color, exposed as a UI Color name.
+        -- Keep Sequence tracking frames purple. During the responsiveness
+        -- pass, selected Group/Recipe frames stay solid red so no timer-driven
+        -- overlay writes compete with resolver work.
         return "TrackProgLayerActive.Phaser"
     end
-    return on and "Global.AlertText" or "Global.Bright"
+    return "Global.AlertText"
 end
 
 local function advancePoolPulse(state)
-    if state.poolBlink == false or not state.running then return end
-    local now=clockSeconds()
-    local pulseChanged=false
-    if type(state.poolBlinkDeadline)~="number" then
-        state.poolBlinkOn=true
-        state.poolBlinkDeadline=now and now+POOL_PULSE_PHASE_SECONDS or nil
-        pulseChanged=true
-    elseif now and now>=state.poolBlinkDeadline then
-        local steps=math.floor((now-state.poolBlinkDeadline)/POOL_PULSE_PHASE_SECONDS)+1
-        if steps%2==1 then state.poolBlinkOn=not state.poolBlinkOn; pulseChanged=true end
-        state.poolBlinkDeadline=state.poolBlinkDeadline+steps*POOL_PULSE_PHASE_SECONDS
-    end
-    if pulseChanged then
-        for _,entry in pairs(state.poolMarkers or {}) do
-            pcall(function()
-                entry.overlay.Visible="Yes"
-                entry.overlay.BackColor=poolPulseColor(entry.markerKind,state.poolBlinkOn)
-            end)
-        end
-    end
+    -- Animation is deliberately paused for this release. Stable marker colors
+    -- avoid periodic native UI writes while the Sequence resolver is working.
+    return state
 end
 
 local function newCueEffectScan(sequence, currentCue)
@@ -4285,8 +4312,8 @@ local function main()
             end
             state.preserveResolverCaches=false
         end
-        -- Apply due pulse transitions before a synchronous native resolver
-        -- slice. The overlay can then repaint at this cycle's coroutine yield.
+        -- Stable marker colors avoid timer-driven overlay writes while the
+        -- resolver is working.
         advancePoolPulse(state)
         local renderStarted=clockSeconds()
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)

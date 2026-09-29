@@ -262,12 +262,12 @@ check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
 state.poolBlinkDeadline = functions.clockSeconds() - 0.01
 functions.refreshPoolMarkers(state)
 local secondPulseColor = marker.BackColor
-check(marker.Visible == "Yes" and secondPulseColor ~= firstPulseColor,
-    "Markers must advance phase when the elapsed-time deadline is reached")
+check(marker.Visible == "Yes" and secondPulseColor == firstPulseColor,
+    "Low-load marker mode must keep a stable color after an old pulse deadline")
 state.poolBlinkDeadline = functions.clockSeconds() - 0.01
 functions.refreshPoolMarkers(state)
 check(marker.Visible == "Yes" and marker.BackColor == firstPulseColor,
-    "Markers must remain visible and alternate the existing theme colors")
+    "Markers must remain visible without timer-driven color changes")
 check(displayLookupCount == 7,
     "Cached Pool grids must avoid repeating the full display-tree traversal")
 -- Recall View can keep old Pool grid handles valid while hiding them. Hidden
@@ -537,7 +537,7 @@ end
 local olderInstance = {running = true, version = "0.7.0.13"}
 check(functions.stopExistingForLaunch(olderInstance) == false and olderInstance.running == false,
     "Launching a newer version must stop and replace the old instance in one invocation")
-local sameInstance = {running = true, version = "0.7.1.20"}
+local sameInstance = {running = true, version = "0.7.1.21"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
@@ -631,13 +631,13 @@ purpleState.currentGroup = otherGroup
 functions.refreshPoolMarkers(purpleState)
 functions.refreshPoolMarkers(purpleState)
 local groupPulse = purpleState.poolMarkers[buttons[1]].overlay
-check(groupPulse ~= nil and groupPulse.BackColor ~= "GroupedProgLayerActive.Phaser",
-    "The current Group must keep its non-purple pulsing Pool frame")
+check(groupPulse ~= nil and groupPulse.BackColor == "Global.AlertText",
+    "The current Group must keep a solid red Pool frame")
 local groupPulseColor = groupPulse.BackColor
 purpleState.poolBlinkDeadline = functions.clockSeconds() - 0.01
 functions.refreshPoolMarkers(purpleState)
-check(groupPulse.BackColor ~= groupPulseColor,
-    "The current Group frame must continue pulsing while Cue Phaser markers are disabled")
+check(groupPulse.BackColor == groupPulseColor,
+    "The current Group frame must stay stable while Cue Phaser markers are disabled")
 -- Large Part processing must yield without rereading native cooked data.
 local largePart = object("Part", "Large Part", {Part = 0})
 local largeCue = object("Cue", "Large Cue", {No = 1000}, {largePart})

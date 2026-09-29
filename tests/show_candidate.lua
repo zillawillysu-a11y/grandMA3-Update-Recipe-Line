@@ -70,7 +70,7 @@ local provenApi = hookState.provenHooks
 assert(type(provenApi) == "table", "proven hook table must be attached")
 
 -- The sequence-wide resolver must yield between small deterministic member
--- slices so pulse/UI refreshes continue while the lane engine works.
+-- slices so the UI remains responsive while the lane engine works.
 do
 local warmedHandles={}
 local warmMembers,warmSelected={},{}
@@ -108,8 +108,8 @@ check(warmResult.classification=="PROVEN" and #warmedHandles==40
  "large sequence lane resolution must preserve all refs while processing four members per refresh slice")
 end
 
--- Metadata reads are also budgeted across refreshes; the pulse gets a refresh
--- opportunity between each pending resolver slice.
+-- Only real cache misses consume the metadata slice budget. A warm cache must
+-- not force a Cue change through one no-op polling slice per historical row.
 do
  local rows={}
  for i=1,9 do
@@ -135,13 +135,27 @@ do
  functions.advancePoolPulse(pulse)
  local second=provenApi.advanceStagedResolver(task,state)
  check(second.classification=="PENDING" and metadataReads==8 and engineRuns==0
-  and pulse.poolBlinkOn==false,
-  "pulse transitions must still run between bounded metadata slices")
+  and pulse.poolBlinkOn==true,
+  "stable marker colors must not incur timer-driven overlay writes during metadata slices")
  stationTime=200.3
  functions.advancePoolPulse(pulse)
  local final=provenApi.advanceStagedResolver(task,state)
  check(final.classification=="PROVEN" and metadataReads==9 and engineRuns==1,
   "the final metadata slice must run the lane engine exactly once")
+ local warmRows,warmCache={},{}
+ for i=1,9 do
+  local ref=object("Preset","Preset warm metadata "..i)
+  warmRows[i]={ref=ref}; warmCache[ref:ToAddr()]={kind="WARM"}
+ end
+ local warmEngineRuns=0
+ local warmTask={rows=warmRows,members={{key="m",handle="m"}},memberIndex=1,metadataIndex=1,
+  runtime={metadata=function() error("warm metadata must not be reread") end,
+   run=function() warmEngineRuns=warmEngineRuns+1; return {classification="PROVEN",refs={}} end,
+   memberUI=function(handle,cache) cache[handle]={} end}}
+ local warmResult=provenApi.advanceStagedResolver(warmTask,
+  {referenceMetadataCache=warmCache,memberUICache={}})
+ check(warmResult.classification=="PROVEN" and warmEngineRuns==1,
+  "warm reference metadata rows must be skipped in one pass without artificial pending slices")
  Time=savedTime
 end
 
@@ -169,8 +183,10 @@ do
    end}}
  local memberState={referenceMetadataCache={},memberUICache={}}
  local first=provenApi.advanceStagedResolver(memberTask,memberState)
- check(first.classification=="PENDING" and calls==1,
-  "a completed member chunk must yield before processing the remaining sequence members")
+ check(first.classification=="PENDING" and calls==1
+  and first.provenActiveRefs["Preset clean chunk"]~=nil
+  and #first.laneAssignments==1,
+  "a completed member chunk must publish only its independently proven refs while yielding")
  local final=provenApi.advanceStagedResolver(memberTask,memberState)
  check(final.classification=="INCONCLUSIVE" and next(final.refs)==nil
   and tableCount(final.provenActiveRefs)==2 and #final.provenLaneAssignments==2,
@@ -178,7 +194,7 @@ do
 end
 
 -- The staged production path must resolve purple stage refs over every
--- Recipe Group member, then project selection pulses over selected members.
+-- Recipe Group member, then projects selected frames over selected members.
 do
  local allStageMembers={ ["101"]=subfixtureByIndex[101], ["201.1.1"]=subfixtureByIndex[203] }
  local selectedOnly={ ["101"]=subfixtureByIndex[101] }
@@ -205,7 +221,7 @@ do
   "staged resolver must use all Sequence Recipe members for steady stage refs")
  check(tableCount(scoped.selectedActiveRefs)==1 and scoped.selectedActiveRefs["Preset stage A"]
   and next(scoped.refs)==nil,
-  "selected pulse refs must be independently projected, including a selected static Recipe ref")
+ "selected Recipe refs must be independently projected, including a selected static Recipe ref")
  local noSelection=provenApi.sources(nil,nil,{}, {feature="Dimmer"},nil,
   {incrementalResolver=true,resolverWorkKey="scope-test-empty",referenceMetadataCache={},memberUICache={},
    resolverTask={key="scope-test-empty",stageKey="scope-empty",rows={},selectedMembers={},
@@ -214,6 +230,21 @@ do
     runtime=stagedTaskState.resolverTask.runtime}})
  check(tableCount(noSelection.activeRefs)==2 and tableCount(noSelection.selectedActiveRefs)==0,
   "Sequence purple refs must remain available with no fixture selection and no pulse refs")
+end
+do
+ local ordered=provenApi.orderedStageMembers({
+  ["101"]=subfixtureByIndex[101],["201.1.1"]=subfixtureByIndex[203],
+  ["201.1"]=subfixtureByIndex[202]}, { ["201.1.1"]=subfixtureByIndex[203] })
+ check(ordered[1].key=="201.1.1" and ordered[2].key=="101" and ordered[3].key=="201.1",
+  "selected exact members must be resolved first so their Recipe frames do not wait behind the full Sequence scope")
+ local earlyRef=object("Preset","Preset early")
+ local partial=provenApi.selectStageResult({classification="PENDING",
+  provenActiveRefs={["Preset early"]=earlyRef},
+  laneAssignments={{member="201.1.1",refId="Preset early",ref=earlyRef,moving=true}}},
+  { ["201.1.1"]=true })
+ check(partial.classification=="PENDING" and partial.selectedActiveRefs["Preset early"]==earlyRef
+  and (not partial.refs or next(partial.refs)==nil),
+  "PENDING member-lane proof must project selected refs without claiming a final source set")
 end
 
 -- 1. canonical member keys for Fixture / SubFixture / nested Cell.
@@ -416,7 +447,7 @@ check(phaseResult.classification=="PROVEN" and phaseResult.refs["Preset 25.A"]==
  and phaseResult.activeRefs["Preset 25.A"]==movingPhaser,
  "a surviving moving Phaser must be both a resolver source and a steady stage marker")
 check(phaseResult.sourceGroups["Group 6"]==gOne,
- "a selected fixture's active Phaser Group must pulse even when its lane differs from the selected Attribute")
+ "a selected fixture's active Phaser Group must be marked even when its lane differs from the selected Attribute")
 local selectiveResult=result({recipe(gBoth,selective,1)},fBoth)
 check(selectiveResult.classification=="PROVEN" and next(selectiveResult.refs)==nil,
  "Selective static reference must remain a terminator")
@@ -798,7 +829,7 @@ check(immediateRefs["Group 6"]==gOne and immediateRefs["Preset 25.9009"]==expect
  "one context refresh must resolve surviving Cue refs and the matched Group without an extra poll")
 check(markerState.selectedRecipeReferenceKeys["Preset 25.9009"]==true
  and markerState.selectedRecipeReferenceCount==1,
- "a currently selected member's surviving Recipe ref must be marked for pulse independently of stage purple")
+ "a currently selected member's surviving Recipe ref must be marked independently of stage purple")
 markerState.running=true; markerState.poolBlink=true
 markerState.markerReferences=immediateRefs
 check(markerState.poolMarkersDirty==true,
@@ -891,50 +922,79 @@ functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No"
  and markerState.poolMarkers[button].markerKind=="selectedRecipe"
- and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
- "a selected member's surviving Recipe tile must pulse with the existing theme colors")
+ and overlay.BackColor=="Global.AlertText",
+ "a selected member's surviving Recipe tile must use the solid red theme frame")
+do
+ local saved={tileAlias,overlay}
+ stagedSeq,stagedCue=tree({recipe(gOne,expected9009,1)})
+ stagedState={running=true,poolBlink=true,incrementalResolver=true,provenEnabled=true,
+  currentSequence=stagedSeq,currentCue=stagedCue,currentGroup=gOne,
+  lastFixtures={selectedFixture(101)},lastFeature="Dimmer",matchingCandidates={},
+  completeGroupSelectionKey="101",completeGroupCandidates={gOne},
+  referenceMetadataCache={},memberUICache={},resolverWorkKey="Sequence 9:1000:Dimmer:Group 6:101:nil:nil:0",
+  resolverTask={key="Sequence 9:1000:Dimmer:Group 6:101:nil:nil:0",stageKey="early",rows={},
+   members={{key="101",handle=subfixtureByIndex[101]},
+    {key="201",handle=subfixtureByIndex[201]},{key="201.1",handle=subfixtureByIndex[202]},
+    {key="201.1.1",handle=subfixtureByIndex[203]},{key="900",handle=subfixtureByIndex[101]}},
+   memberIndex=1,metadataIndex=1,selectedMembers={["101"]=subfixtureByIndex[101]},
+   runtime={memberUI=function(handle,cache) cache[handle]={} end,
+    run=function(_,memberSlice)
+     local assignments={}
+     for member in pairs(memberSlice) do
+      assignments[#assignments+1]={member=member,lane="Dimmer|ABS",fg="Dimmer",
+       refId="Preset 25.9009",ref=expected9009,group=gOne,moving=true}
+      end
+     return {classification="PROVEN",refs={["Preset 25.9009"]=expected9009},
+      activeRefs={["Preset 25.9009"]=expected9009},laneAssignments=assignments,sourceGroups={}}
+    end}},
+  poolGrids={pool},poolMarkers={},poolMarkersDirty=true}
+ tileAlias=expected9009
+ stagedRefs=functions.recipePoolReferences(stagedState)
+ check(stagedState.provenSources.classification=="PENDING"
+  and stagedState.resolverTask.memberIndex==5
+  and next(stagedState.provenSources.refs)==nil
+  and stagedRefs["Preset 25.9009"]==expected9009
+  and stagedState.selectedRecipeReferenceKeys["Preset 25.9009"]==true,
+  "PENDING resolver chunks must expose proven member refs without claiming final refs")
+ stagedState.markerReferences=stagedRefs
+ functions.refreshPoolMarkers(stagedState)
+ check(stagedState.poolMarkers[button] and overlay
+  and stagedState.poolMarkers[button].markerKind=="selectedRecipe"
+  and overlay.Visible=="Yes" and overlay.BackColor=="Global.AlertText",
+  "the first completed selected-member chunk must create its red Pool frame before the full Sequence finishes")
+ tileAlias,overlay=saved[1],saved[2]
+end
 do
  local savedTime=Time
  local stationTime=100
  Time=function() return stationTime end
- check(functions.clockSeconds()==stationTime,
-  "pulse scheduling must use the station wall clock ahead of process CPU time")
- local timedPulse={running=true,poolBlinkOn=true,poolBlinkDeadline=100.2,poolMarkers={}}
- stationTime=100.1; functions.advancePoolPulse(timedPulse)
- check(timedPulse.poolBlinkOn==true,"pulse must hold its phase before the fixed deadline")
- stationTime=100.2; functions.advancePoolPulse(timedPulse)
- check(timedPulse.poolBlinkOn==false and math.abs(timedPulse.poolBlinkDeadline-100.4)<1e-9,
-  "first pulse transition must occur at the fixed 200 ms phase boundary")
- stationTime=100.3; functions.advancePoolPulse(timedPulse)
- check(timedPulse.poolBlinkOn==false,"a 100 ms refresh between phase boundaries must not toggle")
- stationTime=100.4; functions.advancePoolPulse(timedPulse)
- check(timedPulse.poolBlinkOn==true and math.abs(timedPulse.poolBlinkDeadline-100.6)<1e-9,
-  "red/white phase transitions must stay aligned to the fixed cadence")
- stationTime=101.01; functions.advancePoolPulse(timedPulse)
- check(timedPulse.poolBlinkOn==false and math.abs(timedPulse.poolBlinkDeadline-101.2)<1e-9,
-  "a delayed refresh must catch up without shifting the pulse schedule")
+ local timedPulse={running=true,poolBlinkOn=true,poolBlinkDeadline=100.2,
+  poolMarkers={[button]={overlay=overlay,markerKind="selectedRecipe"}}}
+ local beforeColor=overlay.BackColor
+ stationTime=102; functions.advancePoolPulse(timedPulse)
+ check(timedPulse.poolBlinkOn==true and timedPulse.poolBlinkDeadline==100.2
+  and overlay.BackColor==beforeColor,
+  "the responsiveness build must not run timer-driven UI color writes")
  Time=savedTime
 end
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn==blinkPhase,
- "pool pulse phase must not advance just because another fast refresh loop ran")
+ "stable frame colors must not change during another fast refresh")
 local beforeSelectedPulse=overlay.BackColor
 markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
-check(markerState.poolBlinkOn~=blinkPhase
- and overlay.BackColor~=beforeSelectedPulse
- and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
- "selected Recipe references must follow the same stable pulse phase as matched Groups")
+check(markerState.poolBlinkOn==blinkPhase and overlay.BackColor==beforeSelectedPulse,
+ "stable marker colors must remain unchanged when an old pulse deadline passes")
 check(functions.poolPulseColor("group",true)=="Global.AlertText"
- and functions.poolPulseColor("group",false)=="Global.Bright",
- "Stored Group marker pulse must alternate stock theme red and bright-white colors")
+ and functions.poolPulseColor("group",false)=="Global.AlertText",
+ "Stored Group marker must stay solid red in the low-load mode")
 check(functions.poolPulseColor("recipe",true)=="TrackProgLayerActive.Phaser"
  and functions.poolPulseColor("recipe",false)=="TrackProgLayerActive.Phaser",
  "steady Recipe tracking markers must use the brighter stock Phaser purple")
 check(functions.poolPulseColor("selectedRecipe",true)=="Global.AlertText"
- and functions.poolPulseColor("selectedRecipe",false)=="Global.Bright",
- "selected Recipe markers must alternate stock theme red and bright-white colors")
+ and functions.poolPulseColor("selectedRecipe",false)=="Global.AlertText",
+ "selected Recipe markers must stay solid red in the low-load mode")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
 check(markerState.markerStatus=="1/1 overlays",
@@ -955,7 +1015,7 @@ do
   and markerState.poolMarkers[button]~=nil
   and markerState.poolMarkers[button].markerKind=="recipe"
   and overlay.BackColor=="TrackProgLayerActive.Phaser",
-  "clearing fixture selection must stop selected pulses but preserve steady purple Sequence refs")
+ "clearing fixture selection must remove selected frames but preserve steady purple Sequence refs")
 end
 markerState.currentSequence=nil
 markerState.currentCue=nil
@@ -998,8 +1058,8 @@ functions.refreshPoolMarkers(stagedState)
 check(stagedState.provenSources.classification=="INCONCLUSIVE"
  and stagedState.selectedRecipeReferenceKeys["Preset 2.1"]==true
  and stagedState.poolMarkers[button].markerKind=="selectedRecipe"
- and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
- "a selected member's proven partial reference must enter the red-white pulse")
+ and overlay.BackColor=="Global.AlertText",
+ "a selected member's proven partial reference must enter a solid red frame")
 stagedSeq,stagedCue,stagedRefs,stagedState=functions.coloredTextLayers(
  "Resolver: INCONCLUSIVE | Missing Preset 2.14 @ POOL_TILE_FOUND\n"
  .."Blocked refs: Preset 25.9003\nRefs: Preset 1.1, Preset 2.14\n"
@@ -1019,7 +1079,7 @@ stagedRefs=functions.sourceMarkerEvidence({
  markerProbe={["Preset 2.1"]={poolTileFound=true,poolTileVisible=true,
   identityMatch=true,frameCreated=true}}
 },position)
-check(stagedRefs=="Preset 2.1 | RED_WHITE_PULSE",
+check(stagedRefs=="Preset 2.1 | RED_STATIC_FRAME",
  "source marker diagnosis must identify a selected source whose overlay attached")
 stagedRefs=functions.sourceMarkerEvidence({
  provenSources={classification="INCONCLUSIVE",
