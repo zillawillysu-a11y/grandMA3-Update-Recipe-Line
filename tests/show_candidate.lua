@@ -858,4 +858,36 @@ check(overlay.deleted and next(markerState.poolMarkers)==nil
  and #markerState.currentGroups==0 and markerState.currentGroup==nil
  and markerState.currentRecipe==nil and (not markerState.markerReferences or next(markerState.markerReferences)==nil),
  "losing the active Sequence/Cue context must remove stale Group and Recipe frames on the next refresh")
+-- The native .16 failure was an all-or-nothing resolver result: one unsafe
+-- lane suppressed every otherwise decided Sequence reference. Verify the
+-- .17 partial-safe path through Pool identity and overlay creation, both as a
+-- steady purple stage marker and as a selected-member pulse. Reuse existing
+-- locals to stay below Lua's 200-local limit for this test chunk.
+stagedSeq,stagedCue=tree({recipe(gOne,unsafe,1),recipe(gOne,position,2)})
+stagedState=state(stagedSeq,stagedCue,{})
+stagedState.running=true; stagedState.poolBlink=true
+stagedState.poolGrids={pool}; stagedState.poolMarkersDirty=true
+tileAlias=position
+stagedRefs=functions.recipePoolReferences(stagedState)
+stagedState.markerReferences=stagedRefs
+check(stagedState.provenSources.classification=="INCONCLUSIVE"
+ and stagedState.provenSources.provenActiveRefs["Preset 2.1"]==position
+ and stagedRefs["Preset 2.1"]==position and stagedRefs["Preset Unsafe"]==nil,
+ "inconclusive history must admit only the independently proven stage reference")
+functions.refreshPoolMarkers(stagedState)
+check(stagedState.poolMarkers[button] and overlay
+ and stagedState.poolMarkers[button].markerKind=="recipe"
+ and overlay.Texture=="frame0" and overlay.Visible=="Yes"
+ and overlay.BackColor=="RecipeEditing.PhaserRecipe",
+ "a proven partial stage reference must create its steady purple Pool overlay")
+stagedState.lastFixtures=fOne
+stagedRefs=functions.recipePoolReferences(stagedState)
+stagedState.markerReferences=stagedRefs
+stagedState.poolMarkersDirty=true
+functions.refreshPoolMarkers(stagedState)
+check(stagedState.provenSources.classification=="INCONCLUSIVE"
+ and stagedState.selectedRecipeReferenceKeys["Preset 2.1"]==true
+ and stagedState.poolMarkers[button].markerKind=="selectedRecipe"
+ and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ "a selected member's proven partial reference must enter the existing Group-style pulse")
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")
