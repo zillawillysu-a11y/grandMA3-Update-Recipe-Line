@@ -51,8 +51,8 @@ surfaces a bounded `Metadata shape:` line; no semantic gate was weakened.
 
 ## Current Branch / Commit
 
-Worktree is detached at the current `origin/qwen` checkpoint with the v0.7.1.23
-release changes staged for a coherent commit/push; real-world validation is
+Branch `qwen`; the latest pushed checkpoint is `fix: retain resolver progress
+across selection changes`. v0.7.1.23 is deployed and real-world validation is
 pending.
 
 ## Exact Next Action
