@@ -56,8 +56,9 @@ coverage still require grandMA3 validation.
 
 ## Current Branch / Commit
 
-Continuation worktree `C:\tmp\show-rel`, based on the v0.7.1.25 handoff
-checkpoint; v0.7.1.27 awaits native validation.
+Branch `origin/qwen`, checkpoint subject `fix: speed atomic recipe markers
+and expose blockers`. The local continuation worktree `C:\tmp\show-rel` is
+detached at that checkpoint; v0.7.1.27 awaits native validation.
 
 ## Exact Next Action
 
