@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.19"
+local PLUGIN_VERSION = "0.7.1.20"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -18,6 +18,8 @@ local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
 local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
 local POOL_PULSE_PHASE_SECONDS = 0.2
+local RESOLVER_METADATA_ROWS_PER_SLICE = 4
+local RESOLVER_MEMBERS_PER_SLICE = 4
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -1859,6 +1861,15 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
+    local function cachedUnsafeScope(ref,cache,key)
+        cache.__unsafeScope=cache.__unsafeScope or {}
+        local entry=cache.__unsafeScope[key]
+        if entry~=nil then return entry.features or nil,entry.layers or nil end
+        local features,layers=unsafeScope(ref,cache)
+        entry={features=features or false,layers=layers or false}
+        cache.__unsafeScope[key]=entry
+        return features,layers
+    end
     local function run(rows,members,referenceCache,uiCache)
         local normalized={}
         for _,source in ipairs(rows) do
@@ -1872,7 +1883,7 @@ local function newTrackARuntime(api)
                 local meta=metadata(source.ref,referenceCache)
                 if not meta then
                     row.unsafe=true
-                    row.features,row.layers=unsafeScope(source.ref,referenceCache)
+                    row.features,row.layers=cachedUnsafeScope(source.ref,referenceCache,row.refId)
                 else
                     for key,handle in pairs(row.members) do
                         local ui=memberUI(handle,uiCache)
@@ -2203,47 +2214,129 @@ end
     local function advanceStagedResolver(task,taskState)
         local cache=taskState.referenceMetadataCache
         local cursor=task.metadataIndex or 1
-        while cursor<=#task.rows do
+        local metadataRows=0
+        while cursor<=#task.rows and metadataRows<RESOLVER_METADATA_ROWS_PER_SLICE do
             local row=task.rows[cursor]
             local refKey=commandAddress(row.ref)
             if refKey and cache[refKey]==nil then
                 task.runtime.metadata(row.ref,cache)
-                task.metadataIndex=cursor+1
                 taskState.lastResolverStage="REFERENCE_METADATA"
             end
             cursor=cursor+1
+            metadataRows=metadataRows+1
+        end
+        task.metadataIndex=cursor
+        if cursor<=#task.rows then
+            return {classification="PENDING",refs={}}
         end
         task.metadataIndex=#task.rows+1
-        cursor=task.memberIndex or 1
-        -- Selection context is already read on this host refresh. Complete
-        -- its bounded Recipe/member pass now so the corresponding frames do
-        -- not wait through dozens of polling yields.
-        while cursor<=#task.members do
-            local member=task.members[cursor]
-            if taskState.memberUICache[member.handle]==nil then
-                task.runtime.memberUI(member.handle,taskState.memberUICache)
-                taskState.lastResolverStage="MEMBER_UI"
-            end
-            cursor=cursor+1
-        end
-        task.memberIndex=cursor
-        taskState.resolverMembersWarmed=math.min(cursor-1,#task.members)
         taskState.resolverMembersTotal=#task.members
-        local engineStarted=contextClock()
-        -- Resolve the Sequence-wide tracked stage using every member supplied
-        -- by every Recipe Group. Selection is only a later pulse projection.
-        local ok,result=pcall(task.runtime.run,task.rows,task.stageMembers,
-            taskState.referenceMetadataCache,taskState.memberUICache)
-        taskState.lastResolverReverseMs=contextElapsed(engineStarted)
-        taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
-            and math.max(0,taskState.lastResolverReverseMs-(taskState.lastResolverMetadataMs or 0)
-                -(taskState.lastResolverMemberUIMs or 0)) or nil
-        if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
-        if result.classification~="PROVEN" then return result end
-        local refs={}
-        for id,ref in pairs(result.refs or {}) do refs[id]=ref end
-        result.refs=refs
-        return result
+        local function mergeMap(target,source)
+            for key,value in pairs(source or {}) do target[key]=value end
+        end
+        local function mergeSetMap(target,source)
+            for key,values in pairs(source or {}) do
+                target[key]=target[key] or {}
+                for value,present in pairs(values or {}) do
+                    if present then target[key][value]=true end
+                end
+            end
+        end
+        local aggregate=task.aggregate
+        if not aggregate then
+            aggregate={classification="PROVEN",refs={},activeRefs={},refMembers={},sourceGroups={},
+                provenActiveRefs={},provenMovingRefs={},provenLaneAssignments={},laneAssignments={},
+                unsafeRefs={},unsafeRefDetails={},unsafeAttribution={finalSurviving={},fullySuperseded={},unknown={}},
+                attributionSeen={},barriers=0,laneWork=0}
+            task.aggregate=aggregate
+        end
+        local function mergeResult(result)
+            if result.classification~="PROVEN" then
+                aggregate.classification="INCONCLUSIVE"
+                aggregate.reason=aggregate.reason or result.reason or "STAGED_MEMBER_UNPROVEN"
+            end
+            mergeMap(aggregate.refs,result.classification=="PROVEN" and result.refs or nil)
+            mergeMap(aggregate.activeRefs,result.activeRefs)
+            mergeMap(aggregate.activeRefs,result.provenActiveRefs)
+            mergeMap(aggregate.provenActiveRefs,result.activeRefs)
+            mergeMap(aggregate.provenActiveRefs,result.provenActiveRefs)
+            mergeMap(aggregate.provenMovingRefs,result.provenMovingRefs)
+            mergeSetMap(aggregate.refMembers,result.refMembers)
+            mergeMap(aggregate.sourceGroups,result.sourceGroups)
+            for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
+                for _,assignment in ipairs(result[field] or {}) do
+                    local destination=field=="laneAssignments"
+                        and aggregate.laneAssignments or aggregate.provenLaneAssignments
+                    destination[#destination+1]=assignment
+                end
+            end
+            aggregate.barriers=aggregate.barriers+(result.barriers or 0)
+            aggregate.laneWork=aggregate.laneWork+(result.laneWork or 0)
+            for _,id in ipairs(result.unsafeRefs or {}) do aggregate.unsafeRefs[id]=true end
+            mergeMap(aggregate.unsafeRefDetails,result.unsafeRefDetails)
+            for _,kind in ipairs({"finalSurviving","fullySuperseded","unknown"}) do
+                for _,row in ipairs((result.unsafeAttribution or {})[kind] or {}) do
+                    local key=tostring(row.refId).."|"..tostring(row.reverseIndex)
+                    if not aggregate.attributionSeen[key] then
+                        aggregate.attributionSeen[key]=true
+                        aggregate.unsafeAttribution[kind][#aggregate.unsafeAttribution[kind]+1]=row
+                    end
+                end
+            end
+        end
+        cursor=task.memberIndex or 1
+        if cursor<=#task.members then
+            local last=math.min(#task.members,cursor+RESOLVER_MEMBERS_PER_SLICE-1)
+            local memberSlice={}
+            for index=cursor,last do
+                local member=task.members[index]
+                memberSlice[member.key]=member.handle
+            end
+            taskState.lastResolverStage="REVERSE_LANES"
+            local engineStarted=contextClock()
+            local ok,result=pcall(task.runtime.run,task.rows,memberSlice,
+                taskState.referenceMetadataCache,taskState.memberUICache)
+            local elapsed=contextElapsed(engineStarted)
+            taskState.lastResolverReverseMs=elapsed
+            taskState.lastResolverEngineMs=type(elapsed)=="number"
+                and math.max(0,elapsed-(taskState.lastResolverMetadataMs or 0)
+                    -(taskState.lastResolverMemberUIMs or 0)) or nil
+            if not ok then
+                mergeResult({classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR"})
+            else
+                mergeResult(result)
+            end
+            task.memberIndex=last+1
+            taskState.resolverMembersWarmed=last
+            if task.memberIndex<=#task.members then
+                return {classification="PENDING",refs={}}
+            end
+        end
+        if #task.members==0 and not task.emptyRunDone then
+            task.emptyRunDone=true
+            local ok,result=pcall(task.runtime.run,task.rows,{},
+                taskState.referenceMetadataCache,taskState.memberUICache)
+            if not ok then mergeResult({classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR"})
+            else mergeResult(result) end
+        end
+        aggregate.refs=aggregate.classification=="PROVEN" and aggregate.refs or {}
+        if aggregate.classification=="INCONCLUSIVE" then
+            aggregate.reason=aggregate.reason or "STAGED_MEMBER_UNPROVEN"
+            for _,assignment in ipairs(aggregate.laneAssignments) do
+                aggregate.provenLaneAssignments[#aggregate.provenLaneAssignments+1]=assignment
+            end
+            aggregate.laneAssignments=nil
+            aggregate.unsafeRefs=(function()
+                local ids={}; for id in pairs(aggregate.unsafeRefs) do ids[#ids+1]=id end
+                table.sort(ids); return ids
+            end)()
+            aggregate.remainingSemanticBlockers=math.max(1,#aggregate.unsafeRefs)
+            aggregate.refs={}
+        else
+            aggregate.remainingSemanticBlockers=0
+        end
+        aggregate.attributionSeen=nil
+        return aggregate
     end
     local function selectStageResult(stageResult,selectedMembers)
         local provenPartial=stageResult.classification=="INCONCLUSIVE"

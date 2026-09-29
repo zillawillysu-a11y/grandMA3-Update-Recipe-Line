@@ -69,26 +69,113 @@ functions.recipePoolReferences(hookState)
 local provenApi = hookState.provenHooks
 assert(type(provenApi) == "table", "proven hook table must be attached")
 
--- A large selection must complete its bounded native member pass in one
--- refresh instead of waiting one polling cycle per member.
+-- The sequence-wide resolver must yield between small deterministic member
+-- slices so pulse/UI refreshes continue while the lane engine works.
+do
 local warmedHandles={}
 local warmMembers,warmSelected={},{}
 for i=1,40 do
  warmMembers[i]={key="m"..i,handle="m"..i}
  warmSelected[warmMembers[i].key]=warmMembers[i].handle
 end
-local warmTask={rows={},members=warmMembers,memberIndex=1,metadataIndex=1,runtime={
- memberUI=function(handle,cache) warmedHandles[#warmedHandles+1]=handle; cache[handle]={} end,
- run=function(_,selected)
-  local refs={}; for key in pairs(selected) do refs["Preset "..key]=key end
-  return {classification="PROVEN",refs=refs,sourceGroups={}}
- end},selectedMembers=warmSelected,stageMembers=warmSelected,targetFG=nil}
+local warmRunCalls,warmMaxBatch=0,0
+local warmRuntime={
+ memberUI=function(handle,cache) warmedHandles[#warmedHandles+1]=handle; cache[handle]={} end}
+warmRuntime.run=function(_,selected,_,uiCache)
+ warmRunCalls=warmRunCalls+1
+ local refs,activeRefs={},{}
+ local batch=0
+ for key,handle in pairs(selected) do
+  batch=batch+1
+  if uiCache[handle]==nil then warmRuntime.memberUI(handle,uiCache) end
+  refs["Preset "..key]=key; activeRefs["Preset "..key]=key
+ end
+ warmMaxBatch=math.max(warmMaxBatch,batch)
+ return {classification="PROVEN",refs=refs,activeRefs=activeRefs,sourceGroups={}}
+end
+local warmTask={rows={},members=warmMembers,memberIndex=1,metadataIndex=1,runtime=warmRuntime,
+ selectedMembers=warmSelected,stageMembers=warmSelected,targetFG=nil}
 local warmState={referenceMetadataCache={},memberUICache={}}
-local warmResult=provenApi.advanceStagedResolver(warmTask,warmState)
+local warmResult,slices
+slices=0
+repeat
+ warmResult=provenApi.advanceStagedResolver(warmTask,warmState)
+ slices=slices+1
+until warmResult.classification~="PENDING" or slices>20
 check(warmResult.classification=="PROVEN" and #warmedHandles==40
  and warmState.resolverMembersWarmed==40 and warmState.resolverMembersTotal==40
- and tableCount(warmResult.refs)==40,
- "the current selection must finish one bounded member pass without per-poll warmup delays")
+ and tableCount(warmResult.refs)==40 and warmRunCalls==10 and warmMaxBatch==4 and slices==10,
+ "large sequence lane resolution must preserve all refs while processing four members per refresh slice")
+end
+
+-- Metadata reads are also budgeted across refreshes; the pulse gets a refresh
+-- opportunity between each pending resolver slice.
+do
+ local rows={}
+ for i=1,9 do
+  local ref=object("Preset","Preset metadata slice "..i)
+  rows[i]={ref=ref}
+ end
+ local metadataReads,engineRuns=0,0
+ local task={rows=rows,members={{key="m",handle="m"}},memberIndex=1,metadataIndex=1,
+  stageMembers={m="m"},selectedMembers={m="m"},runtime={
+   metadata=function(ref,cache) metadataReads=metadataReads+1; cache[ref:ToAddr()]={kind="TEST"} end,
+   run=function() engineRuns=engineRuns+1; return {classification="PROVEN",refs={}} end,
+   memberUI=function(handle,cache) cache[handle]={} end}}
+ local state={referenceMetadataCache={},memberUICache={}}
+ local savedTime,stationTime=Time,200
+ Time=function() return stationTime end
+ local pulse={running=true,poolBlink=true,poolBlinkOn=true,poolBlinkDeadline=200.2,poolMarkers={}}
+ stationTime=200.1
+ functions.advancePoolPulse(pulse)
+ local first=provenApi.advanceStagedResolver(task,state)
+ check(first.classification=="PENDING" and metadataReads==4 and engineRuns==0,
+  "resolver reference metadata must be limited to four rows per UI refresh")
+ stationTime=200.2
+ functions.advancePoolPulse(pulse)
+ local second=provenApi.advanceStagedResolver(task,state)
+ check(second.classification=="PENDING" and metadataReads==8 and engineRuns==0
+  and pulse.poolBlinkOn==false,
+  "pulse transitions must still run between bounded metadata slices")
+ stationTime=200.3
+ functions.advancePoolPulse(pulse)
+ local final=provenApi.advanceStagedResolver(task,state)
+ check(final.classification=="PROVEN" and metadataReads==9 and engineRuns==1,
+  "the final metadata slice must run the lane engine exactly once")
+ Time=savedTime
+end
+
+-- A blocker found in a later member slice withholds the combined final source
+-- set but retains proven active lanes for the existing safe partial display.
+do
+ local manyMembers,manySelected={},{}
+ for i=1,8 do manyMembers[i]={key="x"..i,handle="x"..i}; manySelected["x"..i]="x"..i end
+ local calls=0
+ local memberTask={rows={},members=manyMembers,memberIndex=1,metadataIndex=1,
+  selectedMembers=manySelected,stageMembers=manySelected,runtime={
+   memberUI=function(handle,cache) cache[handle]={} end,
+   run=function(_,members)
+    calls=calls+1
+    local a=object("Preset",calls==1 and "Preset clean chunk" or "Preset blocked chunk")
+    local assignment={member=(calls==1 and "x1" or "x5"),lane="fg|ABS",fg="fg",
+     refId=tostring(a:ToAddr()),ref=a,moving=true}
+    if calls==1 then
+     return {classification="PROVEN",refs={[assignment.refId]=a},activeRefs={[assignment.refId]=a},
+      laneAssignments={assignment},sourceGroups={}}
+    end
+    return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
+     refs={},provenActiveRefs={[assignment.refId]=a},provenMovingRefs={[assignment.refId]=a},
+     provenLaneAssignments={assignment},unsafeRefs={assignment.refId},sourceGroups={}}
+   end}}
+ local memberState={referenceMetadataCache={},memberUICache={}}
+ local first=provenApi.advanceStagedResolver(memberTask,memberState)
+ check(first.classification=="PENDING" and calls==1,
+  "a completed member chunk must yield before processing the remaining sequence members")
+ local final=provenApi.advanceStagedResolver(memberTask,memberState)
+ check(final.classification=="INCONCLUSIVE" and next(final.refs)==nil
+  and tableCount(final.provenActiveRefs)==2 and #final.provenLaneAssignments==2,
+  "a later unsafe chunk must fail closed globally while retaining only already-proven partial evidence")
+end
 
 -- The staged production path must resolve purple stage refs over every
 -- Recipe Group member, then project selection pulses over selected members.
@@ -113,7 +200,8 @@ do
       },sourceGroups={}}
     end}}}
  local scoped=provenApi.sources(nil,nil,{selectedFixture(101)},{feature="Dimmer"},nil,stagedTaskState)
- check(observedMembers==allStageMembers and tableCount(scoped.activeRefs)==2,
+ check(tableCount(observedMembers)==2 and observedMembers["101"]==allStageMembers["101"]
+  and observedMembers["201.1.1"]==allStageMembers["201.1.1"] and tableCount(scoped.activeRefs)==2,
   "staged resolver must use all Sequence Recipe members for steady stage refs")
  check(tableCount(scoped.selectedActiveRefs)==1 and scoped.selectedActiveRefs["Preset stage A"]
   and next(scoped.refs)==nil,

@@ -391,6 +391,15 @@ local function newTrackARuntime(api)
         return seen and featureKnown and next(features) and features or nil,
             seen and layerKnown and next(layers) and layers or nil
     end
+    local function cachedUnsafeScope(ref,cache,key)
+        cache.__unsafeScope=cache.__unsafeScope or {}
+        local entry=cache.__unsafeScope[key]
+        if entry~=nil then return entry.features or nil,entry.layers or nil end
+        local features,layers=unsafeScope(ref,cache)
+        entry={features=features or false,layers=layers or false}
+        cache.__unsafeScope[key]=entry
+        return features,layers
+    end
     local function run(rows,members,referenceCache,uiCache)
         local normalized={}
         for _,source in ipairs(rows) do
@@ -404,7 +413,7 @@ local function newTrackARuntime(api)
                 local meta=metadata(source.ref,referenceCache)
                 if not meta then
                     row.unsafe=true
-                    row.features,row.layers=unsafeScope(source.ref,referenceCache)
+                    row.features,row.layers=cachedUnsafeScope(source.ref,referenceCache,row.refId)
                 else
                     for key,handle in pairs(row.members) do
                         local ui=memberUI(handle,uiCache)
