@@ -627,6 +627,17 @@ check(authoredResult.classification=="PROVEN" and authoredResult.barriers==0
 local blockResult=result({recipe(gOne,relPhaser,1),recipe(gOne,splitPhaser,2)},fOne)
 check(blockResult.classification=="INCONCLUSIVE" and blockResult.reason=="REL_BARRIER_BLOCKS_HISTORY",
  "unknown REL barrier that blocks older moving REL must fail closed")
+check(blockResult.provenActiveRefs["Preset 25.B"]==splitPhaser
+ and blockResult.provenMovingRefs["Preset 25.B"]==splitPhaser,
+ "a blocking residual REL must retain the independently proven ABS source for purple publication")
+do
+ local blockSeq,blockCue=tree({recipe(gOne,relPhaser,1),recipe(gOne,splitPhaser,2)})
+ local blockState=state(blockSeq,blockCue,fOne)
+ local blockMarkerRefs=functions.recipePoolReferences(blockState)
+ check(blockState.provenSources.classification=="INCONCLUSIVE"
+  and blockMarkerRefs["Preset 25.B"]==splitPhaser and blockMarkerRefs["Preset 25.C"]==nil,
+  "staged marker publication must keep the proven ABS ref while withholding REL-blocked history")
+end
 local separate=result({recipe(gOne,relPhaser,1),recipe(gOne,static,2)},fOne)
 check(separate.classification=="PROVEN" and separate.refs["Preset 25.C"]==relPhaser,
  "newer static ABS must not erase older moving REL")
@@ -637,6 +648,31 @@ check(linkedFailure.classification=="INCONCLUSIVE"
  and linkedFailure.unsafeRefDetails["Preset 25.D"]
   :find("target=Preset 1.7,cause=LINKED_LANE_NOT_STATIC_ABS",1,true)~=nil,
  "linked moving Preset metadata must fail the static bridge gate")
+do
+ local mixedLink=preset("Preset 1.15",0,2,false)
+ local extra={}
+ for key,value in pairs(referenceData[mixedLink][0]) do extra[key]=value end
+ extra.attribute=attrs[1]; extra.pm=3; extra.preset_store_mode=3
+ extra.selective=false; extra.ui_channel_index=1
+ referenceData[mixedLink][1]=extra; referenceData[mixedLink].count=2
+ local linkedPhaser=phaser("Preset 25.9003 synthetic",attrs[0],10,20,nil,nil,mixedLink)
+ local linkedPhaserResult=result({recipe(gOne,linkedPhaser,1)},fOne)
+ check(linkedPhaserResult.classification=="PROVEN"
+  and linkedPhaserResult.refs["Preset 25.9003 synthetic"]==linkedPhaser,
+  "mixed Global/Universal linked UI channels must use the proven nonselective capability path")
+ local mixedSelective=preset("Preset mixed Selective and Global",0,2,false)
+ local selectiveChannel={}
+ for key,value in pairs(referenceData[mixedSelective][0]) do selectiveChannel[key]=value end
+ selectiveChannel.attribute=attrs[1]; selectiveChannel.pm=1
+ selectiveChannel.preset_store_mode=1; selectiveChannel.selective=true
+ selectiveChannel.ui_channel_index=1
+ referenceData[mixedSelective][1]=selectiveChannel; referenceData[mixedSelective].count=2
+ local mixedSelectiveResult=result({recipe(gOne,mixedSelective,1)},fOne)
+ check(mixedSelectiveResult.classification=="INCONCLUSIVE"
+  and mixedSelectiveResult.unsafeRefDetails["Preset mixed Selective and Global"]
+   :find("PRESET_MODE_CHANNEL_CONFLICT(2,1)",1,true)~=nil,
+  "mixed Selective and Global channel modes must remain fail-closed")
+end
 local unknown=object("Preset","Preset X")
 local unknownResult=result({recipe(gOne,unknown,1)},fOne)
 check(unknownResult.classification=="INCONCLUSIVE","unknown reference metadata must fail closed")
@@ -896,9 +932,42 @@ functions.render(scanCacheState)
 check(scanTrackingCalls==2,
  "Recipe reference relink must invalidate the structural tracking cache")
 cacheRecipe.Values=cacheRecipeValues
+scanCacheState.expanded=true
+local detailOK,detailText=pcall(functions.render,scanCacheState)
+check(detailOK and type(detailText)=="string" and detailText:find("Time ms: scan",1,true)~=nil,
+ "expanded Detail must render resolver timings through the local formatElapsed helper")
+scanCacheState.expanded=false
 swapUpvalue(functions.render,"scanTracking",scanTrackingOriginal)
 swapUpvalue(functions.render,"readSelection",originalReadSelection)
 swapUpvalue(functions.render,"readProgrammer",originalReadProgrammer)
+do
+ local runtime=assert(functions.newTrackARuntime,"production resolver factory must be test-visible")
+ local api={
+  safe=function(fn,...) local ok,value=pcall(fn,...); if ok then return value end end,
+  class=function(value) return value and value.kind or "Unknown" end,
+  identity=function(value) return value and value.addr end,
+  children=function(value) return value and value.children or {} end,
+  getPresetData=function() return nil end,
+ }
+ local sparseRuntime=runtime(api)
+ local memberMap,rowList,scopeMisses,scopeEnumerations={},{},0,0
+ for index=1,48 do
+  local member="Fixture "..index
+  memberMap[member]={kind="SubFixture",addr=member}
+  local groupMembers=setmetatable({[member]=true},{
+   __index=function() scopeMisses=scopeMisses+1 end,
+   __pairs=function(value)
+    scopeEnumerations=scopeEnumerations+1
+    return next,value,nil
+   end,
+  })
+  rowList[index]={ref={kind="Preset",addr="Preset unknown "..index},groupMembers=groupMembers}
+ end
+ local sparseResult=sparseRuntime.run(rowList,memberMap,{}, {})
+ check(sparseResult.classification=="INCONCLUSIVE" and scopeMisses==0
+  and scopeEnumerations==48 and #sparseResult.unsafeAttribution.finalSurviving==48,
+  "sparse single-member Recipe rows must normalize without scanning unrelated Sequence members")
+end
 local editRecipe=recipe(gOne,moving,1)
 local editSeq,editCue=tree({editRecipe})
 local editState=state(editSeq,editCue,fOne)
@@ -1200,7 +1269,7 @@ check(stagedState.provenSources.classification=="INCONCLUSIVE"
  and overlay.BackColor=="Global.AlertText",
  "a selected member's proven partial reference must enter a solid red frame")
 stagedSeq,stagedCue,stagedRefs,stagedState=functions.coloredTextLayers(
- "Resolver: INCONCLUSIVE | Missing Preset 2.14 @ POOL_TILE_FOUND\n"
+ "Resolver: INCONCLUSIVE | Missing Preset 2.14 @ VISIBLE_POOL_TILE_NOT_FOUND\n"
  .."Blocked refs: Preset 25.9003\nRefs: Preset 1.1, Preset 2.14\n"
  .."Old Values: Position | Preset 2.14 \"5 Corner\"\nNew Preset: Preset 4.4")
 check(stagedSeq:find("Missing Preset 2.14",1,true)~=nil

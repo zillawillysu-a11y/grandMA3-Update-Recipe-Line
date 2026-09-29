@@ -102,8 +102,14 @@ local function newTrackARuntime(api)
                 local pm=p.preset_store_mode or p.pm
                 if p.pm~=nil and p.preset_store_mode~=nil and p.pm~=p.preset_store_mode then return reject("PRESET_MODE_FIELDS_CONFLICT") end
                 if pm~=1 and pm~=2 and pm~=3 then return reject("PRESET_MODE_FIELD_SHAPE") end
-                if mode and pm~=mode then return reject("PRESET_MODE_CHANNEL_CONFLICT") end
-                mode=pm
+                if mode and pm~=mode then
+                    -- Native Track A classifies each channel as either
+                    -- Selective (1) or nonselective Global/Universal (2/3).
+                    -- Global and Universal share the same member-capability
+                    -- path, so their per-channel mix is not a conflict.
+                    if (mode==2 or mode==3) and (pm==2 or pm==3) then mode=2
+                    else return reject("PRESET_MODE_CHANNEL_CONFLICT("..tostring(mode)..","..tostring(pm)..")") end
+                else mode=mode or pm end
                 if pm==1 and p.selective~=true then return reject("SELECTIVE_FLAG_UNPROVEN") end
                 if pm~=1 and p.selective==true then return reject("NONSELECTIVE_FLAG_CONFLICT") end
                 if p.mask_cooked~=nil and p.mask_cooked~=0 then return reject("COOKED_MASK_ACTIVE") end
@@ -463,8 +469,12 @@ local function newTrackARuntime(api)
             local row={ref=source.ref,refId=api.identity(source.ref),group=source.group,
                 members={},lanes={},superseded={}}
             if not row.refId then return fail("REFERENCE_IDENTITY_UNPROVEN") end
-            for key,handle in pairs(members) do
-                if source.groupMembers[key] then row.members[key]=handle end
+            -- Iterate this Recipe row's stored Group members. Scanning the
+            -- union of all Sequence members for every row is quadratic for
+            -- many small Groups, even though almost all members are skipped.
+            for key in pairs(source.groupMembers or {}) do
+                local handle=members[key]
+                if handle then row.members[key]=handle end
             end
             if next(row.members) then
                 local meta=metadata(source.ref,referenceCache)
@@ -645,10 +655,20 @@ local function newTrackARuntime(api)
                 if older.reverseIndex>barrier.reverseIndex and older.members[barrier.member]
                     and (not older.features or older.features[barrier.feature])
                     and (not older.layers or older.layers[barrier.layer]) then
-                    return fail("REL_BARRIER_BLOCKS_HISTORY")
+                    local laneAssignments=assignmentView()
+                    return {classification="INCONCLUSIVE",reason="REL_BARRIER_BLOCKS_HISTORY",refs={},
+                        provenActiveRefs=activeRefs,provenMovingRefs=refs,
+                        provenLaneAssignments=laneAssignments,unsafeAttribution=attribution,
+                        laneWork=laneWork}
                 end
             end
-            if (victims[barrier] or 0)>0 then return fail("REL_BARRIER_BLOCKS_HISTORY") end
+            if (victims[barrier] or 0)>0 then
+                local laneAssignments=assignmentView()
+                return {classification="INCONCLUSIVE",reason="REL_BARRIER_BLOCKS_HISTORY",refs={},
+                    provenActiveRefs=activeRefs,provenMovingRefs=refs,
+                    provenLaneAssignments=laneAssignments,unsafeAttribution=attribution,
+                    laneWork=laneWork}
+            end
         end
         local sourceGroups={}
         for _,assignment in ipairs(assignments) do

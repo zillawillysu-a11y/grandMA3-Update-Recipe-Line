@@ -547,7 +547,7 @@ check(functions.stopExistingForLaunch(oldInstance) == false and oldInstance.runn
         and next(oldInstance.markerReferences)==nil and #oldInstance.currentGroups==0
         and oldInstance.currentGroup==nil and oldInstance.provenSources==nil,
     "replacing a loaded Plugin must immediately delete old Pool overlays and context state")
-local sameInstance = {running = true, version = "0.7.1.27"}
+local sameInstance = {running = true, version = "0.7.1.28"}
 check(functions.stopExistingForLaunch(sameInstance) == true and sameInstance.running == false,
     "Launching the same version must retain the ON/OFF toggle")
 local stringRecipeRow = object("StandardRecipe", "String Recipe Row", {
