@@ -2,27 +2,26 @@
 
 ## Current Goal
 
-Native validation of v0.7.1.10 in grandMA3 2.5.0.3; confirm the ordinary Preset metadata path completes and Recipe Pool frames appear.
+Continue native validation of v0.7.1.10, including full Group 231 selection and Phaser/other surviving references.
 
 ## Current Working State
 
-v0.7.1.10 is deployed. The native v0.7.1.9 capture completed resolution but returned `INCONCLUSIVE`, with `BY_FIXTURES_SHAPE_UNPROVEN` on ordinary Presets. Production ordinary metadata now calls the previously validated UI-channel form `GetPresetData(reference, false, false)` instead of requesting the unsupported `by_fixtures` view. It still applies the same fail-closed channel/lane checks. Pending resolver responsiveness from v0.7.1.9 is retained.
+v0.7.1.10 is deployed. Ordinary reference reads use the validated UI-channel form `GetPresetData(reference, false, false)`. Resolver stays fail-closed until PROVEN; pending work is staged one member per refresh with a 10 ms pending yield. Group tile and Pool marker appearance are unchanged.
 
 ## Latest Real-World User Test
 
-v0.7.1.9: Group frame and SELECT GROUP were immediate; pulse was steady after warmup. Recipe/Preset/Phaser frames remained absent. The panel showed `INCONCLUSIVE | 0 refs`, reason `UNSAFE_LANE_ATTRIBUTION_BLOCKER`, with `BY_FIXTURES_SHAPE_UNPROVEN` on Preset 1.1, Preset 25.9010, and Preset 4.4. Resolver total showed about 27.8 seconds.
+Video `2026-09-29 13-06-11.mp4` shows Cue 8 / Change-H1, Part 2, Recipe 1, Group 231. As selection grows, the resolver restarts and shows member warmup progress. At the end, selection is 77 of the Group's 210 members; panel reports `Resolver: PROVEN | 1 refs | 1/1 frames`, `Refs: Preset 25.9010`, and Pool tile 9010 has a visible bright outline. This confirms the v0.7.1.10 metadata path passed the former BY_FIXTURES blocker and created a Recipe Pool marker for this partial selection. It does not validate all 210 members or Phaser markers; no Phaser reference appears in this final one-ref result.
 
 ## Verified Facts
 
-- Offline: 87 workflow assertions, 125 show-candidate checks; four-ref synthetic case stays 4 refs, missing=0, extra=0.
-- Lua parse, deterministic build/version check, XML parse, and `git diff --check` pass.
-- v0.7.1.9 deployment backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.10-20260929`.
-- v0.7.1.10 source/deployed SHA256 match: Inspector `0EF45928C365FDC421EAA33A7BFF1E92899556AD9247AA340D9B3FDA1CC6E6A2`; Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`; XML `96CBC7BC927E848DF95C25C003D0E214549D133C080699DDAD7C5495E74CB3F8`.
-- Metadata-call arguments are asserted by the offline candidate fixture. No cooked Cue-history fallback was added and no safety gate was relaxed.
+- Offline: 87 workflow assertions, 125 show-candidate checks; synthetic four-ref fixture remains 4 refs, missing=0, extra=0.
+- Lua parse, deterministic build/version check, XML parse, and `git diff --check` passed for v0.7.1.10.
+- v0.7.1.10 source/deployed hashes match: Inspector `0EF45928C365FDC421EAA33A7BFF1E92899556AD9247AA340D9B3FDA1CC6E6A2`; Diagnostic `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`; XML `96CBC7BC927E848DF95C25C003D0E214549D133C080699DDAD7C5495E74CB3F8`.
+- No production semantic gate was relaxed and no cooked Cue-history fallback was added.
 
 ## Current Problem
 
-The new metadata argument shape has not yet been validated on console. If it passes but refs remain absent, use the new exact blocker details to identify the next failed semantic gate. Native performance remains under review.
+Need a stable full 210-member Group 231 run to verify expected final references and markers, plus a context where a Phaser reference is expected. Native cold resolution still takes several seconds while selection changes restart the work.
 
 ## Important Files
 
@@ -33,8 +32,8 @@ The new metadata argument shape has not yet been validated on console. If it pas
 
 ## Current Branch / Commit
 
-Worktree `C:\tmp\show-rel`, branch `qwen`; checkpoint pending.
+Worktree `C:\tmp\show-rel`, branch `qwen`; native result checkpoint pending.
 
 ## Exact Next Action
 
-Load v0.7.1.10 and repeat Cue 8 with the same Group/selection. Confirm the version, wait for resolver completion, and report whether Preset/Phaser frames appear plus the final Resolver classification and blocker reasons if any.
+With v0.7.1.10, use SELECT GROUP once to select all of Group 231, then leave selection and Cue unchanged until resolution completes. Check that Resolver is PROVEN and record the final ref list/visible tiles. Then test a known Cue/selection whose surviving source includes a Phaser and report its final refs/frame status.
