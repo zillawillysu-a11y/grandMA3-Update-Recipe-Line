@@ -2,44 +2,49 @@
 
 ## Current Goal
 
-Native-validate v0.7.1.25's Phaser failure reporting for Recipe Preset
-25.9003.
+Native-validate v0.7.1.27 after the v0.7.1.26 Cue 1 / Group 79 test.
 
 ## Current Working State
 
-v0.7.1.25 is deployed to the confirmed Update Plugin folder. Presets with an
-embedded `PhaserRecipe` now remain on the Phaser parser path even if parsing
-fails; they never fall through to the ordinary UI-channel parser. Exact
-self-links and incomplete external linked Presets remain fail-closed, with
-separate bounded reasons shown in the panel.
+v0.7.1.27 is deployed in the confirmed Update Plugin folder. It keeps
+Sequence-wide purple publication atomic, uses bounded 32-member resolver
+slices, throttles repeated Recipe-structure fingerprints to 100 ms, and
+deletes old Pool overlays/window state immediately when replacing a running
+plugin instance. The panel now shows compact linked-Phaser failure causes
+for blocked references.
 
 ## Latest Real-World User Test
 
-The latest supplied image is from v0.7.1.23. Cue 1's Recipe Preset 25.9003
-has no purple frame; its ordinary metadata view is empty and its object has a
-`PhaserRecipe` child.
+On v0.7.1.26, purple frames appeared together but too late. Preset 25.9003
+and 25.9006 associated with Group 79 `5 Corner` still appeared unmarked. The
+panel showed a truncated linked-Preset blocker for 25.9003. Reloading the
+plugin left old frames until the Show was reloaded. The user requires tracking
+to use only the currently selected Sequence.
 
 ## Verified Facts
 
-- Lua 5.4: 87 workflow assertions and 196 show-candidate checks pass.
-- Four-reference fixture remains `final_refs=4 missing=0 extra=0`.
-- Focused tests prove: embedded structural failure does not trigger an
-  ordinary fallback read; self-link and incomplete external link remain
-  inconclusive; unknown REL is not closed by a self-link.
-- Lua parsing, XML parsing, version consistency, deterministic generation,
-  and `git diff --check` pass.
-- The deployed v0.7.1.24 files were backed up at
-  `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.25-20260929`.
-- Source/deployed SHA256 matches for v0.7.1.25 Lua, XML, and referenced
-  diagnostic Lua.
+- Offline workflow suite: 88 assertions passed.
+- Show-candidate suite: 199 checks passed; synthetic fixture is
+  `final_refs=4 missing=0 extra=0`.
+- Lua parse, XML parse, deterministic build check, and `git diff --check`
+  passed.
+- Regression coverage confirms unselected Sequence references do not enter
+  the selected Sequence result.
+- The installed plugin folder is the confirmed Update Plugin folder and
+  reports v0.7.1.27 in Lua/XML. Source/deployed SHA256 matches:
+  `RecipeTracking_Inspector.lua` `6BEE5EB622A36CA2D1FDC7A8001A39FAC7DC1AE8D4AF9AA5830D39380A054305`,
+  `recipe_update_diagnostic.xml` `1B077FB8557CF07D346C5B14743149054B217FE3B0FCF212F162D77AD7CBBC15`,
+  and unchanged `RecipeUpdate_Diagnostic.lua`
+  `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`.
+- The previous v0.7.1.26 deployment is backed up at
+  `C:\tmp\show-rel-backups\v0.7.1.26-before-v0.7.1.27-20260929-211707`.
 
 ## Current Problem
 
-The v0.7.1.23 `ORDINARY_CHANNEL_SUMMARY_UNPROVEN` reason was masking an earlier
-Phaser parse failure through Lua's `structural and phaser() or ordinary()`
-fallback. v0.7.1.25 removes that fallback and reports self-link or external
-link failures separately. The real native reason for 25.9003 is not yet
-verified.
+The v0.7.1.26 image does not expose the exact linked-Preset gate for 25.9003,
+so the precise reason 25.9003/25.9006 lack purple frames remains unverified.
+The v0.7.1.27 panel exposes the bounded cause; native latency and marker
+coverage still require grandMA3 validation.
 
 ## Important Files
 
@@ -51,12 +56,12 @@ verified.
 
 ## Current Branch / Commit
 
-Branch `qwen`; candidate commit subject: `fix: expose embedded Phaser
-metadata failure safely`. v0.7.1.25 awaits real-world validation.
+Continuation worktree `C:\tmp\show-rel`, based on the v0.7.1.25 handoff
+checkpoint; v0.7.1.27 awaits native validation.
 
 ## Exact Next Action
 
-Reload the plugin and confirm the title is v0.7.1.25. Revisit Cue 1 with
-Preset 25.9003. If it remains unmarked, send the Resolver/Blocked refs lines;
-the reason should now distinguish an unproven self-link from an incomplete
-external linked Preset or Phaser structure.
+Ask the user to reload v0.7.1.27 and revisit Cue 1 / Group 79. Capture the
+compact blocker cause for Preset 25.9003 and 25.9006, confirm old frames are
+removed on plugin replacement, and measure whether purple publication is
+within 0.3 seconds. Do not infer native performance from offline tests.

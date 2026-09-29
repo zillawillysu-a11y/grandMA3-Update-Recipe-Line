@@ -69,8 +69,8 @@ functions.recipePoolReferences(hookState)
 local provenApi = hookState.provenHooks
 assert(type(provenApi) == "table", "proven hook table must be attached")
 
--- The sequence-wide resolver must yield between small deterministic member
--- slices so the UI remains responsive while the lane engine works.
+-- The resolver uses bounded member slices but keeps the Sequence-wide marker
+-- set atomic, avoiding one fixture batch lighting before the rest.
 do
 local warmedHandles={}
 local warmMembers,warmSelected={},{}
@@ -104,8 +104,8 @@ repeat
 until warmResult.classification~="PENDING" or slices>20
 check(warmResult.classification=="PROVEN" and #warmedHandles==40
  and warmState.resolverMembersWarmed==40 and warmState.resolverMembersTotal==40
- and tableCount(warmResult.refs)==40 and warmRunCalls==10 and warmMaxBatch==4 and slices==10,
- "large sequence lane resolution must preserve all refs while processing four members per refresh slice")
+ and tableCount(warmResult.refs)==40 and warmRunCalls==2 and warmMaxBatch==32 and slices==2,
+ "large sequence lane resolution must preserve all refs in deterministic batches of at most thirty-two members")
 end
 
 -- Only real cache misses consume the metadata slice budget. A warm cache must
@@ -160,10 +160,10 @@ do
 end
 
 -- A blocker found in a later member slice withholds the combined final source
--- set but retains proven active lanes for the existing safe partial display.
+-- set; pending results expose no partial Sequence markers.
 do
  local manyMembers,manySelected={},{}
- for i=1,8 do manyMembers[i]={key="x"..i,handle="x"..i}; manySelected["x"..i]="x"..i end
+ for i=1,64 do manyMembers[i]={key="x"..i,handle="x"..i}; manySelected["x"..i]="x"..i end
  local calls=0
  local memberTask={rows={},members=manyMembers,memberIndex=1,metadataIndex=1,
   selectedMembers=manySelected,stageMembers=manySelected,runtime={
@@ -171,7 +171,7 @@ do
    run=function(_,members)
     calls=calls+1
     local a=object("Preset",calls==1 and "Preset clean chunk" or "Preset blocked chunk")
-    local assignment={member=(calls==1 and "x1" or "x5"),lane="fg|ABS",fg="fg",
+    local assignment={member=(calls==1 and "x1" or "x33"),lane="fg|ABS",fg="fg",
      refId=tostring(a:ToAddr()),ref=a,moving=true}
     if calls==1 then
      return {classification="PROVEN",refs={[assignment.refId]=a},activeRefs={[assignment.refId]=a},
@@ -184,9 +184,8 @@ do
  local memberState={referenceMetadataCache={},memberUICache={}}
  local first=provenApi.advanceStagedResolver(memberTask,memberState)
  check(first.classification=="PENDING" and calls==1
-  and first.provenActiveRefs["Preset clean chunk"]~=nil
-  and #first.laneAssignments==1,
-  "a completed member chunk must publish only its independently proven refs while yielding")
+  and next(first.provenActiveRefs)==nil and #first.laneAssignments==0,
+  "a pending Sequence pass must not publish the completed member chunk's purple refs")
  local final=provenApi.advanceStagedResolver(memberTask,memberState)
  check(final.classification=="INCONCLUSIVE" and next(final.refs)==nil
   and tableCount(final.provenActiveRefs)==2 and #final.provenLaneAssignments==2,
@@ -194,9 +193,12 @@ do
 end
 
 -- A selection change during a staged Sequence pass must update the selected
--- projection and move newly selected, unprocessed members to the next slice.
+-- projection and move newly selected members to the next bounded slice.
 do
- local keys={"101","1001","1002","1003","1004","1005","1006","1007","1008","1009","201.1.1"}
+ local keys={"101"}
+ for i=1001,1031 do keys[#keys+1]=tostring(i) end
+ for i=1032,1038 do keys[#keys+1]=tostring(i) end
+ keys[#keys+1]="201.1.1"
  local members={}
  for _,key in ipairs(keys) do members[#members+1]={key=key,handle=key} end
  local calls=0
@@ -217,14 +219,14 @@ do
   referenceMetadataCache={},memberUICache={}}
  local first=provenApi.sources(nil,nil,{selectedFixture(101)},{feature="Dimmer"},nil,state)
  check(first.classification=="PENDING" and first.selectedActiveRefs["Preset projected 101"]
-  and task.memberIndex==5,
-  "the first staged slice must project the current selected member")
+  and next(first.provenActiveRefs)==nil and next(first.refs)==nil and task.memberIndex==33,
+  "PENDING may publish the completed selection projection but must withhold Sequence-wide purple refs")
  local sameTask=state.resolverTask
  local second=provenApi.sources(nil,nil,{selectedFixture(203)},{feature="Dimmer"},nil,state)
- check(state.resolverTask==sameTask and task.members[5].key=="201.1.1"
-  and second.classification=="PENDING"
+ check(state.resolverTask==sameTask and task.members[33].key=="201.1.1"
+  and second.classification=="PROVEN"
   and second.selectedActiveRefs["Preset projected 201.1.1"]~=nil and calls==2,
-  "changing selection must reuse the in-flight stage task and prioritize its newly selected member")
+  "changing selection must reuse the in-flight task, prioritize the new member, then publish a complete projection")
 end
 
 -- The staged production path must resolve purple stage refs over every
@@ -271,14 +273,12 @@ do
   ["201.1"]=subfixtureByIndex[202]}, { ["201.1.1"]=subfixtureByIndex[203] })
  check(ordered[1].key=="201.1.1" and ordered[2].key=="101" and ordered[3].key=="201.1",
   "selected exact members must be resolved first so their Recipe frames do not wait behind the full Sequence scope")
- local earlyRef=object("Preset","Preset early")
  local partial=provenApi.selectStageResult({classification="PENDING",
-  provenActiveRefs={["Preset early"]=earlyRef},
-  laneAssignments={{member="201.1.1",refId="Preset early",ref=earlyRef,moving=true}}},
+  provenActiveRefs={},laneAssignments={}},
   { ["201.1.1"]=true })
- check(partial.classification=="PENDING" and partial.selectedActiveRefs["Preset early"]==earlyRef
+ check(partial.classification=="PENDING" and next(partial.selectedActiveRefs)==nil
   and (not partial.refs or next(partial.refs)==nil),
-  "PENDING member-lane proof must project selected refs without claiming a final source set")
+  "PENDING Sequence scope must not expose a partial member-lane projection")
 end
 
 -- 1. canonical member keys for Fixture / SubFixture / nested Cell.
@@ -541,6 +541,17 @@ check(stageWideResult.classification=="PROVEN"
  and stageWideResult.activeRefs["Preset 1.2"]==moving,
  "purple stage references must include surviving Recipe lanes across this Sequence while selection only filters Group blink refs")
 do
+ local foreignPreset=preset("Preset foreign Sequence only",0,2,true)
+ local foreignCue=object("Cue","Foreign Cue 1000",{No=1000},{object("Part","Foreign Part 0",{},
+  {recipe(gOne,foreignPreset,1)})})
+ local foreignSequence=object("Sequence","Sequence 10",{}, {foreignCue})
+ local foreignResult=provenApi.sources(foreignSequence,foreignCue,fOne,{feature="Dimmer"})
+ check(foreignResult.classification=="PROVEN"
+  and foreignResult.activeRefs["Preset foreign Sequence only"]~=nil
+  and stageWideResult.activeRefs["Preset foreign Sequence only"]==nil,
+  "Recipe references from an unselected Sequence must not affect the selected Sequence result")
+end
+do
  local startupState={provenEnabled=true,currentSequence=sequenceWide,currentCue=selectedCue,lastFixtures={}}
  local startupRefs=functions.recipePoolReferences(startupState)
  check(startupState.provenSources.classification=="PROVEN"
@@ -592,7 +603,7 @@ do
   and referenceReads.count==externalLinkReadsBefore+1
   and externalLinkRequests[1]==tostring(emptyExternalLink)
   and externalLinkResult.unsafeRefDetails["Preset externally linked to empty metadata"]
-   =="PHASER_LINKED_PRESET_UNPROVEN(target=Preset empty external link)",
+   :find("PHASER_LINKED_PRESET_UNPROVEN(target=Preset empty external link,cause=ORDINARY_CHANNEL_SUMMARY_UNPROVEN",1,true)~=nil,
   "a distinct external linked Preset with empty metadata must keep the existing fail-closed bridge gate (classification="
    ..tostring(externalLinkResult.classification)..", reads="..tostring(referenceReads.count-externalLinkReadsBefore)
    ..", targets="..table.concat(externalLinkRequests,",")..")")
@@ -622,7 +633,9 @@ check(separate.classification=="PROVEN" and separate.refs["Preset 25.C"]==relPha
 local badLinked=preset("Preset 1.7",0,2,true)
 local badSplit=phaser("Preset 25.D",attrs[0],10,20,0,0,badLinked)
 local linkedFailure=result({recipe(gOne,badSplit,1)},fOne)
-check(linkedFailure.classification=="INCONCLUSIVE",
+check(linkedFailure.classification=="INCONCLUSIVE"
+ and linkedFailure.unsafeRefDetails["Preset 25.D"]
+  :find("target=Preset 1.7,cause=LINKED_LANE_NOT_STATIC_ABS",1,true)~=nil,
  "linked moving Preset metadata must fail the static bridge gate")
 local unknown=object("Preset","Preset X")
 local unknownResult=result({recipe(gOne,unknown,1)},fOne)
@@ -878,6 +891,7 @@ functions.render(scanCacheState)
 check(scanTrackingCalls==1 and scanCacheState.lastTrackingScanMs==0,
  "unchanged Recipe structure must reuse the tracking candidate scan between pulse refreshes")
 cacheRecipe.Values=position
+scanCacheState.trackARecipeStructureCheckAt=0
 functions.render(scanCacheState)
 check(scanTrackingCalls==2,
  "Recipe reference relink must invalidate the structural tracking cache")
@@ -1057,26 +1071,30 @@ do
    members={{key="101",handle=subfixtureByIndex[101]},
     {key="201",handle=subfixtureByIndex[201]},{key="201.1",handle=subfixtureByIndex[202]},
     {key="201.1.1",handle=subfixtureByIndex[203]},{key="900",handle=subfixtureByIndex[101]}},
-   memberIndex=1,metadataIndex=1,selectedMembers={["101"]=subfixtureByIndex[101]},
-   runtime={memberUI=function(handle,cache) cache[handle]={} end,
+    memberIndex=1,metadataIndex=1,selectedMembers={["101"]=subfixtureByIndex[101]},
+    runtime={memberUI=function(handle,cache) cache[handle]={} end,
     run=function(_,memberSlice)
      local assignments={}
      for member in pairs(memberSlice) do
       assignments[#assignments+1]={member=member,lane="Dimmer|ABS",fg="Dimmer",
        refId="Preset 25.9009",ref=expected9009,group=gOne,moving=true}
       end
-     return {classification="PROVEN",refs={["Preset 25.9009"]=expected9009},
+      return {classification="PROVEN",refs={["Preset 25.9009"]=expected9009},
       activeRefs={["Preset 25.9009"]=expected9009},laneAssignments=assignments,sourceGroups={}}
     end}},
-  poolGrids={pool},poolMarkers={},poolMarkersDirty=true}
+   poolGrids={pool},poolMarkers={},poolMarkersDirty=true}
+ for index=6,50 do
+  table.insert(stagedState.resolverTask.members,
+   {key=tostring(900+index),handle=subfixtureByIndex[101]})
+ end
  tileAlias=expected9009
  stagedRefs=functions.recipePoolReferences(stagedState)
  check(stagedState.provenSources.classification=="PENDING"
-  and stagedState.resolverTask.memberIndex==5
+  and stagedState.resolverTask.memberIndex==33
   and next(stagedState.provenSources.refs)==nil
   and stagedRefs["Preset 25.9009"]==expected9009
   and stagedState.selectedRecipeReferenceKeys["Preset 25.9009"]==true,
-  "PENDING resolver chunks must expose proven member refs without claiming final refs")
+  "PENDING may expose the completed selected reference but must not publish partial Sequence-wide refs")
  stagedState.markerReferences=stagedRefs
  functions.refreshPoolMarkers(stagedState)
  check(stagedState.poolMarkers[button] and overlay
@@ -1234,6 +1252,10 @@ stagedRefs=functions.sourceMarkerEvidence({
  markerReferences={}},position)
 check(stagedRefs=="Preset 2.1 | NOT_FINAL_ASSIGNMENT",
  "source marker diagnosis must distinguish refs excluded before Pool lookup")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="PENDING",provenActiveRefs={}},markerReferences={}},position)
+check(stagedRefs=="Preset 2.1 | RESOLVER_PENDING",
+ "a pending Sequence must not mislabel a source reference as a final non-assignment")
 stagedRefs=functions.sourceMarkerEvidence({
  provenSources={classification="INCONCLUSIVE",provenActiveRefs={},
   unsafeAttribution={unknown={{refId="Preset 2.1",ref=position}}}},

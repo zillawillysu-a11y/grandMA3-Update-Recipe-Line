@@ -331,12 +331,31 @@ local function newTrackARuntime(api)
             local meta=referenceCache[key]
             if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
             if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then
-                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="..tostring(key):sub(1,64)..")" end
+                local cause=referenceCache.__failure and referenceCache.__failure[key]
+                if type(meta)=="table" and meta.mode==1 then cause="SELECTIVE_LINK_NOT_CLOSED" end
+                if not cause then cause="LINKED_METADATA_UNAVAILABLE" end
+                cause=tostring(cause):gsub("[%c%s]+","_"):sub(1,72)
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause="..cause..")" end
                 return nil
             end
-            if meta.mode~=2 and meta.mode~=3 then return nil end
-            for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
-            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
+            if meta.mode~=2 and meta.mode~=3 then
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause=LINKED_PRESET_MODE_UNPROVEN)" end
+                return nil
+            end
+            for _,lane in pairs(meta.lanes) do
+                if lane.moving or lane.layer~="ABS" then
+                    if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                        ..tostring(key):sub(1,64)..",cause=LINKED_LANE_NOT_STATIC_ABS)" end
+                    return nil
+                end
+            end
+            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause=LINKED_FEATURE_GROUP_MISMATCH)" end
+                return nil
+            end end
         end
         if unknownRel then
             if not provenMovingAbs or count(features)~=1 or linkedCount==0 then return nil end

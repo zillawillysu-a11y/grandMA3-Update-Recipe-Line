@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.25"
+local PLUGIN_VERSION = "0.7.1.27"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -19,7 +19,8 @@ local MAX_RECIPES = 2048
 local REFRESH_SECONDS = 0.1
 local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
 local RESOLVER_METADATA_ROWS_PER_SLICE = 4
-local RESOLVER_MEMBERS_PER_SLICE = 4
+local RESOLVER_MEMBERS_PER_SLICE = 32
+local TRACKING_SIGNATURE_POLL_SECONDS = 0.1
 local PANEL_WIDTH = 640
 local COMPACT_HEIGHT = 260
 local DETAIL_HEIGHT = 520
@@ -1056,8 +1057,8 @@ local function sourceMarkerEvidence(state,reference)
     if not result then return sourceRefId.." | RESOLVER_PENDING" end
     local finalRefs=result.classification=="PROVEN"
         and (result.activeRefs or result.refs) or result.provenActiveRefs or {}
-    local status="NOT_FINAL_ASSIGNMENT"
-    if finalRefs[sourceRefId] then
+    local status=result.classification=="PENDING" and "RESOLVER_PENDING" or "NOT_FINAL_ASSIGNMENT"
+    if status~="RESOLVER_PENDING" and finalRefs[sourceRefId] then
         if not (result.selectedActiveRefs or {})[sourceRefId] then
             status="NOT_SELECTED_MEMBER_LANE"
         elseif not (state.markerReferences or {})[sourceRefId] then
@@ -1071,7 +1072,7 @@ local function sourceMarkerEvidence(state,reference)
             elseif not probe.frameCreated then status="OVERLAY_NOT_CREATED"
             else status="RED_STATIC_FRAME" end
         end
-    else
+    elseif status~="RESOLVER_PENDING" then
         local attribution=result.unsafeAttribution or {}
         for _,item in ipairs(attribution.finalSurviving or {}) do
             if item.refId==sourceRefId or sameReference(item.ref,reference) then
@@ -1124,9 +1125,21 @@ local function render(state)
     local direct = directRecipes()
     local trackARecipeStructure
     if state then
-        local structureStarted=contextClock()
-        trackARecipeStructure=trackingStructureKey(sequence,currentCue)
-        state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
+        local structureContext=tostring(commandAddress(sequence))..":"..tostring(cueNumber(currentCue))
+        local now=contextClock()
+        local checkStructure=state.trackARecipeStructureContext~=structureContext
+            or state.forceRefresh==true or state.trackARecipeStructureCheckAt==nil
+            or now==nil or now>=state.trackARecipeStructureCheckAt
+        if checkStructure then
+            local structureStarted=contextClock()
+            trackARecipeStructure=trackingStructureKey(sequence,currentCue)
+            state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
+            state.trackARecipeStructureContext=structureContext
+            state.trackARecipeStructureCheckAt=now and now+TRACKING_SIGNATURE_POLL_SECONDS or nil
+        else
+            trackARecipeStructure=state.trackARecipeStructureKey
+            state.lastTrackingFingerprintMs=0
+        end
         if state.trackARecipeStructureKey~=trackARecipeStructure then
             state.trackARecipeStructureKey=trackARecipeStructure
             state.trackAHistoryRowsCache=nil
@@ -1134,6 +1147,10 @@ local function render(state)
             state.provenSourceKey=nil
             state.resolverWorkKey=nil
             state.resolverTask=nil
+            state.markerProbe=nil
+            state.markerProbeSerial=nil
+            state.markerProbeReported=nil
+            state.markerStatus=nil
             state.poolMarkersDirty=true
         end
     end
@@ -1147,6 +1164,10 @@ local function render(state)
                 state.provenSources={classification="PENDING",refs={}}
                 state.currentGroups={}
                 state.markerReferences={}
+                state.markerProbe=nil
+                state.markerProbeSerial=nil
+                state.markerProbeReported=nil
+                state.markerStatus=nil
             end
         end
         local parts={stageContextKey}
@@ -1345,34 +1366,51 @@ local function render(state)
             refKeys[#refKeys+1]=key
         end
         table.sort(refKeys)
-        local refLabel=state.provenSources.classification=="PROVEN" and "refs" or "proven refs (partial)"
+        local refLabel=state.provenSources.classification=="PROVEN" and "refs"
+            or state.provenSources.classification=="PENDING" and "refs pending" or "proven refs (partial)"
         resolverLines[1]=string.format("Resolver: %s | %d %s | %d selected frames%s",
             tostring(state.provenSources.classification),#refKeys,
             refLabel,
             state.selectedRecipeReferenceCount or 0,
             state.markerStatus and (" | "..state.markerStatus) or "")
         if state.provenSources.classification=="PENDING"
-            and state.provenSources.reason=="MEMBER_UI_PENDING"
             and type(state.resolverMembersTotal)=="number" then
-            resolverLines[#resolverLines+1]=string.format("Member channels: %d/%d",
-                state.resolverMembersWarmed or 0,state.resolverMembersTotal)
+            if state.provenSources.reason=="MEMBER_UI_PENDING" then
+                resolverLines[#resolverLines+1]=string.format("Member channels: %d/%d",
+                    state.resolverMembersWarmed or 0,state.resolverMembersTotal)
+            else
+                local elapsed=state.resolverWorkStarted and contextElapsed(state.resolverWorkStarted) or nil
+                resolverLines[#resolverLines+1]=string.format(
+                    "Resolver progress: rows %d/%d | members %d/%d | %s ms",
+                    state.resolverRecipeRowsWarmed or 0,state.resolverRecipeRowsTotal or 0,
+                    state.resolverMembersWarmed or 0,state.resolverMembersTotal,
+                    formatElapsed(elapsed))
+            end
         end
         if state.provenSources.classification~="PROVEN" and state.provenSources.reason then
             resolverLines[#resolverLines+1]="Reason: "..tostring(state.provenSources.reason):sub(1,90)
             local blockers=state.provenSources.unsafeRefs or {}
             if #blockers>0 then
-                local shown,shapeShown={},false
+                local shown={}
                 for index=1,math.min(#blockers,3) do
                     local id=blockers[index]
                     local detail=tostring((state.provenSources.unsafeRefDetails or {})[id] or "UNPROVEN")
-                    shown[#shown+1]=id.." ("..detail..")"
-                    local shape=detail:match(";(raw_keys=.*)$")
-                    if shape and not shapeShown then
-                        resolverLines[#resolverLines+1]="Metadata shape: "..id.." "..shape:sub(1,150)
-                        shapeShown=true
+                    local shortId=tostring(id):gsub("^Preset%s+",""):sub(1,32)
+                    local target,cause=detail:match(
+                        "^PHASER_LINKED_PRESET_UNPROVEN%(%s*target=([^,%)]+),cause=([^%)]+)")
+                    if target then
+                        target=tostring(target):gsub("^Preset%s+",""):sub(1,28)
+                        cause=tostring(cause):match("^([^%(]+)") or tostring(cause)
+                        shown[#shown+1]="Blocked: "..shortId.." -> "..target.." ["..cause:sub(1,48).."]"
+                    else
+                        local reason=detail:match("^([^%(]+)") or detail
+                        shown[#shown+1]="Blocked: "..shortId.." ["..tostring(reason):sub(1,54).."]"
                     end
                 end
-                resolverLines[#resolverLines+1]="Blocked refs: "..table.concat(shown,", "):sub(1,220)
+                for _,line in ipairs(shown) do resolverLines[#resolverLines+1]=line end
+                if #blockers>#shown then
+                    resolverLines[#resolverLines+1]=string.format("Blocked: +%d more",#blockers-#shown)
+                end
             end
         end
         if state.expanded and #refKeys>0 then
@@ -1386,18 +1424,14 @@ local function render(state)
         end
         if state.expanded then
             resolverLines[#resolverLines+1]=string.format(
-                "Timing ms: select=%s tracking_scan=%s tracking_sig=%s group=%s cue_scan=%s resolver_scope=%s metadata=%s member_ui=%s engine=%s total=%s pool=%s",
-                tostring(state.lastSelectionReadMs or "?"),
-                tostring(state.lastTrackingScanMs or "?"),
-                tostring(state.lastTrackingFingerprintMs or "?"),
-                tostring(state.lastGroupMatchMs or "?"),
-                tostring(state.lastResolverCueScanMs or "?"),
-                tostring(state.lastResolverScopeMs or "?"),
-                tostring(state.lastResolverMetadataMs or "?"),
-                tostring(state.lastResolverMemberUIMs or "?"),
-                tostring(state.lastResolverEngineMs or "?"),
-                tostring(state.lastResolverTotalMs or "?"),
-                tostring(state.lastPoolDiscoveryMs or "?"))
+                "Time ms: scan %s | signature %s | scope %s | engine %s",
+                formatElapsed(state.lastTrackingScanMs),
+                formatElapsed(state.lastTrackingFingerprintMs),
+                formatElapsed(state.lastResolverScopeMs),formatElapsed(state.lastResolverEngineMs))
+            resolverLines[#resolverLines+1]=string.format(
+                "Time ms: resolver %s / total %s | Pool scan %s / tiles %s",
+                formatElapsed(state.lastResolverSliceMs),formatElapsed(state.lastResolverTotalMs),
+                formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs))
         end
     end
     if state and #state.matchingCandidates > 1 then
@@ -1493,6 +1527,13 @@ local function stopState(state)
         state.running = false
         for _, entry in pairs(state.poolMarkers or {}) do deleteHandle(entry.overlay) end
         state.poolMarkers = {}
+        state.markerReferences = {}
+        state.currentGroups = {}
+        state.currentGroup = nil
+        state.provenSources = nil
+        state.resolverTask = nil
+        deleteHandle(state.window)
+        state.window = nil
     end
 end
 
@@ -1830,12 +1871,31 @@ local function newTrackARuntime(api)
             local meta=referenceCache[key]
             if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
             if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then
-                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="..tostring(key):sub(1,64)..")" end
+                local cause=referenceCache.__failure and referenceCache.__failure[key]
+                if type(meta)=="table" and meta.mode==1 then cause="SELECTIVE_LINK_NOT_CLOSED" end
+                if not cause then cause="LINKED_METADATA_UNAVAILABLE" end
+                cause=tostring(cause):gsub("[%c%s]+","_"):sub(1,72)
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause="..cause..")" end
                 return nil
             end
-            if meta.mode~=2 and meta.mode~=3 then return nil end
-            for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
-            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
+            if meta.mode~=2 and meta.mode~=3 then
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause=LINKED_PRESET_MODE_UNPROVEN)" end
+                return nil
+            end
+            for _,lane in pairs(meta.lanes) do
+                if lane.moving or lane.layer~="ABS" then
+                    if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                        ..tostring(key):sub(1,64)..",cause=LINKED_LANE_NOT_STATIC_ABS)" end
+                    return nil
+                end
+            end
+            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="
+                    ..tostring(key):sub(1,64)..",cause=LINKED_FEATURE_GROUP_MISMATCH)" end
+                return nil
+            end end
         end
         if unknownRel then
             if not provenMovingAbs or count(features)~=1 or linkedCount==0 then return nil end
@@ -2286,15 +2346,37 @@ end
             aggregate={classification="PROVEN",refs={},activeRefs={},refMembers={},sourceGroups={},
                 provenActiveRefs={},provenMovingRefs={},provenLaneAssignments={},laneAssignments={},
                 unsafeRefs={},unsafeRefDetails={},unsafeAttribution={finalSurviving={},fullySuperseded={},unknown={}},
-                attributionSeen={},barriers=0,laneWork=0}
+                attributionSeen={},processedMembers={},barriers=0,laneWork=0}
             task.aggregate=aggregate
         end
+        taskState.resolverMembersTotal=#task.members
+        taskState.resolverRecipeRowsTotal=#task.rows
         local function pendingResult()
-            return {classification="PENDING",refs={},
-                provenActiveRefs=aggregate.provenActiveRefs,
-                provenMovingRefs=aggregate.provenMovingRefs,
-                laneAssignments=aggregate.laneAssignments,
-                provenLaneAssignments=aggregate.provenLaneAssignments}
+            -- Keep completed member slices private until the whole Sequence
+            -- context is resolved; publishing them here lights Pool frames in
+            -- visible batches on large fixture Groups.  The current selection
+            -- gets one atomic red-reference projection after all selected
+            -- members are complete; Sequence-wide purple refs wait for every
+            -- member in this Sequence/Cue scope.
+            local selectedComplete=true
+            for member in pairs(task.selectedMembers or {}) do
+                if not aggregate.processedMembers[member] then selectedComplete=false; break end
+            end
+            local selectedAssignments,seen={},{}
+            if selectedComplete then
+                for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
+                    for _,assignment in ipairs(aggregate[field] or {}) do
+                        if (task.selectedMembers or {})[assignment.member] then
+                            local key=tostring(assignment.member).."\0"..tostring(assignment.lane)
+                                .."\0"..tostring(assignment.refId)
+                            if not seen[key] then seen[key]=true; selectedAssignments[#selectedAssignments+1]=assignment end
+                        end
+                    end
+                end
+            end
+            return {classification="PENDING",reason="SEQUENCE_MEMBERS_PENDING",refs={},
+                provenActiveRefs={},provenMovingRefs={},laneAssignments=selectedAssignments,
+                provenLaneAssignments={}}
         end
         local metadataReads=0
         while cursor<=#task.rows and metadataReads<RESOLVER_METADATA_ROWS_PER_SLICE do
@@ -2308,6 +2390,7 @@ end
             cursor=cursor+1
         end
         task.metadataIndex=cursor
+        taskState.resolverRecipeRowsWarmed=math.min(#task.rows,cursor-1)
         if cursor<=#task.rows then
             return pendingResult()
         end
@@ -2382,6 +2465,7 @@ end
             end
             task.memberIndex=last+1
             taskState.resolverMembersWarmed=last
+            for index=cursor,last do aggregate.processedMembers[task.members[index].key]=true end
             if task.memberIndex<=#task.members then
                 return pendingResult()
             end
@@ -2669,6 +2753,10 @@ end
         state.resolverWarmRefIndex=1
         state.resolverWarmUIIndex=1
         state.resolverWorkStarted=contextClock()
+        state.resolverMembersWarmed=0
+        state.resolverMembersTotal=0
+        state.resolverRecipeRowsWarmed=0
+        state.resolverRecipeRowsTotal=0
     end
     local started = contextClock()
     state.lastResolverMetadataMs=0
@@ -2831,12 +2919,14 @@ end
                     state.selectedRecipeReferenceKeys[refKey]=true
                     state.selectedRecipeReferenceCount=state.selectedRecipeReferenceCount+1
                 end
+                if provenResult.classification=="PENDING" then add(object) end
             end
-            -- A completed member chunk is already lane-proven in isolation.
-            -- Publish its Pool references while later members continue; the
-            -- final resolver still withholds the complete `refs` set until all
-            -- chunks settle.
-            for _,object in pairs(provenResult.provenActiveRefs) do add(object) end
+            -- Selected references publish together once every selected member
+            -- has been resolved.  Sequence-wide purple refs are published
+            -- only after the entire selected Sequence/Cue scope completes.
+            if provenResult.classification~="PENDING" then
+                for _,object in pairs(provenResult.provenActiveRefs) do add(object) end
+            end
             for key,probe in pairs(state.markerProbe or {}) do
                 probe.sourceAdmitted=references[key]~=nil
             end
@@ -4367,7 +4457,7 @@ end
 local function stopExistingForLaunch(existing)
     if type(existing) ~= "table" or not existing.running then return false end
     local sameVersion = tostring(existing.version or "") == PLUGIN_VERSION
-    existing.running = false
+    stopState(existing)
     return sameVersion
 end
 
