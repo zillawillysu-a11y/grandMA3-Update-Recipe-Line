@@ -51,8 +51,8 @@ verified.
 
 ## Current Branch / Commit
 
-Branch `qwen`; current checkpoint subject: `fix: keep embedded Phaser
-references on structural path`. v0.7.1.25 awaits real-world validation.
+Branch `qwen`; candidate commit subject: `fix: expose embedded Phaser
+metadata failure safely`. v0.7.1.25 awaits real-world validation.
 
 ## Exact Next Action
 
