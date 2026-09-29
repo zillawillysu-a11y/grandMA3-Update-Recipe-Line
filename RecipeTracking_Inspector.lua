@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.17"
+local PLUGIN_VERSION = "0.7.1.18"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1020,7 +1020,7 @@ local function coloredTextLayers(text)
                 first = currentPrefixEnd + 1
                 last = #line
                 layer = "current"
-            else
+            elseif line:match("^Old Values:") or line:match("^New Preset:") then
                 first = string.find(line, "Preset%s+[%d%.]+")
                 if first then
                     last = #line
@@ -1042,6 +1042,53 @@ local function coloredTextLayers(text)
     end
     return table.concat(baseLines, "\n"), table.concat(sourceLines, "\n"),
         table.concat(currentLines, "\n"), table.concat(presetLines, "\n")
+end
+
+local function sourceMarkerEvidence(state,reference)
+    local sourceRefId=commandAddress(reference)
+    if not sourceRefId then return nil end
+    local result=state and state.provenSources
+    if not result then return sourceRefId.." | RESOLVER_PENDING" end
+    local finalRefs=result.classification=="PROVEN"
+        and (result.activeRefs or result.refs) or result.provenActiveRefs or {}
+    local status="NOT_FINAL_ASSIGNMENT"
+    if finalRefs[sourceRefId] then
+        if not (result.selectedActiveRefs or {})[sourceRefId] then
+            status="NOT_SELECTED_MEMBER_LANE"
+        elseif not (state.markerReferences or {})[sourceRefId] then
+            status="SOURCE_NOT_ADMITTED"
+        else
+            local probe=(state.markerProbe or {})[sourceRefId]
+            if not probe then status="POOL_STAGE_PENDING"
+            elseif not probe.poolTileFound then status="POOL_TILE_NOT_FOUND"
+            elseif not probe.poolTileVisible then status="POOL_TILE_HIDDEN"
+            elseif not probe.identityMatch then status="POOL_IDENTITY_MISMATCH"
+            elseif not probe.frameCreated then status="OVERLAY_NOT_CREATED"
+            else status="RED_WHITE_PULSE" end
+        end
+    else
+        local attribution=result.unsafeAttribution or {}
+        for _,item in ipairs(attribution.finalSurviving or {}) do
+            if item.refId==sourceRefId or sameReference(item.ref,reference) then
+                status="UNSAFE_SURVIVING"; break
+            end
+        end
+        if status=="NOT_FINAL_ASSIGNMENT" then
+            for _,item in ipairs(attribution.unknown or {}) do
+                if item.refId==sourceRefId or sameReference(item.ref,reference) then
+                    status="ATTRIBUTION_UNKNOWN"; break
+                end
+            end
+        end
+        if status=="NOT_FINAL_ASSIGNMENT" then
+            for _,item in ipairs(attribution.fullySuperseded or {}) do
+                if item.refId==sourceRefId or sameReference(item.ref,reference) then
+                    status="FULLY_SUPERSEDED"; break
+                end
+            end
+        end
+    end
+    return sourceRefId:gsub("%s*%[%#.-%]$", ""):sub(1,64).." | "..status
 end
 
 local recipePoolReferences
@@ -1298,6 +1345,10 @@ local function render(state)
             local shown={}
             for index=1,math.min(#refKeys,8) do shown[#shown+1]=refKeys[index] end
             resolverLines[#resolverLines+1]="Refs: "..table.concat(shown,", "):sub(1,180)
+        end
+        if state.currentOldPreset and state.currentRecipe then
+            local evidence=sourceMarkerEvidence(state,state.currentOldPreset)
+            if evidence then resolverLines[#resolverLines+1]="Selected source ref: "..evidence end
         end
         if state.expanded then
             resolverLines[#resolverLines+1]=string.format(
@@ -2684,12 +2735,10 @@ end
 
 local function poolPulseColor(kind,on)
     if kind=="recipe" then
-        -- BackColor accepts UI Color names, not ColorDef names. In the stock
-        -- 2.5 themes RecipeEditing.PhaserRecipe resolves to SheetColor.Phaser
-        -- (the visible purple); passing SheetColor.Phaser directly paints black.
-        return "RecipeEditing.PhaserRecipe"
+        -- Use the brighter stock Phaser text color, exposed as a UI Color name.
+        return "TrackProgLayerActive.Phaser"
     end
-    return on and "Global.SuccessText" or "Global.Selected"
+    return on and "Global.AlertText" or "Global.Bright"
 end
 
 local function advancePoolPulse(state)

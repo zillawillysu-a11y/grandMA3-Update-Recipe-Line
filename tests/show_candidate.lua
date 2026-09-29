@@ -803,7 +803,7 @@ functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No"
  and markerState.poolMarkers[button].markerKind=="selectedRecipe"
- and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
  "a selected member's surviving Recipe tile must pulse with the existing theme colors")
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
@@ -814,17 +814,17 @@ markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn~=blinkPhase
  and overlay.BackColor~=beforeSelectedPulse
- and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
+ and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
  "selected Recipe references must follow the same stable pulse phase as matched Groups")
-check(functions.poolPulseColor("group",true)=="Global.SuccessText"
- and functions.poolPulseColor("group",false)=="Global.Selected",
- "Stored Group marker pulse must preserve its existing theme colors")
-check(functions.poolPulseColor("recipe",true)=="RecipeEditing.PhaserRecipe"
- and functions.poolPulseColor("recipe",false)=="RecipeEditing.PhaserRecipe",
- "Cue Recipe source marker must remain purple in both Group pulse phases")
-check(functions.poolPulseColor("selectedRecipe",true)=="Global.SuccessText"
- and functions.poolPulseColor("selectedRecipe",false)=="Global.Selected",
- "selected Recipe marker state must reuse the established Group pulse colors")
+check(functions.poolPulseColor("group",true)=="Global.AlertText"
+ and functions.poolPulseColor("group",false)=="Global.Bright",
+ "Stored Group marker pulse must alternate stock theme red and bright-white colors")
+check(functions.poolPulseColor("recipe",true)=="TrackProgLayerActive.Phaser"
+ and functions.poolPulseColor("recipe",false)=="TrackProgLayerActive.Phaser",
+ "steady Recipe tracking markers must use the brighter stock Phaser purple")
+check(functions.poolPulseColor("selectedRecipe",true)=="Global.AlertText"
+ and functions.poolPulseColor("selectedRecipe",false)=="Global.Bright",
+ "selected Recipe markers must alternate stock theme red and bright-white colors")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
 check(markerState.markerStatus=="1/1 overlays",
@@ -844,7 +844,7 @@ do
   and stageRefsWithoutSelection["Group 6"]==nil and overlay.deleted~=true
   and markerState.poolMarkers[button]~=nil
   and markerState.poolMarkers[button].markerKind=="recipe"
-  and overlay.BackColor=="RecipeEditing.PhaserRecipe",
+  and overlay.BackColor=="TrackProgLayerActive.Phaser",
   "clearing fixture selection must stop selected pulses but preserve steady purple Sequence refs")
 end
 markerState.currentSequence=nil
@@ -878,7 +878,7 @@ functions.refreshPoolMarkers(stagedState)
 check(stagedState.poolMarkers[button] and overlay
  and stagedState.poolMarkers[button].markerKind=="recipe"
  and overlay.Texture=="frame0" and overlay.Visible=="Yes"
- and overlay.BackColor=="RecipeEditing.PhaserRecipe",
+ and overlay.BackColor=="TrackProgLayerActive.Phaser",
  "a proven partial stage reference must create its steady purple Pool overlay")
 stagedState.lastFixtures=fOne
 stagedRefs=functions.recipePoolReferences(stagedState)
@@ -888,6 +888,65 @@ functions.refreshPoolMarkers(stagedState)
 check(stagedState.provenSources.classification=="INCONCLUSIVE"
  and stagedState.selectedRecipeReferenceKeys["Preset 2.1"]==true
  and stagedState.poolMarkers[button].markerKind=="selectedRecipe"
- and (overlay.BackColor=="Global.SuccessText" or overlay.BackColor=="Global.Selected"),
- "a selected member's proven partial reference must enter the existing Group-style pulse")
+ and (overlay.BackColor=="Global.AlertText" or overlay.BackColor=="Global.Bright"),
+ "a selected member's proven partial reference must enter the red-white pulse")
+stagedSeq,stagedCue,stagedRefs,stagedState=functions.coloredTextLayers(
+ "Resolver: INCONCLUSIVE | Missing Preset 2.14 @ POOL_TILE_FOUND\n"
+ .."Blocked refs: Preset 25.9003\nRefs: Preset 1.1, Preset 2.14\n"
+ .."Old Values: Position | Preset 2.14 \"5 Corner\"\nNew Preset: Preset 4.4")
+check(stagedSeq:find("Missing Preset 2.14",1,true)~=nil
+ and stagedState:find("Missing Preset",1,true)==nil
+ and stagedState:find("Blocked refs",1,true)==nil
+ and stagedState:find("Refs:",1,true)==nil
+ and stagedState:find("Preset 2.14",1,true)~=nil
+ and stagedState:find("Preset 4.4",1,true)~=nil,
+ "preset color overlay must affect value rows only, never Resolver or missing-stage diagnostics")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",
+  provenActiveRefs={["Preset 2.1"]=position},
+  selectedActiveRefs={["Preset 2.1"]=position}},
+ markerReferences={["Preset 2.1"]=position},
+ markerProbe={["Preset 2.1"]={poolTileFound=true,poolTileVisible=true,
+  identityMatch=true,frameCreated=true}}
+},position)
+check(stagedRefs=="Preset 2.1 | RED_WHITE_PULSE",
+ "source marker diagnosis must identify a selected source whose overlay attached")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",
+  provenActiveRefs={["Preset 2.1"]=position},
+  selectedActiveRefs={["Preset 2.1"]=position}},
+ markerReferences={["Preset 2.1"]=position},
+ markerProbe={["Preset 2.1"]={poolTileFound=false}}
+},position)
+check(stagedRefs=="Preset 2.1 | POOL_TILE_NOT_FOUND",
+ "source marker diagnosis must identify a missing Pool tile after resolver admission")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",
+  provenActiveRefs={["Preset 2.1"]=position},
+  selectedActiveRefs={["Preset 2.1"]=position}},
+ markerReferences={["Preset 2.1"]=position},
+ markerProbe={["Preset 2.1"]={poolTileFound=true,poolTileVisible=false}}
+},position)
+check(stagedRefs=="Preset 2.1 | POOL_TILE_HIDDEN",
+ "source marker diagnosis must distinguish a hidden Pool tile")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",
+  provenActiveRefs={["Preset 2.1"]=position},
+  selectedActiveRefs={["Preset 2.1"]=position}},
+ markerReferences={["Preset 2.1"]=position},
+ markerProbe={["Preset 2.1"]={poolTileFound=true,poolTileVisible=true,identityMatch=false}}
+},position)
+check(stagedRefs=="Preset 2.1 | POOL_IDENTITY_MISMATCH",
+ "source marker diagnosis must distinguish Pool identity mismatch")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",provenActiveRefs={}},
+ markerReferences={}},position)
+check(stagedRefs=="Preset 2.1 | NOT_FINAL_ASSIGNMENT",
+ "source marker diagnosis must distinguish refs excluded before Pool lookup")
+stagedRefs=functions.sourceMarkerEvidence({
+ provenSources={classification="INCONCLUSIVE",provenActiveRefs={},
+  unsafeAttribution={unknown={{refId="Preset 2.1",ref=position}}}},
+ markerReferences={}},position)
+check(stagedRefs=="Preset 2.1 | ATTRIBUTION_UNKNOWN",
+ "source marker diagnosis must expose unresolved lane attribution")
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

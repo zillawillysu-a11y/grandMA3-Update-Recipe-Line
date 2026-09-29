@@ -2,43 +2,39 @@
 
 ## Current Goal
 
-Show all independently proven surviving Recipe tracking refs in purple, even when another historical lane keeps the overall resolver inconclusive; keep unresolved refs unmarked and pulse selected-member refs.
+Use native v0.7.1.18 validation to identify why the selected Cue 0.5 / Group 79 `5 Corner` source `Preset 2.14` did not pulse in v0.7.1.17, and verify the requested red/white selected pulse and brighter steady purple tracking frame.
 
 ## Current Working State
 
-Candidate `0.7.1.17` is deployed. The resolver preserves only already-decided reverse-lane assignments as `provenActiveRefs` when unsafe attribution leaves the overall result `INCONCLUSIVE`. Pool markers consume those refs; unresolved refs remain excluded. The panel labels the partial count and retains the unsafe blocker details.
-
-The overlay regression now covers this partial-safe path end to end: a proven ref gets the steady purple frame, and becomes the existing selected-member pulse when its member is selected.
+v0.7.1.18 is deployed to the confirmed Update Plugin folder. It adds a bounded `Selected source ref` stage line (`NOT_FINAL_ASSIGNMENT`, unsafe/unknown attribution, or Pool/frame stage) and changes selected pulses to stock theme red/bright-white colors and steady Recipe frames to the stock brighter Phaser UI color. Resolver rules are unchanged.
 
 ## Latest Real-World User Test
 
-Video `2026-09-29 15-58-41.mp4` explicitly shows UI version `.16`, with `Resolver: INCONCLUSIVE | 0 refs | 0 overlays`, blocked by `Preset 2.2 (ORDINARY_LANE_CONFLICT, UI 2795, FeatureGroup 2|ABS)` and `Preset 25.9003 (ORDINARY_CHANNEL_SUMMARY_UNPROVEN, channels=0/count=0)`. Group pulse remained visible because Group marking is independent. This recording predates `.17` deployment and does not validate the partial-safe fix.
+User reports v0.7.1.17 was very successful overall, but Cue 0.5 / Group 79 `5 Corner` showed `Preset 2.14` as its old Recipe value and that tile did not flash. v0.7.1.18 has not yet been tested natively.
 
 ## Verified Facts
 
-- Tests: 87 workflow assertions; 169 candidate checks; Lua 5.4 passes both suites; synthetic result remains 4 refs, missing=0, extra=0.
-- Partial-safe marker regression confirms safe refs reach Pool identity and frame creation while unsafe refs remain excluded.
-- Lua 5.4, deterministic build, XML/component/version check, and `git diff --check` pass.
-- Before `.17`, `.16` files were backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.17-20260929` and hashes verified.
-- Deployed `.17` source/target Lua SHA256: `8FFF0BE172BA85C51C32C53E71F5E90F30AB68F74BDB61DFC37903A044F83075`.
-- Deployed `.17` source/target XML SHA256: `7695E197AC4221A314F783D70E0438F7984CE61F27B51A96D20350213CA7E07C`.
-- Diagnostic Lua is unchanged and source/target SHA256 is `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`.
+- 176 show-candidate checks pass; integrated synthetic case remains 4 refs, missing=0, extra=0. All 87 workflow assertions pass.
+- Lua 5.4, deterministic build check (twice), Lua/XML parse, and `git diff --check` pass.
+- v0.7.1.17 deployed files were backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.18-20260929`; backup hashes matched the deployed originals.
+- v0.7.1.18 source/deployed SHA256: Lua `D8C31205E5A7CC3E8C0B9458A3177F724CAC5BBE2806D060BEB2444C94164C31`; XML `B03221CAF8740191CCD4917C01DC06DB0FD9D642B55B6994B37C96E142E46431`; unchanged diagnostic Lua `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`.
+- v0.7.1.17 original hashes: Lua `8FFF0BE172BA85C51C32C53E71F5E90F30AB68F74BDB61DFC37903A044F83075`; XML `7695E197AC4221A314F783D70E0438F7984CE61F27B51A96D20350213CA7E07C`.
 
 ## Current Problem
 
-The two `.16` native blocker semantics remain unresolved. `.17` should restore markers for unaffected proven lanes, but complete Sequence-wide coverage and Phaser/Generator display need native confirmation.
+The v0.7.1.17 recording does not expose the first missing marker stage for Preset 2.14. The `.18` panel line is intended to identify whether it is absent from resolved assignments, blocked by unsafe attribution, excluded from selected lanes, or lost in Pool lookup/overlay creation.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
-- `tools/templates/show_track_a_runtime.lua`
-- `tests/show_candidate.lua`
 - `recipe_update_diagnostic.xml`
+- `tests/show_candidate.lua`
+- `tests/recipe_workflow.lua`
 
 ## Current Branch / Commit
 
-Worktree `C:\tmp\show-rel` is detached at the same commit as `origin/qwen`; the new focused overlay regression and this handoff update are pending checkpoint commit/push.
+Worktree is detached at `35c7e5c`; v0.7.1.18 source changes and this handoff are pending commit/push.
 
 ## Exact Next Action
 
-Reload `.17` and confirm the window title is `v0.7.1.17`. Verify proven Sequence refs remain purple despite `INCONCLUSIVE`, unresolved blocker refs stay unmarked, and selecting their member changes only those refs to the existing pulse. If no purple frame appears, capture the `.17` resolver line and list the expected Pool refs that remain absent.
+Reload v0.7.1.18 and confirm the title. Select the same Cue 0.5 / Group 79 `5 Corner` context and report the `Selected source ref: Preset 2.14 | ...` stage. Also verify selected frames alternate red/bright-white and Sequence tracking frames appear brighter purple. Do not infer native success from the local tests or matching deployment hashes.
