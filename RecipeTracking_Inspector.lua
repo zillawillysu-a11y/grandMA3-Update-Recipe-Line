@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.12"
+local PLUGIN_VERSION = "0.7.1.13"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1078,6 +1078,7 @@ local function render(state)
         if state.trackARecipeStructureKey~=trackARecipeStructure then
             state.trackARecipeStructureKey=trackARecipeStructure
             state.trackAHistoryRowsCache=nil
+            state.trackAStageSourcesCache=nil
         end
     end
     if state then
@@ -1824,7 +1825,7 @@ local function newTrackARuntime(api)
                 normalized[#normalized+1]=row
             end
         end
-        local decided,blocked,refs,survivors,assignments,unsafeRows={},{},{},{},{},{}
+        local decided,blocked,refs,activeRefs,survivors,assignments,unsafeRows={},{},{},{},{},{},{}
         local residual={}; local laneWork=0
         local function checkpoint()
             laneWork=laneWork+1
@@ -1879,7 +1880,9 @@ local function newTrackARuntime(api)
                             row.superseded[#row.superseded+1]={member=key,lane=lane,newer=barrier,unsafe=true}
                         else
                             decided[key][lane]=row
-                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row}
+                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row,
+                                moving=data.moving==true}
+                            activeRefs[row.refId]=row.ref
                             if data.moving then
                                 refs[row.refId]=row.ref
                                 survivors[row.refId]=survivors[row.refId] or {}
@@ -1971,7 +1974,14 @@ local function newTrackARuntime(api)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
         end end
-        return {classification="PROVEN",refs=refs,refMembers=survivors,
+        local laneAssignments={}
+        for _,assignment in ipairs(assignments) do
+            laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,
+                refId=assignment.row.refId,ref=assignment.row.ref,
+                group=assignment.row.group,moving=assignment.moving}
+        end
+        return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
+            laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end
@@ -2027,7 +2037,7 @@ end
     return keys, unproven
 end
     local function groupKeys(group)
-    local keys, unproven, handles, fingerprint = {}, 0, {}, {}
+    local keys, unproven, handles, handlesByKey, fingerprint = {}, 0, {}, {}, {}
     local ok, selection = pcall(function() return group.Selection end)
     if not ok or type(selection) ~= "table" then return keys, 1 end
     for _, item in pairs(selection) do
@@ -2056,21 +2066,29 @@ end
     local cached=cache and cache[group]
     if cached and cached.signature==signature then
         if state then state.groupMemberCacheHits=(state.groupMemberCacheHits or 0)+1 end
-        return cached.keys,cached.bad
+        return cached.keys,cached.bad,cached.handles,cached.signature
     end
     for _,handle in ipairs(handles) do
         local key=canonicalMemberKey(handle)
-        if key then keys[key]=true else unproven=unproven+1 end
+        if key then
+            local prior=handlesByKey[key]
+            if prior and not sameReference(prior,handle) then
+                unproven=unproven+1
+            else
+                keys[key]=true
+                handlesByKey[key]=handle
+            end
+        else unproven=unproven+1 end
     end
     if state then
         cache=cache or {}
         state.groupMemberIdentityCache=cache
-        cache[group]={signature=signature,keys=keys,bad=unproven}
+        cache[group]={signature=signature,keys=keys,bad=unproven,handles=handlesByKey}
         local size=0
         for _ in pairs(cache) do size=size+1 end
         if size>1024 then state.groupMemberIdentityCache={} end
     end
-    return keys, unproven
+    return keys, unproven, handlesByKey, signature
 end
     local function relation(group, fixtures)
     if group == nil then return "DISJOINT", {}, {} end
@@ -2145,10 +2163,41 @@ end
         result.refs=refs
         return result
     end
+    local function selectStageResult(stageResult,selectedMembers,targetFG)
+        if stageResult.classification~="PROVEN" then return stageResult end
+        local result={}
+        for key,value in pairs(stageResult) do result[key]=value end
+        local refs,refMembers,sourceGroups={},{},{}
+        for _,assignment in ipairs(stageResult.laneAssignments or {}) do
+            if selectedMembers[assignment.member] then
+                if assignment.moving then
+                    refs[assignment.refId]=assignment.ref
+                    refMembers[assignment.refId]=refMembers[assignment.refId] or {}
+                    refMembers[assignment.refId][assignment.member]=true
+                end
+                if targetFG and assignment.fg==targetFG and assignment.group then
+                    local groupId=commandAddress(assignment.group)
+                    if groupId then sourceGroups[groupId]=assignment.group end
+                end
+            end
+        end
+        result.refs=refs
+        result.refMembers=refMembers
+        result.sourceGroups=sourceGroups
+        return result
+    end
+    local function cacheAndSelectStageResult(taskState,stageKey,stageResult,selectedMembers,targetFG)
+        if taskState and stageResult.classification~="PENDING" then
+            taskState.trackAStageSourcesCache={key=stageKey,result=stageResult}
+        end
+        return selectStageResult(stageResult,selectedMembers,targetFG)
+    end
     local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
     if taskState and taskState.incrementalResolver and taskState.resolverTask
         and taskState.resolverTask.key==taskState.resolverWorkKey then
-        return advanceStagedResolver(taskState.resolverTask,taskState)
+        local task=taskState.resolverTask
+        local result=advanceStagedResolver(task,taskState)
+        return cacheAndSelectStageResult(taskState,task.stageKey,result,task.selectedMembers,task.targetFG)
     end
     if not sequence or not currentCue then
         return { classification = "INCONCLUSIVE" }
@@ -2208,34 +2257,53 @@ end
                 key=historyKey,signature=historySignature,rows=rows} end
         end
     end
-    local scopedRows={}
+    local scopedRows,stageMembers,stageSignatures={},{},{}
     local resolverScopeStarted=contextClock()
     local groupMemberCache={}
     for _, row in ipairs(rows) do
         local group=recipeField(row.recipe,"Selection")
         local gid=commandAddress(group)
         if gid==nil then return {classification="INCONCLUSIVE", reason="RECIPE_GROUP_UNPROVEN"} end
-        -- Layout selections often contain only some members of a Recipe's
-        -- Stored Group. Resolve those selected member lanes; this does not
-        -- make the Group a complete UPDATE target.
+        -- The purple stage set resolves the Cue's complete Stored Group
+        -- member scope. Selection is applied after resolution for the panel's
+        -- compatibility refs and exact current Group context.
         local cachedGroup=groupMemberCache[group]
         if not cachedGroup then
-            local keys,groupBad=groupKeys(group)
-            cachedGroup={keys=keys,bad=groupBad}
+            local keys,groupBad,handles,groupSignature=groupKeys(group)
+            cachedGroup={keys=keys,bad=groupBad,handles=handles,signature=groupSignature}
             groupMemberCache[group]=cachedGroup
         end
-        local keys,groupBad=cachedGroup.keys,cachedGroup.bad
+        local keys,groupBad,handles,groupSignature=cachedGroup.keys,cachedGroup.bad,
+            cachedGroup.handles,cachedGroup.signature
         local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
         if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
-        local intersects = false
-        for key in pairs(selectedMembers) do if keys[key] then intersects = true; break end end
-        if intersects then
-            if not values then return { classification = "INCONCLUSIVE" } end
-            scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
-        end
+        if not values then return { classification = "INCONCLUSIVE" } end
+        scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
+        for key,handle in pairs(handles or {}) do stageMembers[key]=handle end
+        local memberKeys={}
+        for key in pairs(keys) do memberKeys[#memberKeys+1]=key end
+        table.sort(memberKeys)
+        stageSignatures[#stageSignatures+1]=table.concat({
+            tostring(commandAddress(row.recipe)),tostring(commandAddress(values)),gid,
+            tostring(groupSignature or table.concat(memberKeys,","))
+        },"/")
     end
     if taskState then taskState.lastResolverScopeMs=contextElapsed(resolverScopeStarted) end
-    if #scopedRows==0 then return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"} end
+    if #scopedRows==0 or not next(stageMembers) then
+        return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"}
+    end
+    local stageKey=table.concat({historyKey,tostring(historySignature),table.concat(stageSignatures,"\1")},"\2")
+    local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
+    local feature=selected and safe(function() return selected.Feature end)
+    if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
+    local fg=feature and safe(function() return feature:Parent() end)
+    local targetFG=string.lower(class(fg))=="featuregroup" and commandAddress(fg) or nil
+    if taskState then taskState.lastResolverStageCacheHit=false end
+    local stageCache=taskState and taskState.trackAStageSourcesCache
+    if stageCache and stageCache.key==stageKey then
+        taskState.lastResolverStageCacheHit=true
+        return selectStageResult(stageCache.result,selectedMembers,targetFG)
+    end
     state.referenceMetadataCache=state.referenceMetadataCache or {}
     state.memberUICache=state.memberUICache or {}
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
@@ -2253,23 +2321,19 @@ end
             return result
         end,
         attributeByUI=_G.GetAttributeByUIChannel})
-    local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
-    local feature=selected and safe(function() return selected.Feature end)
-    if not feature and callable("SelectedFeature") then feature=safe(SelectedFeature) end
-    local fg=feature and safe(function() return feature:Parent() end)
-    local targetFG=string.lower(class(fg))=="featuregroup" and commandAddress(fg) or nil
     if taskState and taskState.incrementalResolver then
         local members={}
-        for key,handle in pairs(selectedMembers) do members[#members+1]={key=key,handle=handle} end
+        for key,handle in pairs(stageMembers) do members[#members+1]={key=key,handle=handle} end
         table.sort(members,function(a,b) return a.key<b.key end)
-        local task={key=taskState.resolverWorkKey,rows=scopedRows,
-            selectedMembers=selectedMembers,members=members,runtime=runtime,targetFG=targetFG,
+        local task={key=taskState.resolverWorkKey,stageKey=stageKey,rows=scopedRows,
+            selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,targetFG=targetFG,
             metadataIndex=1,memberIndex=1}
         taskState.resolverTask=task
-        return advanceStagedResolver(task,taskState)
+        local result=advanceStagedResolver(task,taskState)
+        return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers,targetFG)
     end
     local reverseStarted=contextClock()
-    local ok,result=pcall(runtime.run,scopedRows,selectedMembers,
+    local ok,result=pcall(runtime.run,scopedRows,stageMembers,
         state.referenceMetadataCache,state.memberUICache,targetFG)
     if taskState then
         taskState.lastResolverReverseMs=contextElapsed(reverseStarted)
@@ -2278,11 +2342,7 @@ end
                 -(taskState.lastResolverMemberUIMs or 0)) or nil
     end
     if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
-    if result.classification~="PROVEN" then return result end
-    local refs={}
-    for id,ref in pairs(result.refs) do refs[id]=ref end
-    result.refs=refs
-    return result
+    return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers,targetFG)
 end
     local function refresh(state, sequence, currentCue, fixtures, info)
     if not state then return nil end
@@ -2356,7 +2416,7 @@ end
     state.markerProbeSerial=(state.markerProbeSerial or 0)+1
     state.markerProbe={}
     state.markerStatus=nil
-    for key in pairs(result.refs or {}) do
+    for key in pairs(result.activeRefs or result.refs or {}) do
         state.markerProbe[key]={finalRef=true,sourceAdmitted=false,poolTileFound=false,
             poolTileVisible=false,identityMatch=false,frameCreated=false}
     end
@@ -2395,7 +2455,7 @@ end
                 return tostring(commandAddress(a))<tostring(commandAddress(b))
             end)
             for _,group in ipairs(state.currentGroups) do add(group) end
-            for _, object in pairs(provenResult.refs) do add(object) end
+            for _, object in pairs(provenResult.activeRefs or provenResult.refs) do add(object) end
             for key,probe in pairs(state.markerProbe or {}) do
                 probe.sourceAdmitted=references[key]~=nil
             end
@@ -2508,9 +2568,10 @@ end
 
 local function poolPulseColor(kind,on)
     if kind=="recipe" then
-        -- Pool frames consume the Phaser background theme color. PhaserText
-        -- is a text-role color and grandMA3 renders it black on frame0 here.
-        return "SheetColor.Phaser"
+        -- BackColor accepts UI Color names, not ColorDef names. In the stock
+        -- 2.5 themes RecipeEditing.PhaserRecipe resolves to SheetColor.Phaser
+        -- (the visible purple); passing SheetColor.Phaser directly paints black.
+        return "RecipeEditing.PhaserRecipe"
     end
     return on and "Global.SuccessText" or "Global.Selected"
 end

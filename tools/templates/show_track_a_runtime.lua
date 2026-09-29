@@ -428,7 +428,7 @@ local function newTrackARuntime(api)
                 normalized[#normalized+1]=row
             end
         end
-        local decided,blocked,refs,survivors,assignments,unsafeRows={},{},{},{},{},{}
+        local decided,blocked,refs,activeRefs,survivors,assignments,unsafeRows={},{},{},{},{},{},{}
         local residual={}; local laneWork=0
         local function checkpoint()
             laneWork=laneWork+1
@@ -483,7 +483,9 @@ local function newTrackARuntime(api)
                             row.superseded[#row.superseded+1]={member=key,lane=lane,newer=barrier,unsafe=true}
                         else
                             decided[key][lane]=row
-                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row}
+                            assignments[#assignments+1]={member=key,lane=lane,fg=data.fg,row=row,
+                                moving=data.moving==true}
+                            activeRefs[row.refId]=row.ref
                             if data.moving then
                                 refs[row.refId]=row.ref
                                 survivors[row.refId]=survivors[row.refId] or {}
@@ -575,7 +577,14 @@ local function newTrackARuntime(api)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
         end end
-        return {classification="PROVEN",refs=refs,refMembers=survivors,
+        local laneAssignments={}
+        for _,assignment in ipairs(assignments) do
+            laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,
+                refId=assignment.row.refId,ref=assignment.row.ref,
+                group=assignment.row.group,moving=assignment.moving}
+        end
+        return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
+            laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
     end

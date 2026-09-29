@@ -251,6 +251,8 @@ end
 local staticResult=result({recipe(gOne,static,1)},fOne)
 check(staticResult.classification=="PROVEN" and next(staticResult.refs)==nil,
  "ordinary static terminator must not become moving source")
+check(staticResult.activeRefs["Preset 1.1"]==static,
+ "a final tracked static Preset must remain in the steady purple stage reference set")
 local movingResult=result({recipe(gOne,moving,1)},fOne)
 check(movingResult.classification=="PROVEN" and movingResult.refs["Preset 1.2"]==moving,
  "ordinary structural moving reference must survive")
@@ -259,6 +261,11 @@ local sharedUiResult=result({recipe(gBoth,moving,1)},fBoth)
 check(sharedUiResult.classification=="PROVEN"
  and attributeByUICalls-attributeReadsBefore==2,
  "member UI capability mapping must reuse the resolver cache and resolve only new UI indexes")
+local otherMemberStatic=result({recipe(gBoth,static,1)},fOne)
+check(otherMemberStatic.classification=="PROVEN"
+ and otherMemberStatic.refs["Preset 1.1"]==nil
+ and otherMemberStatic.activeRefs["Preset 1.1"]==static,
+ "a static Preset used by another member of the current stage must remain a purple reference")
 local metadataModeOnly=preset("Preset metadata mode only",0,2,true)
 metadataModeOnly.PresetMode="Selective"
 local metadataModeResult=result({recipe(gOne,metadataModeOnly,1)},fOne)
@@ -275,9 +282,13 @@ check(malformedResult.classification=="INCONCLUSIVE"
 local stopResult=result({recipe(gOne,moving,1),recipe(gOne,static,2)},fOne)
 check(stopResult.classification=="PROVEN" and next(stopResult.refs)==nil,
  "newer static ABS must terminate older moving ABS")
+check(stopResult.activeRefs["Preset 1.1"]==static
+ and stopResult.activeRefs["Preset 1.2"]==nil,
+ "only the final winning static Preset, not the killed older moving ref, remains active")
 local phaseResult=result({recipe(gOne,movingPhaser,1)},fOne)
-check(phaseResult.classification=="PROVEN" and phaseResult.refs["Preset 25.A"]==movingPhaser,
- "Phaser effective ABS step differences must prove motion")
+check(phaseResult.classification=="PROVEN" and phaseResult.refs["Preset 25.A"]==movingPhaser
+ and phaseResult.activeRefs["Preset 25.A"]==movingPhaser,
+ "a surviving moving Phaser must be both a resolver source and a steady stage marker")
 local selectiveResult=result({recipe(gBoth,selective,1)},fBoth)
 check(selectiveResult.classification=="PROVEN" and next(selectiveResult.refs)==nil,
  "Selective static reference must remain a terminator")
@@ -312,8 +323,20 @@ uiByHandle[subfixtureByIndex[203]]=savedUI
 hookState.memberUICache={}
 hookState.uiChannelCache={}
 local genResult=result({recipe(gOne,generator,1)},fOne)
-check(genResult.classification=="PROVEN" and genResult.refs["Generator 1"]==generator,
- "Generator must survive from structural Attribute ownership")
+check(genResult.classification=="PROVEN" and genResult.refs["Generator 1"]==generator
+ and genResult.activeRefs["Generator 1"]==generator,
+ "a surviving Generator must be both a resolver source and a steady stage marker")
+local oldCue=object("Cue","Cue 900",{No=900},{object("Part","Part 0",{},
+ {recipe(parentGroup,moving,1)})})
+local selectedCue=object("Cue","Cue 1000",{No=1000},{object("Part","Part 0",{},
+ {recipe(gOne,static,1)})})
+local sequenceWide=object("Sequence","Sequence 9",{}, {oldCue,selectedCue})
+local stageWideResult=provenApi.sources(sequenceWide,selectedCue,fOne,{feature="Dimmer"})
+check(stageWideResult.classification=="PROVEN"
+ and stageWideResult.refs["Preset 1.2"]==nil
+ and stageWideResult.activeRefs["Preset 1.1"]==static
+ and stageWideResult.activeRefs["Preset 1.2"]==moving,
+ "purple stage references must include surviving Recipe lanes across this Sequence while selection only filters Group blink refs")
 local splitResult=result({recipe(gOne,splitPhaser,1)},fOne)
 check(splitResult.classification=="PROVEN" and splitResult.refs["Preset 25.B"]==splitPhaser
  and splitResult.barriers==1,"known ABS with noncontributing unknown REL must publish ABS")
@@ -643,6 +666,13 @@ local stagedReads=referenceReads.count
 functions.recipePoolReferences(stagedState)
 check(referenceReads.count==stagedReads,
  "incremental resolver steady state must reuse cached reference metadata")
+stagedState.lastFixtures={fBoth[2]}
+functions.recipePoolReferences(stagedState)
+check(stagedState.lastResolverStageCacheHit==true
+ and stagedState.provenSources.classification=="PROVEN"
+ and stagedState.provenSources.refs["Preset 1.2"]==nil
+ and stagedState.provenSources.activeRefs["Preset 1.2"]==moving,
+ "changing selected members must reuse the stage-wide tracked reference set while filtering selected lanes")
 local savedFirst,savedNext=_G.SelectionFirst,_G.SelectionNext
 local savedSequence,savedCue,savedCmd=_G.SelectedSequence,_G.GetCurrentCue,_G.Cmd
 local savedPluginState=_G.RecipeTrackingInspectorState
@@ -686,7 +716,7 @@ _G.GetDisplayByIndex=function(index) return index==1 and display or nil end
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No"
- and overlay.BackColor=="SheetColor.Phaser",
+ and overlay.BackColor=="RecipeEditing.PhaserRecipe",
  "nested Recipe Pool tile must receive the native Phaser-color frame0 marker")
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
@@ -695,13 +725,13 @@ check(markerState.poolBlinkOn==blinkPhase,
 markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn~=blinkPhase
- and overlay.BackColor=="SheetColor.Phaser",
+ and overlay.BackColor=="RecipeEditing.PhaserRecipe",
  "Cue Recipe source marker must stay steadily purple while Group markers pulse")
 check(functions.poolPulseColor("group",true)=="Global.SuccessText"
  and functions.poolPulseColor("group",false)=="Global.Selected",
  "Stored Group marker pulse must preserve its existing theme colors")
-check(functions.poolPulseColor("recipe",true)=="SheetColor.Phaser"
- and functions.poolPulseColor("recipe",false)=="SheetColor.Phaser",
+check(functions.poolPulseColor("recipe",true)=="RecipeEditing.PhaserRecipe"
+ and functions.poolPulseColor("recipe",false)=="RecipeEditing.PhaserRecipe",
  "Cue Recipe source marker must remain purple in both Group pulse phases")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")

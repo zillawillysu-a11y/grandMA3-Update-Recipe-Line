@@ -2,38 +2,38 @@
 
 ## Current Goal
 
-Improve Cue-to-reference response and make surviving Recipe/Phaser/Generator Pool markers visibly purple in the large native Show.
+Native-validate the v0.7.1.13 stage-wide purple Recipe reference markers in grandMA3 2.5.0.3.
 
 ## Current Working State
 
-v0.7.1.12 is deployed to the confirmed Update Plugin directory. Stored Group canonical member sets cache by Group handle plus a sorted native member-address signature; a membership change forces canonical keys to be rebuilt. Cue history Recipe rows cache against the existing structural signature. Resolver timing is split into cue scan, scope, GetPresetData, member UI, and remaining engine time. Recipe overlays use `SheetColor.Phaser` (native Phaser background color); status says overlays rather than claiming rendered frames. Track A rules, Group pulse appearance, and old Cue Phaser scanner state are unchanged. Deployed Inspector SHA256: `1645C5E2DA15CF1C12126B9CBC366930633C5C5AFDD1A1E3DEBC12BE702A2F11`; Diagnostic SHA256: `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`; XML SHA256: `DFA387170C301BD25ADF8F2F4E1A7D8FAE87BFB1338366E6ECC77D28FA7F0EAD`. Source/deployed hashes match.
+v0.7.1.13 is deployed to the confirmed Update Plugin directory. Purple markers now use the stock theme UI Color `RecipeEditing.PhaserRecipe`; the resolver supplies final tracked references across the selected Sequence's Recipe Groups through the current Cue, including static Presets, Phasers/Phaser Recipes, and Generators. Selection remains the separate Group pulse scope. No native result exists for v0.7.1.13 yet.
 
 ## Latest Real-World User Test
 
-v0.7.1.11 screenshot for 210 selected fixtures: Resolver PROVEN with one final ref, Preset 25.9010; resolver time 643 ms. User reports Recipe/Phaser Pool markers still appear black or absent. This misses the requested 100 ms response target. v0.7.1.12 has not yet been native-tested.
+v0.7.1.12 showed immediate Group selection frames/Select Group, but no visible Recipe/Preset/Phaser/Generator purple frames. User confirms the show is built from Recipe Lines and each Cue's Recipe rows specify the Groups in the selected Sequence.
 
 ## Verified Facts
 
-- Offline: 87 workflow assertions and 141 show-candidate checks pass; synthetic Track A fixture remains four refs, missing=0, extra=0.
-- Lua 5.4 syntax, deterministic build check, XML parse/version consistency, and `git diff --check` pass.
-- Local tests confirm Group identity cache reuse when selection changes and direct surviving PhaserRecipe references reach the marker source set.
-- v0.7.1.11 native marker painting and <=100 ms target are NOT VERIFIED; v0.7.1.12 native behavior remains pending.
+- Offline tests: 87 workflow assertions; 146 show-candidate checks. Synthetic four-reference fixture: missing=0, extra=0.
+- Lua 5.4 parse, deterministic build/check, XML/version validation, and `git diff --check` pass.
+- Source/deployed SHA256 match for all three plugin files. Deployed Lua SHA256: `63133B7EF0BAB077CD620732F449FBB27E81BAF6B0CB140250B611AA2E00B0F4`.
+- Pre-deploy v0.7.1.12 files backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.13-20260929`.
 
 ## Current Problem
 
-Need native evidence whether `SheetColor.Phaser` renders a visible purple frame and whether remaining resolver-engine/scope time can meet the response target. Need verify whether all expected active Phaser-bearing Recipe refs enter final refs for the tested Cue/member/attribute set. The previous 643 ms total is still the only native timing measurement.
+Confirm native purple frames render on still-tracked Presets, Phasers/Phaser Recipes, and Generators; confirm killed/overridden references disappear. Native response time remains unverified.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
+- `tools/templates/show_track_a_runtime.lua`
 - `tests/show_candidate.lua`
-- `tests/recipe_workflow.lua`
 - `recipe_update_diagnostic.xml`
 
 ## Current Branch / Commit
 
-Branch `qwen` (worktree detached at the pushed v0.7.1.12 candidate checkpoint); native validation is pending.
+Branch `qwen`; latest repository checkpoint is the v0.7.1.13 candidate (see `git log`).
 
 ## Exact Next Action
 
-Reload v0.7.1.12 in grandMA3 2.5.0.3. Test the same 210-fixture Cue and report the split Timing line plus a close Pool screenshot showing Preset 25.9010 and any Phaser-bearing source tile. Previous files are backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.12-20260929`.
+Reload v0.7.1.13. In one selected Sequence, verify a still-tracked static Preset (for example 4.4) and active Phaser/Phaser Recipe/Generator tiles are steadily purple, while only the actually selected complete Group pulses. Then advance to a Cue that overrides/kills a reference and confirm its purple frame clears.
