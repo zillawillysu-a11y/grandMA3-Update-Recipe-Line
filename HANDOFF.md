@@ -38,7 +38,7 @@ v0.7.1.20 sliced resolver work but withheld every Recipe reference until all met
 
 ## Current Branch / Commit
 
-Branch `qwen`; checkpoint pending for the v0.7.1.21 responsiveness change.
+Branch `qwen`; pushed checkpoint: `fix: publish proven Recipe markers during staged resolution`.
 
 ## Exact Next Action
 
