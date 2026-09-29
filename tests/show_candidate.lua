@@ -564,10 +564,10 @@ do
  referenceData[selfLinkedPhaser]={count=0,by_fixtures=false}
  local selfLinkReadsBefore=referenceReads.count
  local selfLinkedResult=result({recipe(gOne,selfLinkedPhaser,1)},fOne)
- check(selfLinkedResult.classification=="PROVEN"
-  and selfLinkedResult.refs["Preset self-linked Phaser"]==selfLinkedPhaser
+ check(selfLinkedResult.classification=="INCONCLUSIVE"
+  and selfLinkedResult.unsafeRefDetails["Preset self-linked Phaser"]=="PHASER_SELF_LINK_UNPROVEN"
   and referenceReads.count==selfLinkReadsBefore,
-  "an embedded PhaserRecipe self-link must use its proven tree without reparsing its empty ordinary view")
+  "an embedded PhaserRecipe self-link must remain blocked without an ordinary fallback read")
  local selfLinkedUnknownRel=phaser("Preset self-linked unknown REL",attrs[0],10,20,0,0,nil)
  for _,step in ipairs(selfLinkedUnknownRel:Children()[1]:Children()) do
   local node=step:Children()[1]
@@ -591,7 +591,8 @@ do
  check(externalLinkResult.classification=="INCONCLUSIVE"
   and referenceReads.count==externalLinkReadsBefore+1
   and externalLinkRequests[1]==tostring(emptyExternalLink)
-  and externalLinkResult.unsafeRefDetails["Preset externally linked to empty metadata"]=="PHASER_LINKED_PRESET_UNPROVEN",
+  and externalLinkResult.unsafeRefDetails["Preset externally linked to empty metadata"]
+   =="PHASER_LINKED_PRESET_UNPROVEN(target=Preset empty external link)",
   "a distinct external linked Preset with empty metadata must keep the existing fail-closed bridge gate (classification="
    ..tostring(externalLinkResult.classification)..", reads="..tostring(referenceReads.count-externalLinkReadsBefore)
    ..", targets="..table.concat(externalLinkRequests,",")..")")

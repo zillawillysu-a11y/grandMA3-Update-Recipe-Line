@@ -319,22 +319,24 @@ local function newTrackARuntime(api)
         for _,entry in pairs(linked) do
             local handle=entry.handle
             local key=api.identity(handle) or handle
-            if key~=refKey then
-                linkedCount=linkedCount+1
-                -- A ValueSource may point back to the Preset whose embedded
-                -- PhaserRecipe is being parsed. That is the same native
-                -- reference, not an ordinary linked-Preset dependency: its
-                -- lanes are already derived from this Phaser tree. Do not
-                -- feed its empty ordinary UI-channel view back into ordinary().
-                -- In particular, a self-link is not independent evidence for
-                -- closing an unknown REL barrier below.
-                local meta=referenceCache[key]
-                if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
-                if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then return nil end
-                if meta.mode~=2 and meta.mode~=3 then return nil end
-                for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
-                for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
+            if key==refKey then
+                -- A self-link is structurally distinct from an external
+                -- Ordinary dependency, but Track A has not proven how that
+                -- native encoding affects applicability. Keep it blocked and
+                -- expose the exact gate instead of guessing.
+                if refKey then referenceCache.__failure[refKey]="PHASER_SELF_LINK_UNPROVEN" end
+                return nil
             end
+            linkedCount=linkedCount+1
+            local meta=referenceCache[key]
+            if meta==nil then meta=ordinary(handle,referenceCache); referenceCache[key]=meta or false end
+            if type(meta)~="table" or meta.kind~="ORDINARY" or meta.mode==1 then
+                if refKey then referenceCache.__failure[refKey]="PHASER_LINKED_PRESET_UNPROVEN(target="..tostring(key):sub(1,64)..")" end
+                return nil
+            end
+            if meta.mode~=2 and meta.mode~=3 then return nil end
+            for _,lane in pairs(meta.lanes) do if lane.moving or lane.layer~="ABS" then return nil end end
+            for fg in pairs(entry.fgs) do if not meta.lanes[fg.."|ABS"] then return nil end end
         end
         if unknownRel then
             if not provenMovingAbs or count(features)~=1 or linkedCount==0 then return nil end
