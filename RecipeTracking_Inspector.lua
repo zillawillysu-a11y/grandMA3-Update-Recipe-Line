@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.11"
+local PLUGIN_VERSION = "0.7.1.12"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1070,6 +1070,16 @@ local function render(state)
     local sequence = callable("SelectedSequence") and safe(SelectedSequence) or nil
     local currentCue = callable("GetCurrentCue") and safe(GetCurrentCue) or nil
     local direct = directRecipes()
+    local trackARecipeStructure
+    if state then
+        local structureStarted=contextClock()
+        trackARecipeStructure=trackingStructureKey(sequence,currentCue)
+        state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
+        if state.trackARecipeStructureKey~=trackARecipeStructure then
+            state.trackARecipeStructureKey=trackARecipeStructure
+            state.trackAHistoryRowsCache=nil
+        end
+    end
     if state then
         local parts={tostring(commandAddress(sequence)),tostring(cueNumber(currentCue))}
         for _,fixture in ipairs(fixtures) do
@@ -1151,9 +1161,7 @@ local function render(state)
             for _,fixture in ipairs(fixtures) do memberKeys[#memberKeys+1]=tostring(fixture.index or "?") end
             table.sort(memberKeys)
             for _,key in ipairs(memberKeys) do parts[#parts+1]=key end
-            local structureStarted=contextClock()
-            local structure=trackingStructureKey(sequence,currentCue)
-            state.lastTrackingFingerprintMs=contextElapsed(structureStarted)
+            local structure=trackARecipeStructure
             local trackingKey=structure and table.concat(parts,"|").."|"..structure or nil
             if trackingKey and state.trackingScanKey==trackingKey and type(state.trackingScanCandidates)=="table" then
                 candidates=state.trackingScanCandidates
@@ -1275,12 +1283,16 @@ local function render(state)
         end
         if state.expanded then
             resolverLines[#resolverLines+1]=string.format(
-                "Timing ms: select=%s tracking_scan=%s tracking_sig=%s group=%s resolver_slice=%s resolver_total=%s pool=%s",
+                "Timing ms: select=%s tracking_scan=%s tracking_sig=%s group=%s cue_scan=%s resolver_scope=%s metadata=%s member_ui=%s engine=%s total=%s pool=%s",
                 tostring(state.lastSelectionReadMs or "?"),
                 tostring(state.lastTrackingScanMs or "?"),
                 tostring(state.lastTrackingFingerprintMs or "?"),
                 tostring(state.lastGroupMatchMs or "?"),
-                tostring(state.lastResolverSliceMs or "?"),
+                tostring(state.lastResolverCueScanMs or "?"),
+                tostring(state.lastResolverScopeMs or "?"),
+                tostring(state.lastResolverMetadataMs or "?"),
+                tostring(state.lastResolverMemberUIMs or "?"),
+                tostring(state.lastResolverEngineMs or "?"),
                 tostring(state.lastResolverTotalMs or "?"),
                 tostring(state.lastPoolDiscoveryMs or "?"))
         end
@@ -2015,22 +2027,48 @@ end
     return keys, unproven
 end
     local function groupKeys(group)
-    local keys, unproven = {}, 0
+    local keys, unproven, handles, fingerprint = {}, 0, {}, {}
     local ok, selection = pcall(function() return group.Selection end)
     if not ok or type(selection) ~= "table" then return keys, 1 end
     for _, item in pairs(selection) do
-        local key = nil
+        local handle = nil
         if type(item) == "table" then
             if item.handle ~= nil then
-                key = canonicalMemberKey(item)
+                handle = item.handle
             else
                 local index = tonumber(item.sf_index)
                 if index and callable("GetSubfixture") then
-                    key = canonicalMemberKey(safe(GetSubfixture, index))
+                    handle = safe(GetSubfixture, index)
                 end
             end
         end
-        if key then keys[key] = true else unproven = unproven + 1 end
+        if handle then
+            handles[#handles+1]=handle
+            fingerprint[#fingerprint+1]=commandAddress(handle) or "?"
+        else
+            unproven=unproven+1
+            fingerprint[#fingerprint+1]="!UNRESOLVED"
+        end
+    end
+    table.sort(fingerprint)
+    local signature=table.concat(fingerprint,"\0")
+    local cache=state and state.groupMemberIdentityCache
+    local cached=cache and cache[group]
+    if cached and cached.signature==signature then
+        if state then state.groupMemberCacheHits=(state.groupMemberCacheHits or 0)+1 end
+        return cached.keys,cached.bad
+    end
+    for _,handle in ipairs(handles) do
+        local key=canonicalMemberKey(handle)
+        if key then keys[key]=true else unproven=unproven+1 end
+    end
+    if state then
+        cache=cache or {}
+        state.groupMemberIdentityCache=cache
+        cache[group]={signature=signature,keys=keys,bad=unproven}
+        local size=0
+        for _ in pairs(cache) do size=size+1 end
+        if size>1024 then state.groupMemberIdentityCache={} end
     end
     return keys, unproven
 end
@@ -2093,8 +2131,13 @@ end
         task.memberIndex=cursor
         taskState.resolverMembersWarmed=math.min(cursor-1,#task.members)
         taskState.resolverMembersTotal=#task.members
+        local engineStarted=contextClock()
         local ok,result=pcall(task.runtime.run,task.rows,task.selectedMembers,
             taskState.referenceMetadataCache,taskState.memberUICache,task.targetFG)
+        taskState.lastResolverReverseMs=contextElapsed(engineStarted)
+        taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
+            and math.max(0,taskState.lastResolverReverseMs-(taskState.lastResolverMetadataMs or 0)
+                -(taskState.lastResolverMemberUIMs or 0)) or nil
         if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
         if result.classification~="PROVEN" then return result end
         local refs={}
@@ -2119,37 +2162,55 @@ end
     if next(selectedMembers) == nil then return { classification = "INCONCLUSIVE" } end
     local currentNumber = cueNumber(currentCue)
     if currentNumber == nil then return { classification = "INCONCLUSIVE" } end
-    local rows, cueCount, recipeCount = {}, 0, 0
-    for _, cue in ipairs(children(sequence)) do
-        if cueCount >= MAX_CUES or recipeCount >= MAX_RECIPES then break end
-        local candidateNumber = cueNumber(cue)
-        if string.lower(class(cue)) == "cue"
-            and candidateNumber ~= nil and candidateNumber <= currentNumber then
-            cueCount = cueCount + 1
-            for _, part in ipairs(children(cue)) do
-                if string.lower(class(part)) == "part" then
-                    for ordinal, recipe in ipairs(children(part)) do
-                        if recipeCount >= MAX_RECIPES then break end
-                        if isStandardRecipe(recipe) and recipeEnabled(recipe) then
-                            recipeCount = recipeCount + 1
-                            rows[#rows + 1] = {
-                                cue = cue, part = part, recipe = recipe,
-                                cueNumber = candidateNumber,
-                                partNumber = partNumber(part),
-                                recipeIndex = recipeNumber(recipe, ordinal) or ordinal,
-                            }
+    local historySignature=taskState and taskState.trackARecipeStructureKey
+    local historyKey=tostring(commandAddress(sequence))..":"..tostring(currentNumber)
+    local historyCache=taskState and taskState.trackAHistoryRowsCache
+    local rows=historyCache and historySignature and historyCache.key==historyKey
+        and historyCache.signature==historySignature and historyCache.rows or nil
+    if rows then
+        if taskState then taskState.lastResolverCueScanMs=0 end
+    else
+        local resolverCueScanStarted=contextClock()
+        rows={}
+        local cueCount, recipeCount = 0, 0
+        for _, cue in ipairs(children(sequence)) do
+            if cueCount >= MAX_CUES or recipeCount >= MAX_RECIPES then break end
+            local candidateNumber = cueNumber(cue)
+            if string.lower(class(cue)) == "cue"
+                and candidateNumber ~= nil and candidateNumber <= currentNumber then
+                cueCount = cueCount + 1
+                for _, part in ipairs(children(cue)) do
+                    if string.lower(class(part)) == "part" then
+                        for ordinal, recipe in ipairs(children(part)) do
+                            if recipeCount >= MAX_RECIPES then break end
+                            if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                                recipeCount = recipeCount + 1
+                                rows[#rows + 1] = {
+                                    cue = cue, part = part, recipe = recipe,
+                                    cueNumber = candidateNumber,
+                                    partNumber = partNumber(part),
+                                    recipeIndex = recipeNumber(recipe, ordinal) or ordinal,
+                                }
+                            end
                         end
                     end
                 end
             end
         end
+        table.sort(rows, function(left, right)
+            if left.cueNumber ~= right.cueNumber then return left.cueNumber > right.cueNumber end
+            if left.partNumber ~= right.partNumber then return left.partNumber > right.partNumber end
+            return left.recipeIndex > right.recipeIndex
+        end)
+        if taskState then
+            taskState.lastResolverCueScanMs=contextElapsed(resolverCueScanStarted)
+            if historySignature then taskState.trackAHistoryRowsCache={
+                key=historyKey,signature=historySignature,rows=rows} end
+        end
     end
-    table.sort(rows, function(left, right)
-        if left.cueNumber ~= right.cueNumber then return left.cueNumber > right.cueNumber end
-        if left.partNumber ~= right.partNumber then return left.partNumber > right.partNumber end
-        return left.recipeIndex > right.recipeIndex
-    end)
     local scopedRows={}
+    local resolverScopeStarted=contextClock()
+    local groupMemberCache={}
     for _, row in ipairs(rows) do
         local group=recipeField(row.recipe,"Selection")
         local gid=commandAddress(group)
@@ -2157,7 +2218,13 @@ end
         -- Layout selections often contain only some members of a Recipe's
         -- Stored Group. Resolve those selected member lanes; this does not
         -- make the Group a complete UPDATE target.
-        local keys, groupBad = groupKeys(group)
+        local cachedGroup=groupMemberCache[group]
+        if not cachedGroup then
+            local keys,groupBad=groupKeys(group)
+            cachedGroup={keys=keys,bad=groupBad}
+            groupMemberCache[group]=cachedGroup
+        end
+        local keys,groupBad=cachedGroup.keys,cachedGroup.bad
         local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
         if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
         local intersects = false
@@ -2167,12 +2234,24 @@ end
             scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys}
         end
     end
+    if taskState then taskState.lastResolverScopeMs=contextElapsed(resolverScopeStarted) end
     if #scopedRows==0 then return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"} end
     state.referenceMetadataCache=state.referenceMetadataCache or {}
     state.memberUICache=state.memberUICache or {}
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
-        identity=commandAddress,objectList=_G.ObjectList,getPresetData=_G.GetPresetData,
-        getUIChannels=function(handle) return uiChannelsForMember(handle,state) end,
+        identity=commandAddress,objectList=_G.ObjectList,
+        getPresetData=function(...)
+            local started=contextClock()
+            local result=_G.GetPresetData(...)
+            state.lastResolverMetadataMs=(state.lastResolverMetadataMs or 0)+(contextElapsed(started) or 0)
+            return result
+        end,
+        getUIChannels=function(handle)
+            local started=contextClock()
+            local result=uiChannelsForMember(handle,state)
+            state.lastResolverMemberUIMs=(state.lastResolverMemberUIMs or 0)+(contextElapsed(started) or 0)
+            return result
+        end,
         attributeByUI=_G.GetAttributeByUIChannel})
     local selected=callable("GetSelectedAttribute") and safe(GetSelectedAttribute) or nil
     local feature=selected and safe(function() return selected.Feature end)
@@ -2189,8 +2268,15 @@ end
         taskState.resolverTask=task
         return advanceStagedResolver(task,taskState)
     end
+    local reverseStarted=contextClock()
     local ok,result=pcall(runtime.run,scopedRows,selectedMembers,
         state.referenceMetadataCache,state.memberUICache,targetFG)
+    if taskState then
+        taskState.lastResolverReverseMs=contextElapsed(reverseStarted)
+        taskState.lastResolverEngineMs=type(taskState.lastResolverReverseMs)=="number"
+            and math.max(0,taskState.lastResolverReverseMs-(taskState.lastResolverMetadataMs or 0)
+                -(taskState.lastResolverMemberUIMs or 0)) or nil
+    end
     if not ok then return {classification="INCONCLUSIVE",reason="TRACK_A_RUNTIME_ERROR",refs={}} end
     if result.classification~="PROVEN" then return result end
     local refs={}
@@ -2208,6 +2294,7 @@ end
     table.sort(memberKeys)
     local selectionKey=table.concat(memberKeys, ",")
     state.lastGroupMatchMs=0
+    state.groupMemberCacheHits=0
     if state.completeGroupSelectionKey~=selectionKey or not state.completeGroupCandidates then
         local groupStarted=contextClock()
         state.completeGroupSelectionKey=selectionKey
@@ -2234,6 +2321,9 @@ end
         state.resolverWorkStarted=contextClock()
     end
     local started = contextClock()
+    state.lastResolverMetadataMs=0
+    state.lastResolverMemberUIMs=0
+    state.lastResolverEngineMs=nil
     local result = sources(sequence, currentCue, fixtures, info,state.completeGroupCandidates,state)
     local sliceElapsed = contextElapsed(started) or "UNMEASURED"
     state.lastResolverSliceMs=type(sliceElapsed)=="number" and sliceElapsed or nil
@@ -2418,7 +2508,9 @@ end
 
 local function poolPulseColor(kind,on)
     if kind=="recipe" then
-        return "SheetColor.PhaserText"
+        -- Pool frames consume the Phaser background theme color. PhaserText
+        -- is a text-role color and grandMA3 renders it black on frame0 here.
+        return "SheetColor.Phaser"
     end
     return on and "Global.SuccessText" or "Global.Selected"
 end
@@ -3031,26 +3123,30 @@ local function refreshPoolMarkers(state)
                     or not probe.poolTileFound and "POOL_TILE_FOUND"
                     or not probe.poolTileVisible and "POOL_TILE_VISIBLE"
                     or not probe.identityMatch and "IDENTITY_MATCH"
-                    or "FRAME_CREATED"
+                    or "OVERLAY_ATTACHED"
                 firstMissing=key:sub(1,48).." @ "..stage
             end
         end
-        state.markerStatus=string.format("%d/%d frames",framed,#keys)
+        state.markerStatus=string.format("%d/%d overlays",framed,#keys)
         if firstMissing then state.markerStatus=state.markerStatus.." | Missing "..firstMissing end
         for index=1,math.min(#keys,16) do
             local key=keys[index]; local probe=state.markerProbe[key]
             if callable("ErrEcho") then safe(ErrEcho,string.format(
-                "[RecipeTracking][MarkerStage] ref=%s FINAL_REF=1 SOURCE_ADMITTED=%s POOL_TILE_FOUND=%s POOL_TILE_VISIBLE=%s IDENTITY_MATCH=%s FRAME_CREATED=%s method=%s",
+                "[RecipeTracking][MarkerStage] ref=%s FINAL_REF=1 SOURCE_ADMITTED=%s POOL_TILE_FOUND=%s POOL_TILE_VISIBLE=%s IDENTITY_MATCH=%s OVERLAY_ATTACHED=%s method=%s",
                 key,tostring(probe.sourceAdmitted),tostring(probe.poolTileFound),tostring(probe.poolTileVisible),
                 tostring(probe.identityMatch),tostring(probe.frameCreated),
                 tostring(probe.matchMethod or "-"))) end
         end
         if callable("ErrEcho") then safe(ErrEcho,string.format(
-            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
+            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s group_cache_hits=%d resolver_cue_scan_ms=%s resolver_scope_ms=%s metadata_ms=%s member_ui_ms=%s resolver_engine_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d",
             formatElapsed(state.lastSelectionReadMs),formatElapsed(state.lastProgrammerMs),
             formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastTrackingFingerprintMs),
             formatElapsed(state.lastRenderMs),
-            formatElapsed(state.lastGroupMatchMs),formatElapsed(state.lastResolverSliceMs),
+            formatElapsed(state.lastGroupMatchMs),state.groupMemberCacheHits or 0,
+            formatElapsed(state.lastResolverCueScanMs),
+            formatElapsed(state.lastResolverScopeMs),
+            formatElapsed(state.lastResolverMetadataMs),formatElapsed(state.lastResolverMemberUIMs),
+            formatElapsed(state.lastResolverEngineMs),formatElapsed(state.lastResolverSliceMs),
             formatElapsed(state.lastResolverTotalMs),
             formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs),
             formatElapsed(elapsedMs(markerStarted)),#grids,#keys)) end

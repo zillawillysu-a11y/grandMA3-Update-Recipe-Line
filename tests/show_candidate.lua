@@ -453,6 +453,14 @@ check(#attr(finalResult).fullySuperseded==1 and finalResult.remainingSemanticBlo
 check(finalResult.sourceGroups["Group 6"]==gOne and finalResult.sourceGroups["Group 7"]==gCell
  and finalResult.sourceGroups["Group 8"]==nil,
  "only contributing Group lanes for the selected Attribute become current Groups")
+do
+ local embeddedPhaserOnly=phaser("Preset 25.P",attrs[0],11,21,nil,nil,nil)
+ local directPhaser=embeddedPhaserOnly:Children()[1]
+ local directPhaserResult=result({recipe(gOne,directPhaser,1)},fOne)
+ check(directPhaserResult.classification=="PROVEN"
+  and directPhaserResult.refs["Preset 25.P Recipe"]==directPhaser,
+  "a surviving direct PhaserRecipe source must remain in the published reference set")
+end
 local cached=state(finalSeq,finalCue,fBoth)
 _G.SelectionFirst=function() return 101,0,0,0 end
 _G.SelectionNext=function(index)
@@ -485,6 +493,48 @@ functions.recipePoolReferences(stable)
 functions.recipePoolReferences(stable)
 check(groupScans==1,"unchanged marker context must reuse complete Group matching")
 groupPool.Children=beforeChildren
+do
+ local objectListOriginal,subfixtureAddressCalls=_G.ObjectList,0
+ _G.ObjectList=function(addr)
+  if addr=="Fixture 201.1.1" then subfixtureAddressCalls=subfixtureAddressCalls+1 end
+  return objectListOriginal(addr)
+ end
+ local identityCacheState=state(finalSeq,finalCue,fBoth)
+ functions.recipePoolReferences(identityCacheState)
+ local firstIdentityPass=subfixtureAddressCalls
+ identityCacheState.lastFixtures=fOne
+ identityCacheState.provenSourceKey=nil
+ functions.recipePoolReferences(identityCacheState)
+ check(firstIdentityPass>0 and subfixtureAddressCalls==firstIdentityPass
+  and (identityCacheState.groupMemberCacheHits or 0)>0,
+  "unchanged Stored Group member identities must reuse exact canonical keys across selection changes")
+ _G.ObjectList=objectListOriginal
+end
+do
+ local historyRecipe=recipe(gOne,moving,1)
+ local historySeq,historyCue=tree({historyRecipe})
+ local childrenOriginal,historyScans=historySeq.Children,0
+ local signature=functions.trackingStructureKey(historySeq,historyCue)
+ historySeq.Children=function(self) historyScans=historyScans+1; return childrenOriginal(self) end
+ local historyState=state(historySeq,historyCue,fOne)
+ historyState.trackARecipeStructureKey=signature
+ functions.recipePoolReferences(historyState)
+ local initialScans=historyScans
+ historyState.lastFixtures=fBoth; historyState.provenSourceKey=nil
+ functions.recipePoolReferences(historyState)
+ check(initialScans>0 and historyScans==initialScans,
+  "unchanged Cue Recipe history rows must be reused when selected members change")
+ historyRecipe.Values=position
+ local changedSignature=functions.trackingStructureKey(historySeq,historyCue)
+ if changedSignature~=historyState.trackARecipeStructureKey then
+  historyState.trackARecipeStructureKey=changedSignature
+  historyState.trackAHistoryRowsCache=nil
+ end
+ historyState.provenSourceKey=nil
+ local updatedHistory=functions.recipePoolReferences(historyState)
+ check(historyScans>initialScans and updatedHistory["Preset 2.1"]==position,
+  "Recipe reference relink must invalidate the cached history rows")
+end
 local unknownSeq,unknownCue=tree({recipe(gOne,unknown,1)})
 local failedState=state(unknownSeq,unknownCue,fOne)
 failedState.currentGroup=parentGroup
@@ -572,6 +622,15 @@ check(markerState.markerReferences["Preset 25.9009"]==expected9009,
  "9009-style final ref must reach marker source")
 check(markerState.markerProbe["Preset 25.9009"].sourceAdmitted==true,
  "final 9009-style ref must survive recipePoolReferences admission")
+do
+ local embedded=phaser("Preset 25.P2",attrs[0],11,21,nil,nil,nil)
+ local phaserReference=embedded:Children()[1]
+ local directPhaserSeq,directPhaserCue=tree({recipe(gOne,phaserReference,1)})
+ local directPhaserState=state(directPhaserSeq,directPhaserCue,fOne)
+ local directPhaserSources=functions.recipePoolReferences(directPhaserState)
+ check(directPhaserSources["Preset 25.P2 Recipe"]==phaserReference,
+  "a surviving PhaserRecipe object must reach the same Pool marker source pipeline")
+end
 local stagedSeq,stagedCue=tree({recipe(gOne,moving,1)})
 local stagedState=state(stagedSeq,stagedCue,fOne); stagedState.incrementalResolver=true
 local stagedRefs={}
@@ -627,8 +686,8 @@ _G.GetDisplayByIndex=function(index) return index==1 and display or nil end
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and overlay.Visible=="Yes" and overlay.HasHover=="No"
- and overlay.BackColor=="SheetColor.PhaserText",
- "nested Recipe Pool tile must receive a visible native Phaser-purple frame0 marker")
+ and overlay.BackColor=="SheetColor.Phaser",
+ "nested Recipe Pool tile must receive the native Phaser-color frame0 marker")
 local blinkPhase=markerState.poolBlinkOn
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn==blinkPhase,
@@ -636,18 +695,18 @@ check(markerState.poolBlinkOn==blinkPhase,
 markerState.poolBlinkDeadline=functions.clockSeconds()-0.01
 functions.refreshPoolMarkers(markerState)
 check(markerState.poolBlinkOn~=blinkPhase
- and overlay.BackColor=="SheetColor.PhaserText",
+ and overlay.BackColor=="SheetColor.Phaser",
  "Cue Recipe source marker must stay steadily purple while Group markers pulse")
 check(functions.poolPulseColor("group",true)=="Global.SuccessText"
  and functions.poolPulseColor("group",false)=="Global.Selected",
  "Stored Group marker pulse must preserve its existing theme colors")
-check(functions.poolPulseColor("recipe",true)=="SheetColor.PhaserText"
- and functions.poolPulseColor("recipe",false)=="SheetColor.PhaserText",
+check(functions.poolPulseColor("recipe",true)=="SheetColor.Phaser"
+ and functions.poolPulseColor("recipe",false)=="SheetColor.Phaser",
  "Cue Recipe source marker must remain purple in both Group pulse phases")
 check(markerState.markerProbe["Preset 25.9009"].frameCreated==true,
  "9009 marker pipeline must reach FRAME_CREATED")
-check(markerState.markerStatus=="1/1 frames",
- "normal UI status must show framed reference count without Command Line History")
+check(markerState.markerStatus=="1/1 overlays",
+ "normal UI status must report attached marker overlays without claiming visible paint")
 markerState.currentGroup=gOne
 markerState.currentGroups={gOne}
 markerState.currentRecipe=recipe(gOne,expected9009,2)
