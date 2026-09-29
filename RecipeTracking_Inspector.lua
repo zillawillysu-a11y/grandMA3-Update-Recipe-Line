@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.21"
+local PLUGIN_VERSION = "0.7.1.23"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1132,11 +1132,24 @@ local function render(state)
             state.trackAHistoryRowsCache=nil
             state.trackAStageSourcesCache=nil
             state.provenSourceKey=nil
+            state.resolverWorkKey=nil
+            state.resolverTask=nil
             state.poolMarkersDirty=true
         end
     end
     if state then
-        local parts={tostring(commandAddress(sequence)),tostring(cueNumber(currentCue))}
+        local stageContextKey=tostring(commandAddress(sequence)).."|"..tostring(cueNumber(currentCue))
+        if state.stageMarkerContextKey~=stageContextKey then
+            state.stageMarkerContextKey=stageContextKey
+            state.poolMarkersDirty=true
+            if ENABLE_TRACK_A_SHOW_CANDIDATE then
+                state.provenSourceKey=nil
+                state.provenSources={classification="PENDING",refs={}}
+                state.currentGroups={}
+                state.markerReferences={}
+            end
+        end
+        local parts={stageContextKey}
         for _,fixture in ipairs(fixtures) do
             parts[#parts+1]=tostring(fixture.index)
         end
@@ -1146,9 +1159,7 @@ local function render(state)
             state.poolMarkersDirty=true
             if ENABLE_TRACK_A_SHOW_CANDIDATE then
                 state.provenSourceKey=nil
-                state.provenSources={classification="PENDING",refs={}}
                 state.currentGroups={}
-                state.markerReferences={}
             end
         end
         if #fixtures==0 then
@@ -1350,10 +1361,16 @@ local function render(state)
             resolverLines[#resolverLines+1]="Reason: "..tostring(state.provenSources.reason):sub(1,90)
             local blockers=state.provenSources.unsafeRefs or {}
             if #blockers>0 then
-                local shown={}
+                local shown,shapeShown={},false
                 for index=1,math.min(#blockers,3) do
                     local id=blockers[index]
-                    shown[#shown+1]=id.." ("..tostring((state.provenSources.unsafeRefDetails or {})[id] or "UNPROVEN")..")"
+                    local detail=tostring((state.provenSources.unsafeRefDetails or {})[id] or "UNPROVEN")
+                    shown[#shown+1]=id.." ("..detail..")"
+                    local shape=detail:match(";(raw_keys=.*)$")
+                    if shape and not shapeShown then
+                        resolverLines[#resolverLines+1]="Metadata shape: "..id.." "..shape:sub(1,150)
+                        shapeShown=true
+                    end
                 end
                 resolverLines[#resolverLines+1]="Blocked refs: "..table.concat(shown,", "):sub(1,220)
             end
@@ -1540,6 +1557,29 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]=reason end
             return nil
         end
+        local function emptySummaryShape()
+            local keyParts,total={},0
+            local function addSample(parts,value,limit)
+                if #parts<limit then
+                    parts[#parts+1]=value
+                    table.sort(parts)
+                elseif value<parts[#parts] then
+                    parts[#parts]=value
+                    table.sort(parts)
+                end
+            end
+            for k,v in pairs(raw or {}) do
+                total=total+1
+                addSample(keyParts,type(k)..":"..tostring(k).."="..type(v),6)
+            end
+            local childParts,childTotal={},0
+            for _,child in ipairs(api.children(ref) or {}) do
+                childTotal=childTotal+1
+                addSample(childParts,api.class(child),4)
+            end
+            return "raw_keys="..tostring(total).."["..table.concat(keyParts,",")
+                .."];children="..tostring(childTotal).."["..table.concat(childParts,",").."]"
+        end
         if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
@@ -1668,7 +1708,8 @@ local function newTrackARuntime(api)
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
         if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then
             return reject("ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels="..tostring(channels)
-                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))..")")
+                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))
+                ..";"..emptySummaryShape()..")")
         end
         -- Static ordinary references require the proven single-step, no-motion
         -- shape. Moving references require explicit motion bits or step change.
@@ -2411,21 +2452,37 @@ end
         for _,item in ipairs(remaining) do selected[#selected+1]=item end
         return selected
     end
+    local function reprioritizeRemainingStageMembers(task,selectedMembers)
+        local first=task.memberIndex or 1
+        local selected,remaining={},{}
+        for index=first,#(task.members or {}) do
+            local item=task.members[index]
+            if selectedMembers[item.key] then selected[#selected+1]=item
+            else remaining[#remaining+1]=item end
+        end
+        local function byKey(a,b) return a.key<b.key end
+        table.sort(selected,byKey); table.sort(remaining,byKey)
+        local nextIndex=first
+        for _,item in ipairs(selected) do task.members[nextIndex]=item; nextIndex=nextIndex+1 end
+        for _,item in ipairs(remaining) do task.members[nextIndex]=item; nextIndex=nextIndex+1 end
+    end
     local function sources(sequence, currentCue, fixtures, info,completeCandidates,taskState)
-    if taskState and taskState.incrementalResolver and taskState.resolverTask
-        and taskState.resolverTask.key==taskState.resolverWorkKey then
-        local task=taskState.resolverTask
-        local result=advanceStagedResolver(task,taskState)
-        return cacheAndSelectStageResult(taskState,task.stageKey,result,task.selectedMembers)
-    end
-    if not sequence or not currentCue then
-        return { classification = "INCONCLUSIVE" }
-    end
     local selectedMembers={}
     for _, fixture in ipairs(fixtures or {}) do
         local key = canonicalMemberKey(fixture)
         if not key then return {classification="INCONCLUSIVE", reason="MEMBER_IDENTITY_UNPROVEN"} end
         selectedMembers[key]=fixture.handle or fixture
+    end
+    if taskState and taskState.incrementalResolver and taskState.resolverTask
+        and taskState.resolverTask.key==taskState.resolverWorkKey then
+        local task=taskState.resolverTask
+        task.selectedMembers=selectedMembers
+        reprioritizeRemainingStageMembers(task,selectedMembers)
+        local result=advanceStagedResolver(task,taskState)
+        return cacheAndSelectStageResult(taskState,task.stageKey,result,selectedMembers)
+    end
+    if not sequence or not currentCue then
+        return { classification = "INCONCLUSIVE" }
     end
     local currentNumber = cueNumber(currentCue)
     if currentNumber == nil then return { classification = "INCONCLUSIVE" } end
@@ -2588,8 +2645,12 @@ end
         .. ":" .. tostring(commandAddress(state.currentOldPreset))
         .. ":" .. tostring(#(state.matchingCandidates or {}))
     if state.provenSourceKey == cacheKey then return state.provenSources end
-    if state.resolverWorkKey~=cacheKey then
-        state.resolverWorkKey=cacheKey
+    -- Resolver lanes cover the whole Sequence through this Cue. A selection
+    -- change only changes the projection/pulse set; it must not restart the
+    -- expensive Sequence-wide metadata/member walk.
+    local resolverWorkKey=tostring(commandAddress(sequence))..":"..tostring(cueNumber(currentCue))
+    if state.resolverWorkKey~=resolverWorkKey then
+        state.resolverWorkKey=resolverWorkKey
         state.resolverTask=nil
         state.resolverWarmRefIndex=1
         state.resolverWarmUIIndex=1
@@ -3285,6 +3346,27 @@ local function refreshPoolMarkers(state)
     -- Advance existing overlays before doing any new discovery or tile work.
     advancePoolPulse(state)
     local now=clockSeconds()
+    -- PoolLayoutGrid recycles the same UI button handles while paging or
+    -- scrolling. A marker attached to that button can therefore remain over
+    -- an unrelated/empty tile even though the semantic reference set did not
+    -- change. Validate only the already-marked buttons (normally a small set)
+    -- on every host refresh; keep full visible-grid discovery throttled.
+    local recycledMarker=false
+    for button,entry in pairs(state.poolMarkers or {}) do
+        if entry.pool and entry.poolIndex and entry.reference then
+            local currentIndex=tonumber(property(button,"ObjectIndex"))
+            local current=currentIndex and safe(function() return entry.pool:Ptr(currentIndex) end) or nil
+            if currentIndex~=entry.poolIndex or not sameReference(current,entry.reference) then
+                deleteHandle(entry.overlay)
+                state.poolMarkers[button]=nil
+                recycledMarker=true
+            end
+        end
+    end
+    if recycledMarker then
+        state.poolMarkersDirty=true
+        state.poolLookupDeadline=0
+    end
     local cachedGridInvalid=false
     if not state.poolMarkersDirty and not state.poolGridRefreshNeeded and now and now<(state.poolLookupDeadline or 0) then
         for _,grid in ipairs(state.poolGrids or {}) do
@@ -3439,6 +3521,9 @@ local function refreshPoolMarkers(state)
                 end
                 if entry then
                     entry.markerKind=markerKind
+                    entry.pool=pool
+                    entry.poolIndex=index
+                    entry.reference=matched
                     pcall(function()
                         entry.overlay.W = button.W
                         entry.overlay.H = button.H

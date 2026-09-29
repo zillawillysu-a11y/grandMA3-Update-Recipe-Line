@@ -58,6 +58,29 @@ local function newTrackARuntime(api)
             if rawKey then cache.__failure[rawKey]=reason end
             return nil
         end
+        local function emptySummaryShape()
+            local keyParts,total={},0
+            local function addSample(parts,value,limit)
+                if #parts<limit then
+                    parts[#parts+1]=value
+                    table.sort(parts)
+                elseif value<parts[#parts] then
+                    parts[#parts]=value
+                    table.sort(parts)
+                end
+            end
+            for k,v in pairs(raw or {}) do
+                total=total+1
+                addSample(keyParts,type(k)..":"..tostring(k).."="..type(v),6)
+            end
+            local childParts,childTotal={},0
+            for _,child in ipairs(api.children(ref) or {}) do
+                childTotal=childTotal+1
+                addSample(childParts,api.class(child),4)
+            end
+            return "raw_keys="..tostring(total).."["..table.concat(keyParts,",")
+                .."];children="..tostring(childTotal).."["..table.concat(childParts,",").."]"
+        end
         if rawKey then cache.__failure[rawKey]="ORDINARY_CHANNEL_SHAPE_UNPROVEN" end
         if rawKey then
             cache.__raw=cache.__raw or {}
@@ -186,7 +209,8 @@ local function newTrackARuntime(api)
         if rawKey then cache.__failure[rawKey]="ORDINARY_REFERENCE_SUMMARY_UNPROVEN" end
         if channels==0 or (raw.count~=nil and raw.count~=channels) or not next(scope) then
             return reject("ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels="..tostring(channels)
-                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))..")")
+                ..",count="..tostring(raw.count)..",lanes="..tostring(count(scope))
+                ..";"..emptySummaryShape()..")")
         end
         -- Static ordinary references require the proven single-step, no-motion
         -- shape. Moving references require explicit motion bits or step change.

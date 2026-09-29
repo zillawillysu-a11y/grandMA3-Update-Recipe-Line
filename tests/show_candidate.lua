@@ -193,6 +193,40 @@ do
   "a later unsafe chunk must fail closed globally while retaining only already-proven partial evidence")
 end
 
+-- A selection change during a staged Sequence pass must update the selected
+-- projection and move newly selected, unprocessed members to the next slice.
+do
+ local keys={"101","1001","1002","1003","1004","1005","1006","1007","1008","1009","201.1.1"}
+ local members={}
+ for _,key in ipairs(keys) do members[#members+1]={key=key,handle=key} end
+ local calls=0
+ local task={key="same-stage-context",stageKey="stage",rows={},members=members,
+  memberIndex=1,metadataIndex=1,runtime={run=function(_,batch)
+   calls=calls+1
+   local assignments,active={},{}
+   for key in pairs(batch) do
+    local ref=object("Preset","Preset projected "..key)
+    active[ref:ToAddr()]=ref
+    assignments[#assignments+1]={member=key,lane="fg|ABS",fg="fg",
+     refId=ref:ToAddr(),ref=ref,moving=true}
+   end
+   return {classification="PROVEN",refs=active,activeRefs=active,
+    laneAssignments=assignments,sourceGroups={}}
+  end}}
+ local state={incrementalResolver=true,resolverWorkKey=task.key,resolverTask=task,
+  referenceMetadataCache={},memberUICache={}}
+ local first=provenApi.sources(nil,nil,{selectedFixture(101)},{feature="Dimmer"},nil,state)
+ check(first.classification=="PENDING" and first.selectedActiveRefs["Preset projected 101"]
+  and task.memberIndex==5,
+  "the first staged slice must project the current selected member")
+ local sameTask=state.resolverTask
+ local second=provenApi.sources(nil,nil,{selectedFixture(203)},{feature="Dimmer"},nil,state)
+ check(state.resolverTask==sameTask and task.members[5].key=="201.1.1"
+  and second.classification=="PENDING"
+  and second.selectedActiveRefs["Preset projected 201.1.1"]~=nil and calls==2,
+  "changing selection must reuse the in-flight stage task and prioritize its newly selected member")
+end
+
 -- The staged production path must resolve purple stage refs over every
 -- Recipe Group member, then projects selected frames over selected members.
 do
@@ -436,6 +470,15 @@ check(malformedResult.classification=="INCONCLUSIVE"
  and string.find(malformedResult.unsafeRefDetails["Preset malformed lane"] or "",
   "ORDINARY_LANE_VALUE_UNPROVEN(ui=0,layer=ABS,type=string",1,true)~=nil,
  "unknown ABS value encoding must remain fail-closed with a bounded field-level reason")
+local emptyMetadata=object("Preset","Preset empty UI metadata",{},
+ {object("PresetChild","Native metadata child")})
+referenceData[emptyMetadata]={count=0,by_fixtures=false}
+local emptyMetadataResult=result({recipe(gOne,emptyMetadata,1)},fOne)
+local emptyDetail=emptyMetadataResult.unsafeRefDetails["Preset empty UI metadata"] or ""
+check(emptyMetadataResult.classification=="INCONCLUSIVE"
+ and emptyDetail:find("raw_keys=2",1,true)~=nil
+ and emptyDetail:find("children=1[PresetChild]",1,true)~=nil,
+ "an empty native Preset summary must remain blocked while exposing only bounded key/child shape evidence")
 local stopResult=result({recipe(gOne,moving,1),recipe(gOne,static,2)},fOne)
 check(stopResult.classification=="PROVEN" and next(stopResult.refs)==nil,
  "newer static ABS must terminate older moving ABS")
@@ -924,6 +967,42 @@ check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  and markerState.poolMarkers[button].markerKind=="selectedRecipe"
  and overlay.BackColor=="Global.AlertText",
  "a selected member's surviving Recipe tile must use the solid red theme frame")
+ ;(function()
+ local savedTime,stationTime=Time,300
+ Time=function() return stationTime end
+ local tracked=object("Preset","Preset recycle target")
+ local unrelated=object("Preset","Preset not tracked")
+ local recycledButton=object("PoolButton","Reusable tile",{ObjectIndex=9,W=80,H=80,
+  Anchors={left=0,right=0,top=0,bottom=0}})
+ local recycledPool={Ptr=function(_,index)
+  if index==9 then return tracked elseif index==10 then return unrelated end
+ end}
+ local recycledGrid=object("PoolLayoutGrid","Recycled preset pool",{
+  PoolObject=recycledPool,IsActuallyVisible=function() return true end},{recycledButton})
+ local recycledOverlay
+ recycledGrid.Append=function()
+  recycledOverlay={CommandDelete=function(self) self.deleted=true end}
+  return recycledOverlay
+ end
+ local recycledState={running=true,poolBlink=true,provenEnabled=true,
+  currentSequence=object("Sequence","Sequence 101"),currentCue=object("Cue","Cue 1"),
+  markerReferences={[tracked:ToAddr()]=tracked},poolGrids={recycledGrid},
+  poolMarkers={},poolMarkersDirty=true}
+ functions.refreshPoolMarkers(recycledState)
+ check(recycledState.poolMarkers[recycledButton]
+  and recycledState.poolMarkers[recycledButton].pool==recycledPool
+  and recycledState.poolMarkers[recycledButton].poolIndex==9
+  and recycledState.poolMarkers[recycledButton].reference==tracked,
+  "Pool marker entries must retain the Pool/index/reference identity they were attached to")
+ local oldOverlay=recycledOverlay
+ recycledState.poolMarkersDirty=false
+ recycledState.poolLookupDeadline=stationTime+5
+ recycledButton.ObjectIndex=10
+ functions.refreshPoolMarkers(recycledState)
+ check(oldOverlay.deleted==true and next(recycledState.poolMarkers)==nil,
+  "a recycled Pool tile must lose its stale purple frame immediately, before the normal rescan deadline")
+ Time=savedTime
+end)()
 do
  local saved={tileAlias,overlay}
  stagedSeq,stagedCue=tree({recipe(gOne,expected9009,1)})
@@ -931,8 +1010,8 @@ do
   currentSequence=stagedSeq,currentCue=stagedCue,currentGroup=gOne,
   lastFixtures={selectedFixture(101)},lastFeature="Dimmer",matchingCandidates={},
   completeGroupSelectionKey="101",completeGroupCandidates={gOne},
-  referenceMetadataCache={},memberUICache={},resolverWorkKey="Sequence 9:1000:Dimmer:Group 6:101:nil:nil:0",
-  resolverTask={key="Sequence 9:1000:Dimmer:Group 6:101:nil:nil:0",stageKey="early",rows={},
+  referenceMetadataCache={},memberUICache={},resolverWorkKey="Sequence 9:1000",
+  resolverTask={key="Sequence 9:1000",stageKey="early",rows={},
    members={{key="101",handle=subfixtureByIndex[101]},
     {key="201",handle=subfixtureByIndex[201]},{key="201.1",handle=subfixtureByIndex[202]},
     {key="201.1.1",handle=subfixtureByIndex[203]},{key="900",handle=subfixtureByIndex[101]}},

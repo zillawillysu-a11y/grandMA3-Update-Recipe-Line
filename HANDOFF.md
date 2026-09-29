@@ -2,44 +2,63 @@
 
 ## Current Goal
 
-Native-validate v0.7.1.21's early Recipe marker delivery and low-load static marker colors.
+Native-validate v0.7.1.23: confirm selection changes reuse the active
+Sequence resolver pass, and capture the bounded native metadata shape for
+Recipe Preset 25.9003.
 
 ## Current Working State
 
-v0.7.1.21 is deployed to the confirmed Update Plugin directory. Completed member chunks publish only their independently proven Recipe refs while the Sequence resolver remains `PENDING`; the final ref set stays withheld until the full pass completes. Selected members are processed first. Warm metadata rows no longer consume artificial polling slices. Sequence tracking stays purple; selected Group/Recipe frames stay solid red while timer-driven flashing is paused.
+v0.7.1.23 is deployed to the confirmed Update Plugin directory. A selection
+change now updates the in-flight task's selected-member projection and moves
+newly selected, unprocessed members to the next resolver slice. Selection-only
+changes no longer clear the Sequence-wide purple reference set. Empty ordinary
+Preset metadata remains fail-closed; the UI now shows bounded top-level key
+types and child classes for that failure.
 
 ## Latest Real-World User Test
 
-The 2026-09-29 18:02:26 recording ran v0.7.1.20. After Cue changes, purple/Recipe frames took several seconds to appear and the observed flashing cadence slowed. The panel showed staged `PENDING`/partial resolver status.
+The 2026-09-29 v0.7.1.22 Cue 1 image shows Recipe Preset 25.9003 with no purple
+frame. The panel reports `ORDINARY_CHANNEL_SUMMARY_UNPROVEN(channels=0,count=0,
+lanes=0)`, so it is blocked in semantic parsing before Pool tile discovery.
 
 ## Verified Facts
 
-- v0.7.1.21 passes 87 workflow assertions, 187 show-candidate checks, Lua 5.4 parsing, XML parsing, two deterministic build checks, and `git diff --check`.
-- Synthetic four-ref case remains `refs=4`, `missing=0`, `extra=0`.
-- Focused tests verify an early selected Recipe frame is created from the first completed member chunk while `final refs` remain empty/PENDING.
-- Deployed Lua SHA256: `EF0610FC29C40184192CFD0FBF7A5686787798E0A316EDE8BDF54121ECA1B4E7`.
-- Deployed XML SHA256: `061609F44D6AE77165841A21D0D3ED3B245E0EAB954D6CE07CF5A825775DDA9C`.
-- Pre-deploy v0.7.1.20 files are backed up at `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.21-20260929`; backup hashes matched the deployed originals.
+- Lua 5.4: 87 workflow assertions and 193 show-candidate checks pass.
+- Synthetic four-reference result remains `final_refs=4 missing=0 extra=0`.
+- Deterministic build, Lua parsing, XML/component/version checks, and
+  `git diff --check` pass.
+- v0.7.1.22 deployed files were backed up at
+  `C:\tmp\show-rel-backups\Update-Plugin-before-v0.7.1.23-20260929`.
+- v0.7.1.23 deployed/source Lua SHA256:
+  `EA116F5AC0F6240AE272FBA12B8642B937AE300EB2518C0110A16BFCCF065DFC`.
+- v0.7.1.23 deployed/source XML SHA256:
+  `E22016B726DB92012BD62E8C0F8EE27F13B62C8DD349A2E99C7D9F281EE4C54C`.
+- Diagnostic component remains unchanged at SHA256
+  `A00C30DD8DCEFF67ACE8F86E423E70742AF74F85FBB4FA2E38514E5AF15B2191`.
 
 ## Current Problem
 
-Native latency and stable visibility of the full Sequence tracking set remain unverified. Static red selection frames are an intentional temporary load reduction; no blinking should be expected in this build.
-
-## Known Failed Attempt
-
-v0.7.1.20 sliced resolver work but withheld every Recipe reference until all metadata/member slices completed. Its pulse writes also continued while resolver work competed for the same coroutine.
+The existing native log does not reveal whether 25.9003 has truly empty
+`GetPresetData` UI-channel data or another child representation. v0.7.1.23
+surfaces a bounded `Metadata shape:` line; no semantic gate was weakened.
 
 ## Important Files
 
 - `RecipeTracking_Inspector.lua`
-- `recipe_update_diagnostic.xml`
+- `tools/templates/show_track_a_runtime.lua`
 - `tests/show_candidate.lua`
-- `tests/recipe_workflow.lua`
+- `recipe_update_diagnostic.xml`
 
 ## Current Branch / Commit
 
-Branch `qwen`; pushed checkpoint: `fix: publish proven Recipe markers during staged resolution`.
+Worktree is detached at the current `origin/qwen` checkpoint with the v0.7.1.23
+release changes staged for a coherent commit/push; real-world validation is
+pending.
 
 ## Exact Next Action
 
-Reload v0.7.1.21 and confirm the title. Change Cue while the Sequence is active and check that the first proven selected Preset frame appears promptly, additional tracked Presets appear as their member chunks prove, tracking frames remain purple, and selected Group/Recipe frames remain solid red. Verify Clear removes selected red frames immediately. Report measured Cue-to-first-frame delay and whether the full Sequence set settles; native validation is pending.
+Reload the Update Plugin and confirm the title is v0.7.1.23. Reopen Cue 1 where
+Preset 25.9003 is referenced and report the `Metadata shape:` line. Also change
+fixture selection while the resolver is pending and verify the selected
+member's frames appear without restarting the Sequence pass or clearing the
+purple tracked references.
