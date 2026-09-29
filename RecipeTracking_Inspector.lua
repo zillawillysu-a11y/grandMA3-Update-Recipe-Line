@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.16"
+local PLUGIN_VERSION = "0.7.1.17"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1263,12 +1263,17 @@ local function render(state)
     local resolverLines={}
     if state and ENABLE_TRACK_A_SHOW_CANDIDATE and state.provenSources then
         local refKeys={}
-        for key in pairs(state.provenSources.activeRefs or state.provenSources.refs or {}) do
+        local displayRefs=state.provenSources.classification=="PROVEN"
+            and (state.provenSources.activeRefs or state.provenSources.refs)
+            or state.provenSources.provenActiveRefs or {}
+        for key in pairs(displayRefs) do
             refKeys[#refKeys+1]=key
         end
         table.sort(refKeys)
-        resolverLines[1]=string.format("Resolver: %s | %d refs | %d selected pulse%s",
+        local refLabel=state.provenSources.classification=="PROVEN" and "refs" or "proven refs (partial)"
+        resolverLines[1]=string.format("Resolver: %s | %d %s | %d selected pulse%s",
             tostring(state.provenSources.classification),#refKeys,
+            refLabel,
             state.selectedRecipeReferenceCount or 0,
             state.markerStatus and (" | "..state.markerStatus) or "")
         if state.provenSources.classification=="PENDING"
@@ -1947,6 +1952,15 @@ local function newTrackARuntime(api)
                 attribution.fullySuperseded[#attribution.fullySuperseded+1]=row
             else attribution.unknown[#attribution.unknown+1]=row end
         end
+        local function assignmentView()
+            local view={}
+            for _,assignment in ipairs(assignments) do
+                view[#view+1]={member=assignment.member,fg=assignment.fg,
+                    refId=assignment.row.refId,ref=assignment.row.ref,
+                    group=assignment.row.group,moving=assignment.moving}
+            end
+            return view
+        end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
             local blockers={}
             for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
@@ -1965,6 +1979,11 @@ local function newTrackARuntime(api)
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
                 refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
                 unsafeRefDetails=blockerDetails,
+                -- Assignments already decided before an unresolved historical
+                -- barrier are still proven. Preserve only those for partial
+                -- marker display; never publish the blocking references.
+                provenActiveRefs=activeRefs,provenMovingRefs=refs,
+                provenLaneAssignments=assignmentView(),
                 laneWork=laneWork}
         end
         for _,barrier in ipairs(residual) do
@@ -1986,12 +2005,7 @@ local function newTrackARuntime(api)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
         end
-        local laneAssignments={}
-        for _,assignment in ipairs(assignments) do
-            laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,
-                refId=assignment.row.refId,ref=assignment.row.ref,
-                group=assignment.row.group,moving=assignment.moving}
-        end
+        local laneAssignments=assignmentView()
         return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
             laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
@@ -2178,14 +2192,17 @@ end
         return result
     end
     local function selectStageResult(stageResult,selectedMembers)
-        if stageResult.classification~="PROVEN" then return stageResult end
+        local provenPartial=stageResult.classification=="INCONCLUSIVE"
+            and type(stageResult.provenActiveRefs)=="table"
+        if stageResult.classification~="PROVEN" and not provenPartial then return stageResult end
         local result={}
         for key,value in pairs(stageResult) do result[key]=value end
         local refs,refMembers,selectedActiveRefs,sourceGroups={},{},{},{}
-        for _,assignment in ipairs(stageResult.laneAssignments or {}) do
+        local assignments=stageResult.laneAssignments or stageResult.provenLaneAssignments or {}
+        for _,assignment in ipairs(assignments) do
             if selectedMembers[assignment.member] then
                 selectedActiveRefs[assignment.refId]=assignment.ref
-                if assignment.moving then
+                if assignment.moving and not provenPartial then
                     refs[assignment.refId]=assignment.ref
                     refMembers[assignment.refId]=refMembers[assignment.refId] or {}
                     refMembers[assignment.refId][assignment.member]=true
@@ -2196,8 +2213,10 @@ end
                 end
             end
         end
-        result.refs=refs
-        result.refMembers=refMembers
+        if not provenPartial then
+            result.refs=refs
+            result.refMembers=refMembers
+        end
         result.selectedActiveRefs=selectedActiveRefs
         result.sourceGroups=sourceGroups
         return result
@@ -2430,7 +2449,9 @@ end
     state.markerProbeSerial=(state.markerProbeSerial or 0)+1
     state.markerProbe={}
     state.markerStatus=nil
-    for key in pairs(result.activeRefs or result.refs or {}) do
+    local probeRefs=result.classification=="PROVEN"
+        and (result.activeRefs or result.refs) or result.provenActiveRefs or {}
+    for key in pairs(probeRefs) do
         state.markerProbe[key]={finalRef=true,sourceAdmitted=false,poolTileFound=false,
             poolTileVisible=false,identityMatch=false,frameCreated=false}
     end
@@ -2541,6 +2562,20 @@ end
                 probe.sourceAdmitted=references[key]~=nil
             end
             return references
+        end
+        if provenResult and provenResult.classification=="INCONCLUSIVE"
+            and type(provenResult.provenActiveRefs)=="table" then
+            for key,object in pairs(provenResult.selectedActiveRefs or {}) do
+                local refKey=commandAddress(object) or key
+                if refKey and not state.selectedRecipeReferenceKeys[refKey] then
+                    state.selectedRecipeReferenceKeys[refKey]=true
+                    state.selectedRecipeReferenceCount=state.selectedRecipeReferenceCount+1
+                end
+            end
+            for _,object in pairs(provenResult.provenActiveRefs) do add(object) end
+            for key,probe in pairs(state.markerProbe or {}) do
+                probe.sourceAdmitted=references[key]~=nil
+            end
         end
         -- A single selected Attribute's displayed Recipe has a concrete
         -- Stored Group handle even if its Values metadata remains unsafe.

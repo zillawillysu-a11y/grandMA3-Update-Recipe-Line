@@ -450,6 +450,23 @@ local unsafeSurvives=result({recipe(gOne,unsafe,1)},fOne)
 check(unsafeSurvives.classification=="INCONCLUSIVE"
  and #attr(unsafeSurvives).finalSurviving==1,
  "surviving unsafe lane must fail closed")
+do
+ local partialSafe=result({recipe(gOne,unsafe,1),recipe(gOne,position,2)},fOne)
+ check(partialSafe.classification=="INCONCLUSIVE"
+  and partialSafe.provenActiveRefs["Preset 2.1"]==position
+  and partialSafe.provenActiveRefs["Preset Unsafe"]==nil
+  and partialSafe.selectedActiveRefs["Preset 2.1"]==position
+  and next(partialSafe.refs)==nil,
+  "an unresolved lane must remain inconclusive while independent proven lanes stay separately available")
+ local partialSeq,partialCue=tree({recipe(gOne,unsafe,1),recipe(gOne,position,2)})
+ local partialState=state(partialSeq,partialCue,fOne)
+ local partialMarkerRefs=functions.recipePoolReferences(partialState)
+ check(partialState.provenSources.classification=="INCONCLUSIVE"
+  and partialMarkerRefs["Preset 2.1"]==position
+  and partialMarkerRefs["Preset Unsafe"]==nil
+  and partialState.selectedRecipeReferenceKeys["Preset 2.1"]==true,
+  "only independently proven refs may receive steady/pulse markers during an inconclusive scan")
+end
 local unsafeVictim=result({recipe(gOne,moving,1),recipe(gOne,unsafe,2)},fOne)
 check(unsafeVictim.classification=="INCONCLUSIVE"
  and #attr(unsafeVictim).finalSurviving==1,

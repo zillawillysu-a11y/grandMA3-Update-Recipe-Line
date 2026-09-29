@@ -538,6 +538,15 @@ local function newTrackARuntime(api)
                 attribution.fullySuperseded[#attribution.fullySuperseded+1]=row
             else attribution.unknown[#attribution.unknown+1]=row end
         end
+        local function assignmentView()
+            local view={}
+            for _,assignment in ipairs(assignments) do
+                view[#view+1]={member=assignment.member,fg=assignment.fg,
+                    refId=assignment.row.refId,ref=assignment.row.ref,
+                    group=assignment.row.group,moving=assignment.moving}
+            end
+            return view
+        end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
             local blockers={}
             for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
@@ -556,6 +565,11 @@ local function newTrackARuntime(api)
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
                 refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
                 unsafeRefDetails=blockerDetails,
+                -- Assignments already decided before an unresolved historical
+                -- barrier are still proven. Preserve only those for partial
+                -- marker display; never publish the blocking references.
+                provenActiveRefs=activeRefs,provenMovingRefs=refs,
+                provenLaneAssignments=assignmentView(),
                 laneWork=laneWork}
         end
         for _,barrier in ipairs(residual) do
@@ -577,12 +591,7 @@ local function newTrackARuntime(api)
                 if groupId then sourceGroups[groupId]=assignment.row.group end
             end
         end
-        local laneAssignments={}
-        for _,assignment in ipairs(assignments) do
-            laneAssignments[#laneAssignments+1]={member=assignment.member,fg=assignment.fg,
-                refId=assignment.row.refId,ref=assignment.row.ref,
-                group=assignment.row.group,moving=assignment.moving}
-        end
+        local laneAssignments=assignmentView()
         return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
             laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
