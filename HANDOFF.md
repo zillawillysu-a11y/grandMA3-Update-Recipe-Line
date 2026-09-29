@@ -59,9 +59,9 @@ Position Pool is visible.
 
 ## Current Branch / Commit
 
-Continuation worktree: `C:\tmp\show-rel`, currently detached from the
-`origin/qwen` checkpoint. Create/push a coherent checkpoint on `qwen` after
-this deploy; do not claim native success.
+Continuation worktree: `C:\tmp\show-rel`, detached after the pushed
+`fix: unblock proven recipe marker lanes` checkpoint on `origin/qwen`. The
+separate Documents worktree's older local `qwen` branch was left untouched.
 
 ## Exact Next Action
 
