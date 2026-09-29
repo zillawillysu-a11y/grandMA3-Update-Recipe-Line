@@ -285,3 +285,21 @@ regression. The user also reports remaining bugs, but has no quota to describe
 them yet. No exact Cue-to-purple measurement was supplied, so the <=300 ms
 acceptance target remains unmeasured. Resume by collecting concrete symptoms
 and reproduction steps, while preserving the confirmed marker behavior.
+
+## 2026-09-30 follow-up: scale and legacy Phaser report
+
+The user estimates v0.7.1.34 feels about twice as fast as before. Their largest
+Show can contain more than ten times the fixture count in the current test
+Show, so the current perceived improvement is not yet evidence of scalability
+at the largest workload. Exact fixture/member counts and timings are not known.
+
+The user also reports that Phaser markers do not light in an older Show that
+has no Phaser Recipes. They asked whether Cue Recipe fade settings may be
+related. That relationship is unknown and remains a hypothesis; do not change
+resolver semantics until the stored Cue/Recipe data path is inspected against
+a concrete reproduction.
+
+When the user returns, provide recommendations for measuring and improving
+cold and cached Cue-to-marker latency at the larger scale, then diagnose the
+legacy Phaser case with its Cue Recipe fade settings. Preserve the confirmed
+v0.7.1.34 marker restoration.
