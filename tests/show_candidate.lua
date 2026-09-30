@@ -108,6 +108,75 @@ check(warmResult.classification=="PROVEN" and #warmedHandles==40
  "large sequence lane resolution must preserve refs across the configured bounded member slices")
 end
 
+-- Budgeted scheduling reduces waits without enlarging the member slice or
+-- publishing partial purple sets. Slow/unmeasurable steps remain single-step.
+do
+ local savedTime,stationTime=Time,500
+ Time=function() return stationTime end
+ local function build(total,cost)
+  local taskState={referenceMetadataCache={},memberUICache={}}
+  local task={rows={},members={},memberSliceLimit=1,selectedMembers={}}
+  for i=1,total do task.members[i]={key=tostring(i),handle=i} end
+  task.runtime={run=function(_,batch)
+   stationTime=stationTime+cost/1000
+   local refs,assignments={},{}
+   for member in pairs(batch) do
+    local id="Preset budget "..member; refs[id]=member
+    assignments[#assignments+1]={member=member,lane="fg|ABS",fg="fg",
+     refId=id,ref=member,moving=true}
+   end
+   return {classification="PROVEN",refs=refs,activeRefs=refs,laneAssignments=assignments}
+  end}
+  return task,taskState
+ end
+ local task,taskState=build(10,1)
+ local first=provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(first.classification=="PENDING" and task.memberIndex==5
+  and taskState.lastResolverStepsPerTick==4 and next(first.refs)==nil,
+  "cheap slices must advance four steps at most while withholding partial purple refs")
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ local final=provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(final.classification=="PROVEN" and tableCount(final.refs)==10
+  and #final.laneAssignments==10 and taskState.lastResolverStepsPerTick==2
+  and math.abs(task.engineMs-10)<0.00001,
+  "budgeted merging must preserve all final member assignments and cumulative engine timing")
+ task,taskState=build(10,5)
+ first=provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(first.classification=="PENDING" and task.memberIndex==3
+  and taskState.lastResolverStepsPerTick==2,
+  "the time budget must stop another step after a synchronous slice overruns it")
+ task,taskState=build(10,1); taskState.resolverTickStarted=stationTime-0.020
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(task.memberIndex==2 and taskState.lastResolverStepsPerTick==1,
+  "scope/render time already spent must consume the next-step scheduling budget")
+ task,taskState=build(10,1); Time=function() return nil end
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(task.memberIndex==2 and taskState.lastResolverStepsPerTick==1,
+  "an unavailable station clock must fall back to one bounded step")
+ task,taskState=build(10,1); Time=nil
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(task.memberIndex==2 and taskState.lastResolverStepsPerTick==1,
+  "CPU-clock fallback alone must not authorize extra native slices")
+ Time=function() return stationTime end
+ task,taskState=build(10,-1)
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(task.memberIndex==2 and taskState.lastResolverStepsPerTick==1,
+  "a backwards clock must not trigger extra slices")
+ task,taskState=build(10,6)
+ task.runtime.run=function(_,batch)
+  stationTime=stationTime+0.006
+  taskState.lastResolverMetadataMs=1; taskState.lastResolverMemberUIMs=2
+  return {classification="PROVEN",refs={}}
+ end
+ provenApi.advanceStagedResolverBudgeted(task,taskState)
+ check(taskState.lastResolverStepsPerTick==2
+  and taskState.lastResolverMetadataMs==2 and taskState.lastResolverMemberUIMs==4
+  and math.abs(taskState.lastResolverEngineMs-6)<0.00001
+  and task.metadataMs==2 and task.memberUIMs==4 and math.abs(task.engineMs-6)<0.00001,
+  "multi-step metadata/UI/engine timing must accumulate deltas without double counting")
+ Time=savedTime
+end
+
 -- Only real cache misses consume the metadata slice budget. A warm cache must
 -- not force a Cue change through one no-op polling slice per historical row.
 do
@@ -220,6 +289,8 @@ end
 -- A selection change during a staged Sequence pass must update the selected
 -- projection and move newly selected members to the next bounded slice.
 do
+ local savedTime,stationTime=Time,300
+ Time=function() return stationTime end
  local keys={"101"}
  for i=1001,1031 do keys[#keys+1]=tostring(i) end
  for i=1032,1038 do keys[#keys+1]=tostring(i) end
@@ -229,6 +300,7 @@ do
  local calls=0
  local task={key="same-stage-context",stageKey="stage",rows={},members=members,
   memberIndex=1,metadataIndex=1,memberSliceLimit=32,runtime={run=function(_,batch)
+   stationTime=stationTime+0.009 -- One slice consumes this tick's budget.
    calls=calls+1
    local assignments,active={},{}
    for key in pairs(batch) do
@@ -252,6 +324,7 @@ do
   and second.classification=="PROVEN"
   and second.selectedActiveRefs["Preset projected 201.1.1"]~=nil and calls==2,
   "changing selection must reuse the in-flight task, prioritize the new member, then publish a complete projection")
+ Time=savedTime
 end
 
 -- The staged production path must resolve purple stage refs over every
@@ -494,6 +567,14 @@ do
   referenceMetadataCache={},memberUICache={}}
  local resolved=provenApi.sources(seq,cue,{},nil,nil,taskState)
  local task=taskState.resolverTask
+ local readsBefore=0
+ local identityAddress="FeatureGroup stage identity"
+ local identityObject=object("FeatureGroup",identityAddress)
+ identityObject.ToAddr=function() readsBefore=readsBefore+1; return identityAddress end
+ local sameIdentity=true
+ for i=1,1000 do sameIdentity=sameIdentity and task.identity(identityObject)==identityAddress end
+ check(sameIdentity and readsBefore==1,
+  "1000 repeated stage identity lookups must return the proved address with one native read")
  check(resolved.classification=="PROVEN" and #task.rows==3
   and task.rows[1].groupMemberCount==2 and task.rows[2].groupMemberCount==1
   and task.rows[3].groupMemberCount==2,
@@ -510,6 +591,15 @@ do
  local fresh={incrementalResolver=true,resolverWorkKey="scope-changed",
   referenceMetadataCache={},memberUICache={}}
  provenApi.sources(seq,cue,{},nil,nil,fresh)
+ identityAddress="FeatureGroup next identity"
+ check(fresh.resolverTask.identity(identityObject)==identityAddress and readsBefore==2,
+  "a new stage runtime must discard old identity addresses")
+ for i=1,4100 do task.identity(object("FeatureGroup","FeatureGroup bounded "..i)) end
+ local overflowReads=0
+ local overflowObject=object("FeatureGroup","FeatureGroup overflow")
+ overflowObject.ToAddr=function() overflowReads=overflowReads+1; return "FeatureGroup overflow" end
+ task.identity(overflowObject); task.identity(overflowObject)
+ check(overflowReads==2,"the stage identity cache must remain bounded at 4096 entries")
  check(fresh.resolverTask.stageMembers["101"]==b
   and fresh.resolverTask.stageMembers["201.1.1"]==nil
   and fresh.resolverTask.rows[1].groupMemberCount==1
@@ -1271,7 +1361,8 @@ check(markerState.poolMarkers[button] and overlay and overlay.Texture=="frame0"
  Time=savedTime
 end)()
 do
- local saved={tileAlias,overlay}
+ local saved={tileAlias,overlay,Time,400}
+ Time=function() return saved[4] end
  stagedSeq,stagedCue=tree({recipe(gOne,expected9009,1)})
  stagedState={running=true,poolBlink=true,incrementalResolver=true,provenEnabled=true,
   currentSequence=stagedSeq,currentCue=stagedCue,currentGroup=gOne,
@@ -1285,6 +1376,7 @@ do
     memberIndex=1,metadataIndex=1,memberSliceLimit=32,selectedMembers={["101"]=subfixtureByIndex[101]},
     runtime={memberUI=function(handle,cache) cache[handle]={} end,
     run=function(_,memberSlice)
+     saved[4]=saved[4]+0.009
      local assignments={}
      for member in pairs(memberSlice) do
       assignments[#assignments+1]={member=member,lane="Dimmer|ABS",fg="Dimmer",
@@ -1313,6 +1405,7 @@ do
   and overlay.Visible=="Yes" and overlay.BackColor=="Global.AlertText",
   "the first completed selected-member chunk must create its red Pool frame before the full Sequence finishes")
  tileAlias,overlay=saved[1],saved[2]
+ Time=saved[3]
 end
 do
  local savedTime=Time

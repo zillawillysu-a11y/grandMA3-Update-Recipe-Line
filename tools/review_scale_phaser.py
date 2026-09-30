@@ -21,7 +21,7 @@ collect(main)
 local state={}
 functions.recipePoolReferences(state)
 local advance=assert(state.provenHooks.advanceStagedResolver)
-local function buildTask(total,selected)
+local function buildTask(total,selected,afterRun)
  local task={rows={},members={},memberSliceLimit=250,selectedMembers=selected or {}}
  for i=1,total do task.members[i]={key=tostring(i),handle=i} end
  local visits=0
@@ -31,6 +31,7 @@ local function buildTask(total,selected)
    assignments[#assignments+1]=setmetatable({lane='fg|ABS',refId='Preset '..key},
     {__index=function(_,field) if field=='member' then visits=visits+1; return key end end})
   end
+  if afterRun then afterRun() end
   return {classification='PROVEN',refs={},activeRefs={},laneAssignments=assignments}
  end}
  return task,function() return visits end
@@ -44,6 +45,23 @@ for _,total in ipairs({1265,12650}) do
   total,ticks,(ticks-1)*10,visits()))
  assert(ticks==math.ceil(total/250))
  assert(visits()==0, 'empty-selection PENDING projection must not inspect assignments')
+end
+do
+ local savedTime,modeledClock=Time,100
+ Time=function() return modeledClock end
+ for _,total in ipairs({1265,12650}) do
+  local task,visits=buildTask(total,{},function() modeledClock=modeledClock+0.001 end)
+  local taskState={referenceMetadataCache={},memberUICache={}}
+  local ticks,result=0
+  repeat
+   result=state.provenHooks.advanceStagedResolverBudgeted(task,taskState)
+   ticks=ticks+1
+  until result.classification~='PENDING'
+  print(string.format('BUDGETED MODEL (1ms/step): members=%d ticks=%d inter_tick_yield_ms=%d assignments=%d',
+   total,ticks,(ticks-1)*10,#result.laneAssignments))
+  assert(ticks==math.ceil(math.ceil(total/250)/4) and #result.laneAssignments==total and visits()==0)
+ end
+ Time=savedTime
 end
 local task=buildTask(1000,{['1']=true})
 local taskState={referenceMetadataCache={},memberUICache={}}

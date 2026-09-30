@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.35"
+local PLUGIN_VERSION = "0.7.1.36"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -23,6 +23,8 @@ local PENDING_RESOLVER_REFRESH_SECONDS = 0.01
 local RESOLVER_METADATA_ROWS_PER_SLICE = 8
 local RESOLVER_MAX_MEMBERS_PER_SLICE = 256
 local RESOLVER_ROW_MEMBER_WORK_PER_SLICE = 24000
+local RESOLVER_TICK_BUDGET_MS = 8
+local RESOLVER_MAX_STEPS_PER_TICK = 4
 local TRACKING_SIGNATURE_POLL_SECONDS = 0.1
 -- Sequence/Cue changes still force an immediate signature; only recipe edits
 -- are polled less often while a long resolver task is pending.
@@ -1465,10 +1467,10 @@ local function render(state)
                 formatElapsed(state.lastResolverSliceMs),formatElapsed(resolverTotalDisplay),
                 formatElapsed(state.lastPoolDiscoveryMs),formatElapsed(state.lastTileApplyMs))
             resolverLines[#resolverLines+1]=string.format(
-                "Resolver work ms: metadata %s | member UI %s | engine %s",
+                "Resolver work ms: metadata %s | member UI %s | engine %s | steps/tick %d",
                 formatElapsed(state.lastResolverMetadataTotalMs),
                 formatElapsed(state.lastResolverMemberUITotalMs),
-                formatElapsed(state.lastResolverEngineTotalMs))
+                formatElapsed(state.lastResolverEngineTotalMs),state.lastResolverStepsPerTick or 0)
         end
     end
     if state and #state.matchingCandidates > 1 then
@@ -2472,7 +2474,7 @@ end
         local metadataReads=0
         while cursor<=#task.rows and metadataReads<RESOLVER_METADATA_ROWS_PER_SLICE do
             local row=task.rows[cursor]
-            local refKey=commandAddress(row.ref)
+            local refKey=task.identity and task.identity(row.ref) or commandAddress(row.ref)
             if refKey and cache[refKey]==nil then
                 task.runtime.metadata(row.ref,cache)
                 taskState.lastResolverStage="REFERENCE_METADATA"
@@ -2544,6 +2546,8 @@ end
                 memberSlice[member.key]=member.handle
             end
             taskState.lastResolverStage="REVERSE_LANES"
+            local metadataBefore=taskState.lastResolverMetadataMs or 0
+            local memberUIBefore=taskState.lastResolverMemberUIMs or 0
             local engineStarted=contextClock()
             local ok,result=pcall(task.runtime.run,task.rows,memberSlice,
                 taskState.referenceMetadataCache,taskState.memberUICache,true,
@@ -2551,8 +2555,8 @@ end
             local elapsed=contextElapsed(engineStarted)
             taskState.lastResolverReverseMs=elapsed
             taskState.lastResolverEngineMs=type(elapsed)=="number"
-                and math.max(0,elapsed-(taskState.lastResolverMetadataMs or 0)
-                    -(taskState.lastResolverMemberUIMs or 0)) or nil
+                and math.max(0,elapsed-((taskState.lastResolverMetadataMs or 0)-metadataBefore)
+                    -((taskState.lastResolverMemberUIMs or 0)-memberUIBefore)) or nil
             task.metadataMs=task.metadataMs+(taskState.lastResolverMetadataMs or 0)
             task.memberUIMs=task.memberUIMs+(taskState.lastResolverMemberUIMs or 0)
             task.engineMs=task.engineMs+(taskState.lastResolverEngineMs or 0)
@@ -2593,6 +2597,42 @@ end
         end
         aggregate.attributionSeen=nil
         return aggregate
+    end
+    local function advanceStagedResolverBudgeted(task,taskState)
+        -- Native calls stay in the caller's plugin coroutine. The budget is
+        -- soft: it stops the next step, never interrupts a running native API.
+        local started=taskState.resolverTickStarted or contextClock()
+        local metadataMs,memberUIMs,engineMs,reverseMs=0,0,0,0
+        local measuredEngine,measuredReverse=false,false
+        local result,steps
+        for step=1,RESOLVER_MAX_STEPS_PER_TICK do
+            if step>1 then
+                local elapsed=contextElapsed(started)
+                if not callable("Time") or type(elapsed)~="number"
+                    or elapsed<0 or elapsed>=RESOLVER_TICK_BUDGET_MS then break end
+            end
+            taskState.lastResolverMetadataMs=0
+            taskState.lastResolverMemberUIMs=0
+            taskState.lastResolverEngineMs=nil
+            taskState.lastResolverReverseMs=nil
+            result=advanceStagedResolver(task,taskState)
+            steps=step
+            metadataMs=metadataMs+(taskState.lastResolverMetadataMs or 0)
+            memberUIMs=memberUIMs+(taskState.lastResolverMemberUIMs or 0)
+            if type(taskState.lastResolverEngineMs)=="number" then
+                engineMs=engineMs+taskState.lastResolverEngineMs; measuredEngine=true
+            end
+            if type(taskState.lastResolverReverseMs)=="number" then
+                reverseMs=reverseMs+taskState.lastResolverReverseMs; measuredReverse=true
+            end
+            if result.classification~="PENDING" then break end
+        end
+        taskState.lastResolverMetadataMs=metadataMs
+        taskState.lastResolverMemberUIMs=memberUIMs
+        taskState.lastResolverEngineMs=measuredEngine and engineMs or nil
+        taskState.lastResolverReverseMs=measuredReverse and reverseMs or nil
+        taskState.lastResolverStepsPerTick=steps or 0
+        return result
     end
     local function selectStageResult(stageResult,selectedMembers)
         local provenPartial=(stageResult.classification=="INCONCLUSIVE"
@@ -2699,9 +2739,18 @@ end
     if taskState and taskState.incrementalResolver and taskState.resolverTask
         and taskState.resolverTask.key==taskState.resolverWorkKey then
         local task=taskState.resolverTask
+        local selectionChanged=false
+        for key,handle in pairs(task.selectedMembers or {}) do
+            if selectedMembers[key]~=handle then selectionChanged=true; break end
+        end
+        if not selectionChanged then
+            for key,handle in pairs(selectedMembers) do
+                if (task.selectedMembers or {})[key]~=handle then selectionChanged=true; break end
+            end
+        end
         task.selectedMembers=selectedMembers
-        reprioritizeRemainingStageMembers(task,selectedMembers)
-        local result=advanceStagedResolver(task,taskState)
+        if selectionChanged then reprioritizeRemainingStageMembers(task,selectedMembers) end
+        local result=advanceStagedResolverBudgeted(task,taskState)
         return cacheAndSelectStageResult(taskState,task.stageKey,result,selectedMembers)
     end
     if not sequence or not currentCue then
@@ -2818,8 +2867,23 @@ end
     end
     state.referenceMetadataCache=state.referenceMetadataCache or {}
     state.memberUICache=state.memberUICache or {}
+    -- This identity cache lives only with this stage runtime/task. Existing
+    -- structure invalidation, Cue changes and forceRefresh discard the task.
+    -- Never cache fixture canonical identity or persist this across stages.
+    local stageIdentityCache,stageIdentityCount={},0
+    local function stageIdentity(object)
+        if object==nil then return nil end
+        local cached=stageIdentityCache[object]
+        if cached~=nil then return cached end
+        local value=commandAddress(object)
+        if value~=nil and stageIdentityCount<4096 then
+            stageIdentityCache[object]=value
+            stageIdentityCount=stageIdentityCount+1
+        end
+        return value
+    end
     local runtime=newTrackARuntime({safe=safe,class=class,children=children,
-        identity=commandAddress,objectList=_G.ObjectList,
+        identity=stageIdentity,objectList=_G.ObjectList,
         getPresetData=function(...)
             local started=contextClock()
             local result=_G.GetPresetData(...)
@@ -2843,9 +2907,9 @@ end
         local task={key=taskState.resolverWorkKey,stageKey=stageKey,rows=scopedRows,
             selectedMembers=selectedMembers,stageMembers=stageMembers,members=members,runtime=runtime,
             memberSliceLimit=memberSliceLimit,memberRowsByKey=memberRowsByKey,indexedRows=indexedRows,
-            metadataIndex=1,memberIndex=1,engineMs=indexElapsed}
+            metadataIndex=1,memberIndex=1,engineMs=indexElapsed,identity=stageIdentity}
         taskState.resolverTask=task
-        local result=advanceStagedResolver(task,taskState)
+        local result=advanceStagedResolverBudgeted(task,taskState)
         return cacheAndSelectStageResult(taskState,stageKey,result,selectedMembers)
     end
     local reverseStarted=contextClock()
@@ -2862,6 +2926,7 @@ end
     end
     local function refresh(state, sequence, currentCue, fixtures, info)
     if not state then return nil end
+    state.lastResolverStepsPerTick=0
     fixtures=fixtures or {}
     local memberKeys = {}
     for _, fixture in ipairs(fixtures or {}) do
@@ -2912,6 +2977,7 @@ end
         state.lastResolverEngineTotalMs=0
     end
     local started = contextClock()
+    state.resolverTickStarted=state.renderTickStarted or started
     state.lastResolverMetadataMs=0
     state.lastResolverMemberUIMs=0
     state.lastResolverEngineMs=nil
@@ -2981,6 +3047,7 @@ end
             sources = sources,
             refresh = refresh,
             advanceStagedResolver = advanceStagedResolver,
+            advanceStagedResolverBudgeted = advanceStagedResolverBudgeted,
             selectStageResult = selectStageResult,
             orderedStageMembers = orderedStageMembers,
         }
@@ -3954,7 +4021,7 @@ local function refreshPoolMarkers(state)
                 tostring(probe.matchMethod or "-"))) end
         end
         if callable("ErrEcho") then safe(ErrEcho,string.format(
-            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s group_cache_hits=%d resolver_cue_scan_ms=%s resolver_scope_ms=%s metadata_ms=%s member_ui_ms=%s resolver_engine_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d metadata_total_ms=%s member_ui_total_ms=%s engine_total_ms=%s",
+            "[RecipeTracking][ContextTiming] selection_ms=%s programmer_ms=%s tracking_scan_ms=%s tracking_sig_ms=%s render_ms=%s group_ms=%s group_cache_hits=%d resolver_cue_scan_ms=%s resolver_scope_ms=%s metadata_ms=%s member_ui_ms=%s resolver_engine_ms=%s resolver_slice_ms=%s resolver_total_ms=%s discovery_ms=%s tile_apply_ms=%s marker_ms=%s grids=%d refs=%d metadata_total_ms=%s member_ui_total_ms=%s engine_total_ms=%s resolver_steps=%d",
             formatElapsed(state.lastSelectionReadMs),formatElapsed(state.lastProgrammerMs),
             formatElapsed(state.lastTrackingScanMs),formatElapsed(state.lastTrackingFingerprintMs),
             formatElapsed(state.lastRenderMs),
@@ -3968,7 +4035,7 @@ local function refreshPoolMarkers(state)
             formatElapsed(elapsedMs(markerStarted)),#grids,#keys,
             formatElapsed(state.lastResolverMetadataTotalMs),
             formatElapsed(state.lastResolverMemberUITotalMs),
-            formatElapsed(state.lastResolverEngineTotalMs))) end
+            formatElapsed(state.lastResolverEngineTotalMs),state.lastResolverStepsPerTick or 0)) end
     end
 end
 
@@ -4784,7 +4851,9 @@ local function main()
         -- resolver is working.
         advancePoolPulse(state)
         local renderStarted=clockSeconds()
+        state.renderTickStarted=renderStarted
         local ok, text, sourceHighlightText, currentHighlightText, presetHighlightText = pcall(render, state)
+        state.renderTickStarted=nil
         state.lastRenderMs=elapsedMs(renderStarted)
         if not ok then
             text = "RECIPE TRACKING INSPECTOR v" .. PLUGIN_VERSION ..
