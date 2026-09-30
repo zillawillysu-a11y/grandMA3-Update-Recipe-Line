@@ -1577,7 +1577,7 @@ do
   local channels=uiCalls
   local refs=functions.recipePoolReferences(preview)
   check(refs["Preset 1.2"]==moving and refs["Preset 1.1"]==static
-   and preview.provenSources.reason=="CANDIDATE_PREVIEW"
+   and preview.provenSources.reason=="CUE_DELTA_PREVIEW"
    and referenceReads.count==reads and uiCalls==channels,
    "candidate preview must paint before metadata/member reads, including unverified killed history")
   check(preview.selectedRecipeReferenceCount==0 and next(preview.selectedRecipeReferenceKeys)==nil,
@@ -1596,6 +1596,7 @@ do
   check(next(refs)==nil,
    "Recipe deletion must rebuild preview instead of retaining stale candidate")
   local seq2,cue2=tree({recipe(gOne,unknown,1)})
+  seq2.ToAddr=function() return "Sequence 10" end
   preview=state(seq2,cue2,fOne)
   preview.incrementalResolver=true; preview.optimisticMarkers=true
   functions.recipePoolReferences(preview)
@@ -1629,6 +1630,108 @@ do
   refs=functions.recipePoolReferences(preview)
   check(next(refs)==nil,
    "switching Cue must drop the previous Cue candidate immediately")
+ end)()
+end
+do
+ (function()
+  local meta={kind="ORDINARY",mode=2,lanes={["Dimmer|ABS"]={fg="Dimmer",layer="ABS"}}}
+  local positionMeta={kind="ORDINARY",mode=2,lanes={["Position|ABS"]={fg="Position",layer="ABS"}}}
+  local cache={[tostring(moving)]=meta,[tostring(static)]=meta,[tostring(position)]=positionMeta}
+  local old=object("Cue","Cue 1",{No=1},{object("Part","Old Part",{Part=0},{recipe(gOne,beam,1)})})
+  local current=object("Cue","Cue 2",{No=2},{object("Part","Current Part",{Part=0},{recipe(gOne,moving,1)})})
+  local nextCue=object("Cue","Cue 3",{No=3},{object("Part","Next Part",{Part=0},{recipe(gOne,static,1)})})
+  local later=object("Cue","Cue 4",{No=4},{object("Part","Later Part",{Part=0},{recipe(gOne,position,1)})})
+  local seq=object("Sequence","Sequence Delta",{}, {old,current,nextCue,later})
+  local preview=state(seq,current,fOne)
+  preview.optimisticMarkers=true; preview.incrementalResolver=true
+  preview.referenceMetadataCache=cache
+  local reads=referenceReads.count; local channels=uiCalls
+  local oldChildren=old.Children
+  old.Children=function() error("cold candidate must not walk historical Recipes") end
+  local refs=functions.recipePoolReferences(preview)
+  old.Children=oldChildren
+  check(refs[tostring(moving)]==moving and refs[tostring(beam)]==nil
+   and refs[tostring(static)]==nil and refs[tostring(position)]==nil
+   and referenceReads.count==reads and uiCalls==channels,
+   "cold delta must show only current Cue, never historical or future candidates, without native data reads")
+  preview.currentCue=nextCue
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(static)]==static and refs[tostring(moving)]==nil,
+   "next Cue with same Group and cached ABS scope must remove old Preset on the preview render")
+  preview.currentCue=later
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(static)]==static and refs[tostring(position)]==position
+   and refs[tostring(beam)]==nil,
+   "next Cue on another feature must retain prior visible lane and add only new Cue references")
+  preview.currentCue=current
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(moving)]==moving and refs[tostring(static)]==nil and refs[tostring(position)]==nil,
+   "backward jump must reset to target Cue preview instead of carrying future references")
+  preview.currentCue=later
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(position)]==position and refs[tostring(moving)]==nil,
+   "skipping Cues must start target preview without importing unseen intermediate Recipes")
+  local delta=preview.provenHooks.deltaPreview
+  local a={ref=moving,refId=tostring(moving),group=gOne}
+  local b={ref=static,refId=tostring(static),group=gCell}
+  refs=delta({a,b},cache)
+  check(refs[tostring(moving)]==moving and refs[tostring(static)]==static,
+   "different Groups must not cause reference-wide early exclusion")
+  refs=delta({a,{ref=moving,refId=tostring(moving),group=gCell},
+   {ref=static,refId=tostring(static),group=gOne}},cache)
+  check(refs[tostring(moving)]==moving,
+   "same Preset surviving in another Group must remain visible after one Group is replaced")
+  refs=delta({a,{ref=selective,refId=tostring(selective),group=gOne}},
+   {[tostring(moving)]=meta,[tostring(selective)]={kind="ORDINARY",mode=1,lanes=meta.lanes}})
+  check(refs[tostring(moving)]==moving,
+   "selective new Preset cannot claim whole-Group replacement")
+  refs=delta({a,{ref=static,refId=tostring(static),group=gOne}}, {[tostring(moving)]=meta})
+  check(refs[tostring(moving)]==moving,
+   "uncached new scope must not invent an early kill")
+  refs=delta({a,{ref=static,refId=tostring(static),group=gOne}},cache)
+  check(refs[tostring(moving)]==nil,
+   "newly warmed scope must reconcile preview without waiting for member completion")
+  local rel={ref=position,refId=tostring(position),group=gOne}
+  local both={kind="ORDINARY",mode=2,lanes={["Dimmer|ABS"]={},["Dimmer|REL"]={}}}
+  refs=delta({a,{ref=static,refId=tostring(static),group=gOne}},
+   {[tostring(moving)]=both,[tostring(static)]=meta})
+  check(refs[tostring(moving)]==moving,
+   "ABS replacement must retain a Preset with surviving REL contribution")
+  refs=delta({a,{ref=static,refId=tostring(static),group=gOne},rel},
+   {[tostring(moving)]=both,[tostring(static)]=meta,
+    [tostring(position)]={kind="ORDINARY",mode=2,lanes={["Dimmer|REL"]={}}}})
+  check(refs[tostring(moving)]==nil,
+   "a Preset may disappear only after all its layers are replaced")
+  refs=delta({{ref=moving,refId=tostring(moving),group=gOne,baseline=true,
+    fixedLanes={["Position|ABS"]=true}},
+    {ref=position,refId=tostring(position),group=gOne}},
+    {[tostring(moving)]=both,[tostring(position)]=positionMeta})
+  check(refs[tostring(moving)]==nil,
+   "proven baseline must use surviving lanes instead of resurrecting killed metadata lanes")
+  refs=delta({{ref=moving,refId=tostring(moving),group=gOne,baseline=true,
+      fixedLanes={["Dimmer|ABS"]=true}},
+    {ref=static,refId=tostring(static),group=gOne,baseline=true,
+      fixedLanes={["Dimmer|ABS"]=true}}},cache)
+  check(refs[tostring(moving)]==moving and refs[tostring(static)]==static,
+   "proven selective baseline contributions must not overwrite one another during carry")
+  local baselineSeq,baselineCue=tree({recipe(gOne,moving,1)})
+  local baseline=state(baselineSeq,baselineCue,fOne)
+  baseline.optimisticMarkers=true; baseline.incrementalResolver=true
+  functions.recipePoolReferences(baseline)
+  for i=1,100 do
+   functions.recipePoolReferences(baseline)
+   if baseline.provenSources.classification~="PENDING" then break end
+  end
+  check(baseline.provenSources.classification=="PROVEN"
+   and #baseline.optimisticMarkerRows==1
+   and baseline.optimisticMarkerRows[1].fixedLanes[baseline.provenSources.laneAssignments[1].lane],
+   "completed resolver must snapshot exact surviving lanes for the next Cue delta")
+  local part=object("Part","Delete Part",{Part=0},{})
+  later.Children=function() return {part} end
+  preview.trackARecipeStructureKey="deleted"
+  refs=functions.recipePoolReferences(preview)
+  check(next(refs)==nil,
+   "same-Cue Recipe deletion must reset candidate preview rather than carry the previous delta")
  end)()
 end
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.37"
+local PLUGIN_VERSION = "0.7.1.38"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -2229,7 +2229,7 @@ local function newTrackARuntime(api)
         local function assignmentView()
             local view={}
             for _,assignment in ipairs(assignments) do
-                view[#view+1]={member=assignment.member,fg=assignment.fg,
+                view[#view+1]={member=assignment.member,lane=assignment.lane,fg=assignment.fg,
                     refId=assignment.row.refId,ref=assignment.row.ref,
                     group=assignment.row.group,moving=assignment.moving}
             end
@@ -2874,10 +2874,11 @@ end
         -- retain the same final handle precedence as the original row loop.
         cachedGroup.lastRowIndex=rowIndex
         scopeGroups[rowIndex]=cachedGroup
-        scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys,
+        local refId=commandAddress(values)
+        scopedRows[#scopedRows+1]={ref=values,refId=refId,group=group,recipe=row.recipe,groupMembers=keys,
             groupMemberCount=cachedGroup.memberCount}
         stageSignatures[#stageSignatures+1]=table.concat({
-            tostring(commandAddress(row.recipe)),tostring(commandAddress(values)),gid,
+            tostring(commandAddress(row.recipe)),tostring(refId),gid,
             tostring(cachedGroup.signature)
         },"/")
     end
@@ -2890,6 +2891,7 @@ end
     if #scopedRows==0 or not next(stageMembers) then
         return {classification="INCONCLUSIVE", reason="NO_APPLICABLE_RECIPE"}
     end
+    if taskState then taskState.previewStageRows=scopedRows end
     local stageKey=table.concat({historyKey,tostring(historySignature),table.concat(stageSignatures,"\1")},"\2")
     if taskState then taskState.lastResolverStageCacheHit=false end
     local stageCache=taskState and taskState.trackAStageSourcesCache
@@ -3084,52 +3086,174 @@ end
             orderedStageMembers = orderedStageMembers,
         }
     end
+    local function deltaPreview(rows,cache)
+        local entries,byGroup,groupIds={},{},{}
+        for _,row in ipairs(rows or {}) do
+            local meta=(cache or {})[row.refId]
+            local lanes
+            local canReplace=not row.baseline
+            if row.fixedLanes then
+                lanes={}; for lane in pairs(row.fixedLanes) do lanes[lane]=true end
+            end
+            -- Selective scope cannot replace every fixture in a Stored Group.
+            if not lanes and type(meta)=="table" and meta.kind=="ORDINARY" and (meta.mode==2 or meta.mode==3) then
+                lanes={}
+                for lane in pairs(meta.lanes or {}) do lanes[lane]=true end
+            elseif not lanes and type(meta)=="table" and (meta.kind=="PHASER" or meta.kind=="GENERATOR") then
+                lanes={}
+                for lane in pairs(meta.lanes or {}) do lanes[lane]=true end
+            end
+            local entry={ref=row.ref,refId=row.refId,group=row.group,lanes=lanes}
+            if lanes and next(lanes) and row.group then
+                local gid=groupIds[row.group]
+                if gid==nil then gid=commandAddress(row.group) or false; groupIds[row.group]=gid end
+                if gid then
+                    local owners=byGroup[gid] or {}
+                    byGroup[gid]=owners
+                    for lane in pairs(lanes) do
+                        local oldOwners=owners[lane] or {}
+                        if canReplace then
+                            for _,old in ipairs(oldOwners) do old.lanes[lane]=nil end
+                            owners[lane]={entry}
+                        else
+                            oldOwners[#oldOwners+1]=entry; owners[lane]=oldOwners
+                        end
+                    end
+                end
+            end
+            entries[#entries+1]=entry
+        end
+        local refs={}
+        for _,entry in ipairs(entries) do
+            if entry.lanes==nil or next(entry.lanes) then refs[entry.refId]=entry.ref end
+        end
+        return refs
+    end
+    if state and state.provenHooks then state.provenHooks.deltaPreview=deltaPreview end
+    local function rememberVisibleRows(result)
+        if not state.optimisticMarkers or result.classification=="PENDING"
+            or state.optimisticSnapshotResult==result then return end
+        state.optimisticSnapshotResult=result
+        if result.classification=="PROVEN" then
+            local active=result.activeRefs or result.refs or {}
+            local rows,winners,seen={},{},{}
+            for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
+                for _,assignment in ipairs(result[field] or {}) do
+                    local group,id,lane=assignment.group,assignment.refId,assignment.lane
+                    if group and id and lane then
+                        winners[group]=winners[group] or {}
+                        winners[group][id]=winners[group][id] or {}
+                        winners[group][id][lane]=true
+                    end
+                end
+            end
+            -- Snapshot only actual surviving group/lane contributions. A
+            -- partially surviving multi-feature Preset must not regain lanes
+            -- killed before this Cue when the next delta is applied.
+            for index=#(state.previewStageRows or {}),1,-1 do
+                local row=state.previewStageRows[index]
+                local id=row.refId or commandAddress(row.ref)
+                local lanes=(winners[row.group] or {})[id]
+                seen[row.group]=seen[row.group] or {}
+                if active[id] and lanes and not seen[row.group][id] then
+                    seen[row.group][id]=true
+                    rows[#rows+1]={ref=row.ref,refId=id,group=row.group,recipe=row.recipe,
+                        fixedLanes=lanes,baseline=true}
+                end
+            end
+            state.optimisticMarkerRows=rows
+            state.optimisticMarkerRefs=active
+        elseif result.classification=="INCONCLUSIVE" then
+            local refs=state.optimisticMarkerRefs or {}
+            if not result.exclusionIncomplete then
+                for id,excluded in pairs(result.refExclusionVerdicts or {}) do
+                    if excluded then refs[id]=nil end
+                end
+            end
+            state.optimisticMarkerRefs=refs
+            local rows={}
+            for _,row in ipairs(state.optimisticMarkerRows or {}) do
+                if refs[row.refId] then rows[#rows+1]=row end
+            end
+            state.optimisticMarkerRows=rows
+        end
+    end
     local flagOn = state ~= nil and state.provenEnabled == true
     if flagOn then
-        -- Candidate frames are display-only. Never feed them into selected
-        -- attribution, Group matching or Recipe write decisions.
+        -- Delta preview uses only the new Cue plus the previous visible set.
+        -- It never seeds candidate frames from the complete history walk.
         if state.optimisticMarkers then
-            local key=tostring(commandAddress(state.currentSequence))..":"
-                ..tostring(cueNumber(state.currentCue))..":"
-                ..tostring(state.trackARecipeStructureKey)
+            local sequenceId=commandAddress(state.currentSequence)
+            local number=cueNumber(state.currentCue)
+            local key=tostring(sequenceId)..":"..tostring(number)..":"..tostring(state.trackARecipeStructureKey)
             if state.optimisticMarkerKey~=key or state.forceRefresh==true then
-                state.optimisticMarkerKey=key
-                state.optimisticMarkerRefs={}
-                local currentNumber=cueNumber(state.currentCue)
-                local cueCount,recipeCount=0,0
-                for _,cue in ipairs(children(state.currentSequence)) do
-                    if cueCount>=MAX_CUES or recipeCount>=MAX_RECIPES then break end
-                    local number=cueNumber(cue)
-                    if string.lower(class(cue))=="cue" and currentNumber and number and number<=currentNumber then
-                        cueCount=cueCount+1
-                        for _,part in ipairs(children(cue)) do
-                            if string.lower(class(part))=="part" then
-                                for _,recipe in ipairs(children(part)) do
-                                    if recipeCount>=MAX_RECIPES then break end
-                                    if isStandardRecipe(recipe) and recipeEnabled(recipe) then
-                                        recipeCount=recipeCount+1
-                                        local ref=recipeField(recipe,"Generator") or recipeField(recipe,"Values")
-                                        local id=ref and commandAddress(ref)
-                                        if id then state.optimisticMarkerRefs[id]=ref end
-                                    end
-                                end
+                local rows={}
+                local previousNumber=state.optimisticCueNumber
+                local nextNumber
+                if state.optimisticSequenceId==sequenceId and previousNumber and number and number>previousNumber then
+                    for _,cue in ipairs(children(state.currentSequence)) do
+                        local candidate=string.lower(class(cue))=="cue" and cueNumber(cue) or nil
+                        if candidate and candidate>previousNumber and (not nextNumber or candidate<nextNumber) then nextNumber=candidate end
+                    end
+                end
+                if nextNumber==number and state.forceRefresh~=true then
+                    for _,row in ipairs(state.optimisticMarkerRows or {}) do
+                        if (state.optimisticMarkerRefs or {})[row.refId]
+                            and (not row.recipe or (recipeEnabled(row.recipe)
+                                and sameReference(recipeField(row.recipe,"Selection"),row.group)
+                                and sameReference(recipeField(row.recipe,"Generator") or recipeField(row.recipe,"Values"),row.ref))) then
+                            rows[#rows+1]=row
+                        end
+                    end
+                end
+                local direct={}
+                for _,part in ipairs(children(state.currentCue)) do
+                    if string.lower(class(part))=="part" then
+                        for ordinal,recipe in ipairs(children(part)) do
+                            if #direct>=MAX_RECIPES then break end
+                            if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                                local ref=recipeField(recipe,"Generator") or recipeField(recipe,"Values")
+                                local id=ref and commandAddress(ref)
+                                if id then direct[#direct+1]={recipe=recipe,ref=ref,refId=id,
+                                    group=recipeField(recipe,"Selection"),partNumber=partNumber(part),
+                                    recipeIndex=recipeNumber(recipe,ordinal) or ordinal} end
                             end
                         end
                     end
                 end
+                table.sort(direct,function(left,right)
+                    if left.partNumber~=right.partNumber then return left.partNumber<right.partNumber end
+                    return left.recipeIndex<right.recipeIndex
+                end)
+                -- Bound preview state independently of a long run of rapid
+                -- transitions whose background scans never finish.
+                if #rows+#direct>MAX_RECIPES then rows={} end
+                for _,row in ipairs(direct) do rows[#rows+1]=row end
+                state.optimisticMarkerRows=rows
+                state.optimisticMarkerKey=key
+                state.optimisticSnapshotResult=nil
+                state.optimisticSequenceId=sequenceId
+                state.optimisticCueNumber=number
+                state.optimisticMarkerRefs=deltaPreview(rows,state.referenceMetadataCache)
                 state.selectedRecipeReferenceKeys={}
                 state.selectedRecipeReferenceCount=0
                 state.currentGroups={}
-                state.provenSources={classification="PENDING",reason="CANDIDATE_PREVIEW",refs={}}
+                state.provenSources={classification="PENDING",reason="CUE_DELTA_PREVIEW",refs={}}
+                state.resolverMembersTotal=nil
+                state.resolverRecipeRowsTotal=nil
                 state.provenSourceKey=nil
-                -- Return before member/metadata/index work so overlays get a
-                -- host render before the background proof begins.
                 for _,ref in pairs(state.optimisticMarkerRefs) do add(ref) end
                 return references
+            end
+            -- Newly warmed metadata can establish same-Group replacement
+            -- before the member resolver finishes. No new native reads here.
+            if not state.provenSources or state.provenSources.classification~="PROVEN" then
+                state.optimisticMarkerRefs=deltaPreview(state.optimisticMarkerRows,state.referenceMetadataCache)
             end
         end
         local provenResult = refresh(state, state.currentSequence, state.currentCue,
             state.lastFixtures, { feature = state.lastFeature })
+        rememberVisibleRows(provenResult)
         state.currentGroups={}
         state.selectedRecipeReferenceKeys={}
         state.selectedRecipeReferenceCount=0

@@ -644,7 +644,7 @@ local function newTrackARuntime(api)
         local function assignmentView()
             local view={}
             for _,assignment in ipairs(assignments) do
-                view[#view+1]={member=assignment.member,fg=assignment.fg,
+                view[#view+1]={member=assignment.member,lane=assignment.lane,fg=assignment.fg,
                     refId=assignment.row.refId,ref=assignment.row.ref,
                     group=assignment.row.group,moving=assignment.moving}
             end
