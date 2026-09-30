@@ -1734,4 +1734,57 @@ do
    "same-Cue Recipe deletion must reset candidate preview rather than carry the previous delta")
  end)()
 end
+do
+ (function()
+  local before=object("Cue","Carry Cue 1",{No=1},{object("Part","Carry Part 1",{Part=0},
+   {recipe(gOne,static,1),recipe(gOne,position,2),recipe(gOne,generator,3)})})
+  local current=object("Cue","Carry Cue 2",{No=2},{object("Part","Carry Part 2",{Part=0},
+   {recipe(gCell,unsafe,1)})})
+  local nextCue=object("Cue","Carry Cue 3",{No=3},{object("Part","Carry Part 3",{Part=0},
+   {recipe(gOne,beam,1)})})
+  local seq=object("Sequence","Sequence Ordinary Carry",{}, {before,current,nextCue})
+  local preview=state(seq,current,{})
+  preview.optimisticMarkers=true; preview.incrementalResolver=true
+  functions.recipePoolReferences(preview)
+  local refs
+  for i=1,100 do
+   refs=functions.recipePoolReferences(preview)
+   if preview.provenSources.classification~="PENDING" then break end
+  end
+  check(preview.provenSources.classification=="INCONCLUSIVE"
+   and refs[tostring(static)]==static and refs[tostring(position)]==position
+   and refs[tostring(generator)]==generator,
+   "fixture must expose proven static, moving and Generator references beside unresolved Phaser")
+  local savedTile,savedOverlay=tileAlias,overlay
+  tileAlias=static
+  preview.running=true; preview.poolBlink=true; preview.poolGrids={pool}
+  preview.poolMarkersDirty=true; preview.markerReferences=refs
+  functions.refreshPoolMarkers(preview)
+  local retainedOverlay=preview.poolMarkers[button] and preview.poolMarkers[button].overlay
+  check(retainedOverlay and not retainedOverlay.deleted,
+   "partially proven ordinary Preset must have an existing visible overlay before transition")
+  preview.currentCue=nextCue
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(static)]==static and refs[tostring(position)]==position
+   and refs[tostring(beam)]==beam and refs[tostring(generator)]==generator,
+   "all source classes discovered by partial proof must stay lit during the next Cue preview")
+  preview.markerReferences=refs; preview.poolMarkersDirty=true
+  functions.refreshPoolMarkers(preview)
+  check(preview.poolMarkers[button] and preview.poolMarkers[button].overlay==retainedOverlay
+   and not retainedOverlay.deleted,
+   "ordinary Preset overlay must remain the same live object across Cue delta without off/on recreation")
+  functions.clearPoolMarkers(preview)
+  tileAlias=savedTile; overlay=savedOverlay
+  local replacement=object("Cue","Carry Cue 4",{No=4},{object("Part","Carry Part 4",{Part=0},
+   {recipe(gOne,moving,1)})})
+  seq.Children=function() return {before,current,nextCue,replacement} end
+  preview.referenceMetadataCache[tostring(moving)]={kind="ORDINARY",mode=2,
+   lanes=preview.referenceMetadataCache[tostring(static)].lanes}
+  preview.currentCue=replacement
+  refs=functions.recipePoolReferences(preview)
+  check(refs[tostring(static)]==nil and refs[tostring(moving)]==moving
+   and refs[tostring(position)]==position and refs[tostring(generator)]==generator,
+   "same-Group ordinary replacement must close the old Preset while preserving other feature references")
+ end)()
+end
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

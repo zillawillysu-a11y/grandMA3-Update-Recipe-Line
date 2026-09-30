@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.38"
+local PLUGIN_VERSION = "0.7.1.39"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -3134,49 +3134,52 @@ end
         if not state.optimisticMarkers or result.classification=="PENDING"
             or state.optimisticSnapshotResult==result then return end
         state.optimisticSnapshotResult=result
-        if result.classification=="PROVEN" then
-            local active=result.activeRefs or result.refs or {}
-            local rows,winners,seen={},{},{}
-            for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
-                for _,assignment in ipairs(result[field] or {}) do
-                    local group,id,lane=assignment.group,assignment.refId,assignment.lane
-                    if group and id and lane then
-                        winners[group]=winners[group] or {}
-                        winners[group][id]=winners[group][id] or {}
-                        winners[group][id][lane]=true
-                    end
-                end
+        local complete=result.classification=="PROVEN"
+        local active=complete and (result.activeRefs or result.refs or {})
+            or result.provenActiveRefs or {}
+        local refs={}
+        if not complete then
+            for id,ref in pairs(state.optimisticMarkerRefs or {}) do
+                if result.exclusionIncomplete or not (result.refExclusionVerdicts or {})[id] then refs[id]=ref end
             end
-            -- Snapshot only actual surviving group/lane contributions. A
-            -- partially surviving multi-feature Preset must not regain lanes
-            -- killed before this Cue when the next delta is applied.
-            for index=#(state.previewStageRows or {}),1,-1 do
-                local row=state.previewStageRows[index]
-                local id=row.refId or commandAddress(row.ref)
-                local lanes=(winners[row.group] or {})[id]
-                seen[row.group]=seen[row.group] or {}
-                if active[id] and lanes and not seen[row.group][id] then
-                    seen[row.group][id]=true
-                    rows[#rows+1]={ref=row.ref,refId=id,group=row.group,recipe=row.recipe,
-                        fixedLanes=lanes,baseline=true}
-                end
-            end
-            state.optimisticMarkerRows=rows
-            state.optimisticMarkerRefs=active
-        elseif result.classification=="INCONCLUSIVE" then
-            local refs=state.optimisticMarkerRefs or {}
-            if not result.exclusionIncomplete then
-                for id,excluded in pairs(result.refExclusionVerdicts or {}) do
-                    if excluded then refs[id]=nil end
-                end
-            end
-            state.optimisticMarkerRefs=refs
-            local rows={}
-            for _,row in ipairs(state.optimisticMarkerRows or {}) do
-                if refs[row.refId] then rows[#rows+1]=row end
-            end
-            state.optimisticMarkerRows=rows
         end
+        for id,ref in pairs(active) do refs[id]=ref end
+        local rows,winners,seen={},{},{}
+        for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
+            for _,assignment in ipairs(result[field] or {}) do
+                local group,id,lane=assignment.group,assignment.refId,assignment.lane
+                if group and id and lane then
+                    winners[group]=winners[group] or {}
+                    winners[group][id]=winners[group][id] or {}
+                    winners[group][id][lane]=true
+                end
+            end
+        end
+        -- Independently proven ordinary, Phaser and Generator contributions
+        -- all seed the next delta, even beside an unresolved reference. Do
+        -- not let an INCONCLUSIVE overall result erase these visible frames.
+        for index=#(state.previewStageRows or {}),1,-1 do
+            local row=state.previewStageRows[index]
+            local id=row.refId or commandAddress(row.ref)
+            local lanes=(winners[row.group] or {})[id]
+            seen[row.group]=seen[row.group] or {}
+            if active[id] and lanes and not seen[row.group][id] then
+                seen[row.group][id]=true
+                rows[#rows+1]={ref=row.ref,refId=id,group=row.group,recipe=row.recipe,
+                    fixedLanes=lanes,baseline=true}
+            end
+        end
+        if not complete then
+            -- Retain unresolved candidates without downgrading a known
+            -- surviving group/ref snapshot back to its original broad scope.
+            for _,row in ipairs(state.optimisticMarkerRows or {}) do
+                if refs[row.refId] and not (seen[row.group] or {})[row.refId] then
+                    rows[#rows+1]=row
+                end
+            end
+        end
+        state.optimisticMarkerRows=rows
+        state.optimisticMarkerRefs=refs
     end
     local flagOn = state ~= nil and state.provenEnabled == true
     if flagOn then
