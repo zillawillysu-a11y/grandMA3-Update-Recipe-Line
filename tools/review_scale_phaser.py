@@ -43,6 +43,7 @@ for _,total in ipairs({1265,12650}) do
  print(string.format('members=%d ticks=%d inter_slice_yield_ms=%d pending_assignment_visits=%d',
   total,ticks,(ticks-1)*10,visits()))
  assert(ticks==math.ceil(total/250))
+ assert(visits()==0, 'empty-selection PENDING projection must not inspect assignments')
 end
 local task=buildTask(1000,{['1']=true})
 local taskState={referenceMetadataCache={},memberUICache={}}

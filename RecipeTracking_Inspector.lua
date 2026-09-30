@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.34"
+local PLUGIN_VERSION = "0.7.1.35"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -2450,7 +2450,11 @@ end
                 if not aggregate.processedMembers[member] then selectedComplete=false; break end
             end
             local selectedAssignments,seen={},{}
-            if selectedComplete then
+            -- An empty selection has no red projection. Do not traverse the
+            -- growing Sequence assignment lists just to discard every entry.
+            -- Nonempty selections retain the complete current projection,
+            -- including when selection changes on the same resolver task.
+            if selectedComplete and next(task.selectedMembers or {})~=nil then
                 for _,field in ipairs({"laneAssignments","provenLaneAssignments"}) do
                     for _,assignment in ipairs(aggregate[field] or {}) do
                         if (task.selectedMembers or {})[assignment.member] then
@@ -2753,8 +2757,8 @@ end
     end
     local scopedRows,stageMembers,stageSignatures={},{},{}
     local resolverScopeStarted=contextClock()
-    local groupMemberCache={}
-    for _, row in ipairs(rows) do
+    local groupMemberCache,scopeGroups={},{}
+    for rowIndex, row in ipairs(rows) do
         local group=recipeField(row.recipe,"Selection")
         local gid=commandAddress(group)
         if gid==nil then return {classification="INCONCLUSIVE", reason="RECIPE_GROUP_UNPROVEN"} end
@@ -2767,21 +2771,39 @@ end
             cachedGroup={keys=keys,bad=groupBad,handles=handles,signature=groupSignature}
             groupMemberCache[group]=cachedGroup
         end
-        local keys,groupBad,handles,groupSignature=cachedGroup.keys,cachedGroup.bad,
-            cachedGroup.handles,cachedGroup.signature
+        local keys,groupBad,groupSignature=cachedGroup.keys,cachedGroup.bad,cachedGroup.signature
         local values = recipeField(row.recipe, "Generator") or recipeField(row.recipe, "Values")
         if groupBad > 0 then return { classification = "INCONCLUSIVE" } end
         if not values then return { classification = "INCONCLUSIVE" } end
-        for key,handle in pairs(handles or {}) do stageMembers[key]=handle end
-        local memberKeys={}
-        for key in pairs(keys) do memberKeys[#memberKeys+1]=key end
-        table.sort(memberKeys)
+        if cachedGroup.memberCount==nil then
+            local memberCount=0
+            local memberKeys=groupSignature==nil and {} or nil
+            for key in pairs(keys) do
+                memberCount=memberCount+1
+                if memberKeys then memberKeys[#memberKeys+1]=key end
+            end
+            cachedGroup.memberCount=memberCount
+            if memberKeys then
+                table.sort(memberKeys)
+                cachedGroup.signature=table.concat(memberKeys,",")
+            end
+        end
+        -- Repeated Recipe rows reuse this call's proven Group snapshot.
+        -- Union each Group once, in its last-row order, so overlapping Groups
+        -- retain the same final handle precedence as the original row loop.
+        cachedGroup.lastRowIndex=rowIndex
+        scopeGroups[rowIndex]=cachedGroup
         scopedRows[#scopedRows+1]={ref=values,group=group,groupMembers=keys,
-            groupMemberCount=#memberKeys}
+            groupMemberCount=cachedGroup.memberCount}
         stageSignatures[#stageSignatures+1]=table.concat({
             tostring(commandAddress(row.recipe)),tostring(commandAddress(values)),gid,
-            tostring(groupSignature or table.concat(memberKeys,","))
+            tostring(cachedGroup.signature)
         },"/")
+    end
+    for rowIndex,cachedGroup in ipairs(scopeGroups) do
+        if cachedGroup.lastRowIndex==rowIndex then
+            for key,handle in pairs(cachedGroup.handles or {}) do stageMembers[key]=handle end
+        end
     end
     if taskState then taskState.lastResolverScopeMs=contextElapsed(resolverScopeStarted) end
     if #scopedRows==0 or not next(stageMembers) then

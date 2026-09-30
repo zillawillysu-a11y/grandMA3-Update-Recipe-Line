@@ -154,6 +154,36 @@ do
  Time=savedTime
 end
 
+-- Empty selection must not inspect growing assignment lists; selecting an
+-- already completed member on the same task still rebuilds its red projection.
+do
+ local inspections=0
+ local members={}
+ for i=1,4 do members[i]={key=tostring(i),handle=i} end
+ local task={rows={},members=members,memberSliceLimit=1,selectedMembers={},
+  runtime={run=function(_,batch)
+   local assignments={}
+   for member in pairs(batch) do
+    assignments[#assignments+1]=setmetatable({lane="fg|ABS",refId="Preset "..member},
+     {__index=function(_,field)
+      if field=="member" then inspections=inspections+1; return member end
+     end})
+   end
+   return {classification="PROVEN",refs={},laneAssignments=assignments}
+  end}}
+ local taskState={referenceMetadataCache={},memberUICache={}}
+ local first=provenApi.advanceStagedResolver(task,taskState)
+ local second=provenApi.advanceStagedResolver(task,taskState)
+ check(first.classification=="PENDING" and second.classification=="PENDING"
+  and #second.laneAssignments==0 and inspections==0,
+  "empty selection must avoid every accumulated PENDING assignment inspection")
+ task.selectedMembers={["1"]=true}
+ local changed=provenApi.advanceStagedResolver(task,taskState)
+ check(changed.classification=="PENDING" and #changed.laneAssignments==1
+  and changed.laneAssignments[1].member=="1" and inspections>0,
+  "selecting an already completed member must restore its projection without restarting the task")
+end
+
 -- A blocker found in a later member slice withholds the combined final source
 -- set; pending results expose no partial Sequence markers.
 do
@@ -434,6 +464,61 @@ local function result(rows,fixtures)
  local seq,cue=tree(rows)
  return provenApi.sources(seq,cue,fixtures,{feature="Dimmer"}),seq,cue
 end
+-- Repeated Group rows share scope preparation within one call. Overlap handle
+-- precedence and exact fallback signatures remain equal to the old row loop.
+do
+ local rows={recipe(gBoth,moving,1),recipe(gOne,moving,2),recipe(gBoth,moving,3)}
+ local seq,cue=tree(rows)
+ local keyPasses,handlePasses,reads={},{},{}
+ local a,b,cell={},{},{}
+ local rawKeys={[gBoth]={["101"]=true,["201.1.1"]=true},[gOne]={["101"]=true}}
+ local rawHandles={[gBoth]={["101"]=a,["201.1.1"]=cell},[gOne]={["101"]=b}}
+ local original=swapUpvalue(provenApi.sources,"groupKeys",function(group)
+  reads[group]=(reads[group] or 0)+1
+  local keys=setmetatable({}, {__pairs=function()
+   keyPasses[group]=(keyPasses[group] or 0)+1
+   return next,rawKeys[group],nil
+  end})
+  local handles=setmetatable({}, {__pairs=function()
+   handlePasses[group]=(handlePasses[group] or 0)+1
+   return next,rawHandles[group],nil
+  end})
+  return keys,0,handles,group==gOne and "exact-group-signature" or nil
+ end)
+ local originalRuntime=swapUpvalue(provenApi.sources,"newTrackARuntime",function()
+  return {metadata=function() return {} end,run=function()
+   return {classification="PROVEN",refs={},activeRefs={},laneAssignments={}}
+  end}
+ end)
+ local taskState={incrementalResolver=true,resolverWorkKey="scope-repeated",
+  referenceMetadataCache={},memberUICache={}}
+ local resolved=provenApi.sources(seq,cue,{},nil,nil,taskState)
+ local task=taskState.resolverTask
+ check(resolved.classification=="PROVEN" and #task.rows==3
+  and task.rows[1].groupMemberCount==2 and task.rows[2].groupMemberCount==1
+  and task.rows[3].groupMemberCount==2,
+  "scope reuse must keep every Recipe row and its exact member count")
+ check(reads[gBoth]==1 and reads[gOne]==1 and keyPasses[gBoth]==1 and keyPasses[gOne]==1
+  and handlePasses[gBoth]==1 and handlePasses[gOne]==1,
+  "each distinct Group scope must be counted and unioned once per call")
+ check(task.stageMembers["101"]==a and task.stageMembers["201.1.1"]==cell
+  and task.stageKey:find("101,201.1.1",1,true)~=nil
+  and task.stageKey:find("exact-group-signature",1,true)~=nil,
+  "overlapping Groups must preserve last-row handle precedence and exact signature formats")
+ rawKeys[gBoth]["201.1.1"]=nil; rawHandles[gBoth]["201.1.1"]=nil
+ rows[1].Selection=gOne
+ local fresh={incrementalResolver=true,resolverWorkKey="scope-changed",
+  referenceMetadataCache={},memberUICache={}}
+ provenApi.sources(seq,cue,{},nil,nil,fresh)
+ check(fresh.resolverTask.stageMembers["101"]==b
+  and fresh.resolverTask.stageMembers["201.1.1"]==nil
+  and fresh.resolverTask.rows[1].groupMemberCount==1
+  and fresh.resolverTask.stageKey~=task.stageKey and reads[gBoth]==2 and reads[gOne]==2,
+  "a new scope call must rebuild edited Group membership and last-row precedence")
+ swapUpvalue(provenApi.sources,"groupKeys",original)
+ swapUpvalue(provenApi.sources,"newTrackARuntime",originalRuntime)
+end
+
 -- Static ordinary reference terminates without publishing itself.
 local staticResult=result({recipe(gOne,static,1)},fOne)
 check(staticResult.classification=="PROVEN" and next(staticResult.refs)==nil,

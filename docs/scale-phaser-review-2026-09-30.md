@@ -18,7 +18,7 @@
 
 ## 已執行的離線核對
 
-可重現：在工作樹執行 `python -u tools/review_scale_phaser.py`。探針直接取得 production 的 `advanceStagedResolver`，member engine 使用合成 assignments；沒有呼叫 grandMA3 native API，也沒有修改 production 原碼。
+本節數字對應研究 checkpoint `docs: review scale and raw Phaser optimization opportunities` 的 v0.7.1.34。在該 checkpoint 執行 `python -u tools/review_scale_phaser.py` 可重現。探針直接取得 production 的 `advanceStagedResolver`，member engine 使用合成 assignments；沒有呼叫 grandMA3 native API，也沒有修改 production 原碼。後續 v0.7.1.35 已將空 selection 的檢查次數降到 0，現行探針會驗證這項行為；本節保留原始基準結果。
 
 slice 大小 250（對應 R=96 的 sliceLimit），空 selection，每 member 一條 assignment：
 
