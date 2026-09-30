@@ -650,6 +650,21 @@ local function newTrackARuntime(api)
             end
             return view
         end
+        -- Exclusion needs every occurrence to be known and every contributing
+        -- lane to be overwritten by a known winner. An unsafe barrier never
+        -- proves that a reference is dead, even when it hides older lanes.
+        local refExclusionVerdicts={}
+        for _,row in ipairs(normalized) do
+            local id=row.refId
+            if id then
+                local excluded=not row.unsafe and activeRefs[id]==nil
+                for _,sup in ipairs(row.superseded or {}) do
+                    if sup.unsafe then excluded=false; break end
+                end
+                if refExclusionVerdicts[id]==nil then refExclusionVerdicts[id]=excluded
+                else refExclusionVerdicts[id]=refExclusionVerdicts[id] and excluded end
+            end
+        end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
             local blockers={}
             for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
@@ -667,6 +682,7 @@ local function newTrackARuntime(api)
             end
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
                 refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
+                refExclusionVerdicts=refExclusionVerdicts,
                 unsafeRefDetails=blockerDetails,
                 -- Assignments already decided before an unresolved historical
                 -- barrier are still proven. Preserve only those for partial
@@ -706,6 +722,7 @@ local function newTrackARuntime(api)
         end
         local laneAssignments=assignmentView()
         return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
+            refExclusionVerdicts=refExclusionVerdicts,
             laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}

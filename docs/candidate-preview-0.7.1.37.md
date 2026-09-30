@@ -1,0 +1,13 @@
+# v0.7.1.37 candidate preview
+
+User reports v36 faster but insufficient and authorizes immediate candidate purple, then background removal. Inspected 39.55 s / 60 fps video: panel at 12 s reports PENDING, 102/102 rows, 705/1295 members, 446.1 ms. This is a panel observation, not measured GO-to-purple.
+
+First render enumerates enabled Recipes through current Cue (existing MAX_CUES/MAX_RECIPES bounds) and publishes Values/Generator handles. It returns before native Preset metadata, Group-member expansion and reverse-lane work. Later renders use v36 bounded scheduling. Candidate handles never populate selected red attribution or mutation decisions. Complete PROVEN output replaces candidates; PENDING retains them; INCONCLUSIVE removes explicitly excluded references and retains unknown ones because failure to prove is not proof of a kill. DETAIL labels candidate frames and unresolved tracking.
+
+Preview is a superset of enabled history, so superseded Presets may appear briefly. If Phaser/unknown lanes prevent complete proof, uncertain candidates remain visible and are explicitly unresolved; references proven excluded are removed independently. This does not fix the Phaser parser. Native APIs are still synchronous on the host coroutine; background means work on later ticks, not parallel native execution. History fingerprint, UI polling and Pool discovery remain costs; no numeric latency guarantee is made.
+
+Preview invalidates on Sequence/Cue/Recipe-structure changes or forceRefresh. Empty/deleted history immediately drops candidates. Existing structure polling interval still controls detection of external edits. No cross-stage preview cache or Show mutations.
+
+Validation: 89 workflow assertions, 241 Track A checks, 244 extended probe checks; Lua/XML parsing, generated candidate consistency, diff whitespace checks. Added behavioral coverage for zero metadata/member reads before preview, no guessed red, final kill removal, deletion, unresolved retention and Cue switch. Runtime source diff reviewed before deployment. XML and both referenced Lua files copied and matching SHA256 verified. REAL-WORLD VALIDATION PENDING.
+
+Reference exclusion is AND across all row occurrences and member slices: any surviving occurrence or unsafe barrier prevents removal. Runtime errors/incomplete evidence disable exclusions. Exclusions publish after the full member scope has been examined, even when other lanes remain INCONCLUSIVE; partially scanned Groups cannot prove a whole Preset absent. Additional tests cover a certain kill beside an unresolved member, surviving shared references, and unsafe barriers.

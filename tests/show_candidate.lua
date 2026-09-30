@@ -1566,4 +1566,69 @@ stagedRefs=functions.sourceMarkerEvidence({
  markerReferences={}},position)
 check(stagedRefs=="Preset 2.1 | ATTRIBUTION_UNKNOWN",
  "source marker diagnosis must expose unresolved lane attribution")
+do
+ (function()
+  local old=recipe(gOne,moving,1)
+  local newer=recipe(gOne,static,2)
+  local seq,cue,part=tree({old,newer})
+  local preview=state(seq,cue,fOne)
+  preview.incrementalResolver=true; preview.optimisticMarkers=true
+  local reads=referenceReads.count
+  local channels=uiCalls
+  local refs=functions.recipePoolReferences(preview)
+  check(refs["Preset 1.2"]==moving and refs["Preset 1.1"]==static
+   and preview.provenSources.reason=="CANDIDATE_PREVIEW"
+   and referenceReads.count==reads and uiCalls==channels,
+   "candidate preview must paint before metadata/member reads, including unverified killed history")
+  check(preview.selectedRecipeReferenceCount==0 and next(preview.selectedRecipeReferenceKeys)==nil,
+   "candidate purple must never create guessed selected red attribution")
+  for i=1,100 do
+   refs=functions.recipePoolReferences(preview)
+   if preview.provenSources.classification~="PENDING" then break end
+  end
+  check(preview.provenSources.classification=="PROVEN"
+   and refs["Preset 1.2"]==nil and refs["Preset 1.1"]==static,
+   "background proof must remove killed candidate and retain winner")
+  part.Children=function() return {} end
+  preview.trackARecipeStructureKey="deleted"; preview.provenSourceKey=nil
+  preview.trackAHistoryRowsCache=nil; preview.trackAStageSourcesCache=nil
+  refs=functions.recipePoolReferences(preview)
+  check(next(refs)==nil,
+   "Recipe deletion must rebuild preview instead of retaining stale candidate")
+  local seq2,cue2=tree({recipe(gOne,unknown,1)})
+  preview=state(seq2,cue2,fOne)
+  preview.incrementalResolver=true; preview.optimisticMarkers=true
+  functions.recipePoolReferences(preview)
+  for i=1,100 do
+   refs=functions.recipePoolReferences(preview)
+   if preview.provenSources.classification~="PENDING" then break end
+  end
+  check(preview.provenSources.classification=="INCONCLUSIVE"
+   and refs[tostring(unknown)]==unknown,
+   "unresolved attribution is not proof of a kill and must retain candidate")
+  local mixedSeq,mixedCue=tree({recipe(gOne,moving,1),recipe(gOne,static,2),recipe(gCell,unsafe,3)})
+  local mixed=state(mixedSeq,mixedCue,fBoth)
+  mixed.incrementalResolver=true; mixed.optimisticMarkers=true
+  functions.recipePoolReferences(mixed)
+  for i=1,100 do
+   refs=functions.recipePoolReferences(mixed)
+   if mixed.provenSources.classification~="PENDING" then break end
+  end
+  check(mixed.provenSources.classification=="INCONCLUSIVE"
+   and refs[tostring(moving)]==nil and refs[tostring(static)]==static
+   and refs[tostring(unsafe)]==unsafe,
+   "certain kill must remove purple even when another member remains unresolved")
+  local shared=result({recipe(gBoth,moving,1),recipe(gOne,static,2)},fBoth)
+  check(shared.refExclusionVerdicts[tostring(moving)]==false,
+   "one surviving occurrence must prevent reference-wide exclusion")
+  local blocked=result({recipe(gOne,moving,1),recipe(gOne,unsafe,2)},fOne)
+  check(blocked.refExclusionVerdicts[tostring(moving)]==false,
+   "unsafe newer barrier must not count as a certain kill")
+  cue.No=1001
+  preview.currentSequence=seq; preview.currentCue=cue
+  refs=functions.recipePoolReferences(preview)
+  check(next(refs)==nil,
+   "switching Cue must drop the previous Cue candidate immediately")
+ end)()
+end
 print("PASS: show Track A candidate ("..count.." checks), final_refs=4 missing=0 extra=0")

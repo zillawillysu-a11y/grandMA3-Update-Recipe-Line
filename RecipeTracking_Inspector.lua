@@ -4,7 +4,7 @@
 local signalTable = select(3, ...)
 local componentHandle = select(4, ...)
 
-local PLUGIN_VERSION = "0.7.1.36"
+local PLUGIN_VERSION = "0.7.1.37"
 local STATE_KEY = "RecipeTrackingInspectorState"
 -- Native-proven Track A lane resolver candidate; unknown semantics fail closed.
 local ENABLE_TRACK_A_SHOW_CANDIDATE = true
@@ -1395,6 +1395,12 @@ local function render(state)
             refLabel,
             state.selectedRecipeReferenceCount or 0,
             state.markerStatus and (" | "..state.markerStatus) or "")
+        if state.optimisticMarkers and state.provenSources.classification~="PROVEN" then
+            local candidateCount=0
+            for _ in pairs(state.optimisticMarkerRefs or {}) do candidateCount=candidateCount+1 end
+            resolverLines[#resolverLines+1]=string.format("Candidate frames: %d | %s",candidateCount,
+                state.provenSources.classification=="PENDING" and "checking tracking" or "tracking unresolved")
+        end
         if state.provenSources.classification=="PENDING"
             and type(state.resolverMembersTotal)=="number" then
             if state.provenSources.reason=="MEMBER_UI_PENDING" then
@@ -2229,6 +2235,21 @@ local function newTrackARuntime(api)
             end
             return view
         end
+        -- Exclusion needs every occurrence to be known and every contributing
+        -- lane to be overwritten by a known winner. An unsafe barrier never
+        -- proves that a reference is dead, even when it hides older lanes.
+        local refExclusionVerdicts={}
+        for _,row in ipairs(normalized) do
+            local id=row.refId
+            if id then
+                local excluded=not row.unsafe and activeRefs[id]==nil
+                for _,sup in ipairs(row.superseded or {}) do
+                    if sup.unsafe then excluded=false; break end
+                end
+                if refExclusionVerdicts[id]==nil then refExclusionVerdicts[id]=excluded
+                else refExclusionVerdicts[id]=refExclusionVerdicts[id] and excluded end
+            end
+        end
         if #attribution.finalSurviving>0 or #attribution.unknown>0 then
             local blockers={}
             for _,list in ipairs({attribution.finalSurviving,attribution.unknown}) do
@@ -2246,6 +2267,7 @@ local function newTrackARuntime(api)
             end
             return {classification="INCONCLUSIVE",reason="UNSAFE_LANE_ATTRIBUTION_BLOCKER",
                 refs={},unsafeAttribution=attribution,unsafeRefs=blockerRefs,
+                refExclusionVerdicts=refExclusionVerdicts,
                 unsafeRefDetails=blockerDetails,
                 -- Assignments already decided before an unresolved historical
                 -- barrier are still proven. Preserve only those for partial
@@ -2285,6 +2307,7 @@ local function newTrackARuntime(api)
         end
         local laneAssignments=assignmentView()
         return {classification="PROVEN",refs=refs,activeRefs=activeRefs,
+            refExclusionVerdicts=refExclusionVerdicts,
             laneAssignments=laneAssignments,refMembers=survivors,
             sourceGroups=sourceGroups,barriers=#residual,
             unsafeAttribution=attribution,laneWork=laneWork,remainingSemanticBlockers=0}
@@ -2503,6 +2526,15 @@ end
             end
         end
         local function mergeResult(result)
+            aggregate.refExclusionVerdicts=aggregate.refExclusionVerdicts or {}
+            if type(result.refExclusionVerdicts)~="table" then
+                aggregate.exclusionIncomplete=true
+            else
+                for id,excluded in pairs(result.refExclusionVerdicts) do
+                    if aggregate.refExclusionVerdicts[id]==nil then aggregate.refExclusionVerdicts[id]=excluded
+                    else aggregate.refExclusionVerdicts[id]=aggregate.refExclusionVerdicts[id] and excluded end
+                end
+            end
             if result.classification~="PROVEN" then
                 aggregate.classification="INCONCLUSIVE"
                 aggregate.reason=aggregate.reason or result.reason or "STAGED_MEMBER_UNPROVEN"
@@ -3054,6 +3086,48 @@ end
     end
     local flagOn = state ~= nil and state.provenEnabled == true
     if flagOn then
+        -- Candidate frames are display-only. Never feed them into selected
+        -- attribution, Group matching or Recipe write decisions.
+        if state.optimisticMarkers then
+            local key=tostring(commandAddress(state.currentSequence))..":"
+                ..tostring(cueNumber(state.currentCue))..":"
+                ..tostring(state.trackARecipeStructureKey)
+            if state.optimisticMarkerKey~=key or state.forceRefresh==true then
+                state.optimisticMarkerKey=key
+                state.optimisticMarkerRefs={}
+                local currentNumber=cueNumber(state.currentCue)
+                local cueCount,recipeCount=0,0
+                for _,cue in ipairs(children(state.currentSequence)) do
+                    if cueCount>=MAX_CUES or recipeCount>=MAX_RECIPES then break end
+                    local number=cueNumber(cue)
+                    if string.lower(class(cue))=="cue" and currentNumber and number and number<=currentNumber then
+                        cueCount=cueCount+1
+                        for _,part in ipairs(children(cue)) do
+                            if string.lower(class(part))=="part" then
+                                for _,recipe in ipairs(children(part)) do
+                                    if recipeCount>=MAX_RECIPES then break end
+                                    if isStandardRecipe(recipe) and recipeEnabled(recipe) then
+                                        recipeCount=recipeCount+1
+                                        local ref=recipeField(recipe,"Generator") or recipeField(recipe,"Values")
+                                        local id=ref and commandAddress(ref)
+                                        if id then state.optimisticMarkerRefs[id]=ref end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                state.selectedRecipeReferenceKeys={}
+                state.selectedRecipeReferenceCount=0
+                state.currentGroups={}
+                state.provenSources={classification="PENDING",reason="CANDIDATE_PREVIEW",refs={}}
+                state.provenSourceKey=nil
+                -- Return before member/metadata/index work so overlays get a
+                -- host render before the background proof begins.
+                for _,ref in pairs(state.optimisticMarkerRefs) do add(ref) end
+                return references
+            end
+        end
         local provenResult = refresh(state, state.currentSequence, state.currentCue,
             state.lastFixtures, { feature = state.lastFeature })
         state.currentGroups={}
@@ -3157,6 +3231,17 @@ end
             end
             for key,probe in pairs(state.markerProbe or {}) do
                 probe.sourceAdmitted=references[key]~=nil
+            end
+        end
+        if state.optimisticMarkers and provenResult then
+            if provenResult.classification=="PENDING" then
+                for _,ref in pairs(state.optimisticMarkerRefs or {}) do add(ref) end
+            elseif provenResult.classification=="INCONCLUSIVE" then
+                -- An unsafe lane is not evidence of a kill. Retain candidates
+                -- until a complete proof can establish the surviving set.
+                for id,ref in pairs(state.optimisticMarkerRefs or {}) do
+                    if provenResult.exclusionIncomplete or not (provenResult.refExclusionVerdicts or {})[id] then add(ref) end
+                end
             end
         end
         -- A single selected Attribute's displayed Recipe has a concrete
@@ -4815,7 +4900,8 @@ local function main()
     if stopExistingForLaunch(existing) then return end
 
     local state = { running = true, version = PLUGIN_VERSION,
-        incrementalResolver = ENABLE_TRACK_A_SHOW_CANDIDATE == true }
+        incrementalResolver = ENABLE_TRACK_A_SHOW_CANDIDATE == true,
+        optimisticMarkers = ENABLE_TRACK_A_SHOW_CANDIDATE == true }
     _G[STATE_KEY] = state
     local panel, err = createPanel(state)
     if not panel then
